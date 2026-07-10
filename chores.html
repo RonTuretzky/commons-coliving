@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chores — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("chores");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const DAY = Commons.DAY;
+
+    const person = (id) => Commons.people.get(id);
+    const firstName = (id) => { const p = person(id); return p ? p.name.split(" ")[0] : id; };
+    const freqLabel = (d) => (d === 7 ? "weekly" : d === 14 ? "every 2 weeks" : `every ${d} days`);
+    const periodEnd = (c, period) => new Date(new Date(c.start).getTime() + (period + 1) * c.freqDays * DAY);
+
+    function render() {
+      const house = Commons.houses.mine();
+      if (!house) {
+        page.innerHTML = `<div class="empty stack">
+          <h2 class="text-h3">No house, no chores</h2>
+          <p>Enjoy it while it lasts — or go find your people.</p>
+          <div class="row center wrap">
+            <a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+            <a class="park-btn light" href="browse.html">Browse homes</a>
+          </div></div>`;
+        return;
+      }
+
+      const chores = Commons.chores.all();
+
+      /* ----- Right now ----- */
+      const nowCards = chores.map((c) => {
+        const period = Commons.chores.period(c);
+        const who = Commons.chores.assignee(c, period);
+        const mine = who === "me";
+        const done = Commons.chores.done(c.id, period);
+        const info = Commons.chores.doneInfo(c.id, period);
+        return `<div class="card stack" style="${mine && !done ? "border:2px solid var(--pine)" : ""}">
+          <div class="row between">
+            <span style="font-size:2rem">${c.emoji}</span>
+            ${mine && !done ? `<span class="pill pine">You're on it</span>` : ""}
+            ${done ? `<span class="pill match">Done</span>` : ""}
+          </div>
+          <h3 class="text-h4">${U.esc(c.name)}</h3>
+          <div class="row"><span class="row" style="gap:6px">${Shell.avatarHtml(person(who), "sm")}
+            <span class="small">${mine ? "You" : U.esc(firstName(who))}</span></span>
+            <span class="text-caption muted">· ${freqLabel(c.freqDays)}</span></div>
+          ${done
+            ? `<p class="text-caption muted">by ${U.esc(firstName(info.by))} · ${U.relDate(info.at)}</p>`
+            : `<p class="text-caption muted">period ends ${U.fmtDate(periodEnd(c, period).toISOString())}</p>
+               <button class="lifted xs" data-chore="${c.id}" data-period="${period}"><span class="shadow"></span><span class="face">Mark done</span></button>`}
+        </div>`;
+      }).join("");
+
+      /* ----- Rotation table ----- */
+      const cols = [0, 1, 2, 3];
+      const header = cols.map((i) => {
+        const label = i === 0 ? "Now" : `+${i}`;
+        return `<th>${label}</th>`;
+      }).join("");
+      const rows = chores.map((c) => {
+        const period = Commons.chores.period(c);
+        const cells = cols.map((i) => {
+          const who = Commons.chores.assignee(c, period + i);
+          const mine = who === "me";
+          const end = periodEnd(c, period + i);
+          return `<td style="${mine ? "background:var(--paper-1)" : ""}">
+            <span class="row" style="gap:6px">${Shell.avatarHtml(person(who), "sm")}
+              <span class="small">${mine ? "You" : U.esc(firstName(who))}</span></span>
+            <span class="text-caption muted">by ${U.fmtDate(end.toISOString())}</span>
+          </td>`;
+        }).join("");
+        return `<tr><td><span class="row" style="gap:8px"><span>${c.emoji}</span><strong class="small">${U.esc(c.name)}</strong></span></td>${cells}</tr>`;
+      }).join("");
+
+      /* ----- Track record ----- */
+      const meters = chores.map((c) => {
+        const rate = Math.round(Commons.chores.completionRate(c.id) * 100);
+        return `<div class="meter">
+          <span class="small">${c.emoji} ${U.esc(c.name)}</span>
+          <div class="bar"><i style="width:${rate}%;background:var(--green)"></i></div>
+          <span class="small tnum">${rate}%</span>
+        </div>`;
+      }).join("");
+
+      const feed = [];
+      chores.forEach((c) => {
+        const doneMap = Commons.state.choreDone[c.id] || {};
+        Object.entries(doneMap).forEach(([p, info]) => feed.push({ c, info }));
+      });
+      feed.sort((a, b) => new Date(b.info.at) - new Date(a.info.at));
+      const feedHtml = feed.slice(0, 8).map(({ c, info }) =>
+        `<div class="row between" style="border-top:1px solid var(--paper-1);padding-top:8px">
+          <span class="small">${c.emoji} ${U.esc(c.name)} — ${info.by === "me" ? "You" : U.esc(firstName(info.by))}</span>
+          <span class="text-caption muted">${U.relDate(info.at)}</span>
+        </div>`).join("");
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="row between wrap">
+          <div>
+            <div class="kicker">Chores</div>
+            <h1 class="text-h2">Nobody has to remember</h1>
+            <p class="lede" style="max-width:680px">Each schedule is defined once. From there, assignments are pure math on the
+            calendar — <span class="display">rotation[period % housemates]</span> — so the wheel turns whether or not anyone's watching it.</p>
+          </div>
+          <a class="lifted sm stroke" href="chore-builder.html"><span class="shadow"></span><span class="face">🧮 Design a new rotation</span></a>
+        </div>
+
+        <div>
+          <div class="kicker">Right now</div>
+          <div class="grid grid-3" style="margin-top:14px">${nowCards}</div>
+        </div>
+
+        <div class="card stack">
+          <div class="kicker">The rotation</div>
+          <div style="overflow-x:auto">
+            <table class="ledger">
+              <thead><tr><th>Chore</th>${header}</tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <p class="text-caption muted">Your turns are shaded. Trades are a conversation; the schedule is a fact.</p>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card stack">
+            <div class="kicker">Track record</div>
+            ${meters}
+          </div>
+          <div class="card stack">
+            <div class="kicker">Recently done</div>
+            ${feedHtml || `<p class="small muted">Quiet so far.</p>`}
+          </div>
+        </div>
+
+        <div class="card flat">
+          <p class="text-caption muted">Under the hood: one stored schedule per chore plus a completion map — no instances, ever.
+          Period N = floor((now − start) / frequency). Anyone in the house can confirm a chore done; the record is what keeps it honest.
+          Same math a spreadsheet would use — the app just never forgets.</p>
+        </div>
+      </div>`;
+
+      page.querySelectorAll("[data-chore]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          Commons.chores.markDone(btn.dataset.chore, Number(btn.dataset.period), "me");
+          render();
+          Shell.toast("Marked — anyone in the house can confirm a chore", "green");
+        });
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

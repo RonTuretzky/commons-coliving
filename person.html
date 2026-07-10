@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+
+    function houseOf(personId) {
+      return Commons.houses.all().find((h) => h.members.includes(personId)) || null;
+    }
+
+    function seekingPill(p) {
+      if (p.seeking === "room") return `<span class="pill open">Looking for a room</span>`;
+      if (p.seeking === "founding") return `<span class="pill pine">Building a founding crew</span>`;
+      const h = houseOf(p.id);
+      return h ? `<span class="pill paper">Housed — <a href="house.html?id=${h.id}">${U.esc(h.name)}</a></span>`
+               : `<span class="pill paper">Housed</span>`;
+    }
+
+    function metersHtml(theirs, mine, withYou) {
+      return Commons.DIMS.map((d) => `
+        <div class="stack" style="--gap:2px">
+          <div class="meter">
+            <span class="small">${U.esc(d.label)}</span>
+            <div class="bar">
+              <i style="width:${theirs[d.id] ?? 50}%"></i>
+              ${withYou ? `<i class="you" style="width:${mine[d.id] ?? 50}%"></i>` : ""}
+            </div>
+            <span class="small tnum">${theirs[d.id] ?? 50}</span>
+          </div>
+          <div class="range-labels" style="margin-left:120px"><span>${U.esc(d.low)}</span><span>${U.esc(d.high)}</span></div>
+        </div>`).join("");
+    }
+
+    function render() {
+      const id = U.qp("id");
+      const me = Commons.me();
+      const isMe = !id || id === "me";
+      const p = isMe ? me : Commons.people.get(id);
+
+      if (!p) {
+        page.innerHTML = `<div class="empty stack">
+          <h2 class="text-h3">Nobody by that name here</h2>
+          <a class="park-btn light" href="browse.html" style="align-self:center">Back to browsing</a></div>`;
+        return;
+      }
+
+      const arch = Commons.archetype(p.dims);
+      const m = isMe ? null : Commons.match(me, p);
+
+      // shared gatherings: their event list vs mine (profile events + live RSVPs)
+      const mine = new Set((me.events || []).concat(Commons.state.rsvps));
+      const shared = (p.events || []).filter((e) => mine.has(e))
+        .map((eid) => Commons.events.get(eid)).filter(Boolean);
+
+      const typePill = (t) => t === "mixer" ? "open" : t === "retreat" ? "pine" : t === "workday" ? "warn" : "paper";
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="card stack">
+          <div class="row wrap" style="gap:16px">
+            ${Shell.avatarHtml(p, "lg")}
+            <div class="stack" style="--gap:4px;flex:1;min-width:220px">
+              <h1 class="text-h3">${U.esc(p.name)}${isMe ? ` <span class="pill ink">you</span>` : ""}</h1>
+              <p class="small muted">${p.age} · ${U.esc(p.borough)} · looks for ≤ ${U.fmtMoney(p.budget)}/mo</p>
+              <div class="row wrap">${seekingPill(p)}</div>
+            </div>
+          </div>
+          <div class="row wrap" style="gap:10px;border-top:1px solid var(--paper-1);padding-top:14px">
+            <span style="font-size:1.8rem">${arch.emoji}</span>
+            <div>
+              <strong class="display-bold">${U.esc(arch.name)}</strong>
+              <p class="small muted" style="margin:0">${U.esc(arch.desc)}</p>
+            </div>
+          </div>
+        </div>
+
+        ${isMe ? "" : `<div class="card stack">
+          <div class="kicker">Compatibility</div>
+          <div class="row wrap">${Shell.matchPill(m)}</div>
+          <p class="text-caption muted">Dealbreakers stay private — you only ever see how many conflict, never which.</p>
+          <div class="stack">${metersHtml(p.dims, me.dims, true)}</div>
+          <p class="text-caption muted"><span class="dot pine"></span> them &nbsp; <span class="dot sky"></span> you</p>
+        </div>`}
+
+        <div class="card stack">
+          <div class="kicker">About</div>
+          <p class="text-body">${U.esc(p.blurb)}</p>
+          <div class="row wrap">${(p.values || []).map((v) => `<span class="chip soft">${U.esc(v)}</span>`).join("")}</div>
+        </div>
+
+        <div class="card stack">
+          <div class="kicker">Crossed paths</div>
+          ${shared.length
+            ? shared.map((e) => `<div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:8px">
+                <span class="small"><strong>${U.esc(e.title)}</strong> · ${U.fmtDate(e.when)}</span>
+                <span class="pill ${typePill(e.type)}">${U.esc(e.type)}</span>
+              </div>`).join("") +
+              (isMe ? "" : `<p class="text-caption muted">Shared containers beat cold intros.</p>`)
+            : `<p class="small muted">No shared gatherings yet — <a href="gatherings.html">fix that</a>.</p>`}
+        </div>
+
+        <div class="row wrap">
+          ${isMe
+            ? `<a class="lifted stroke" href="quiz.html"><span class="shadow"></span><span class="face">Retake the quiz</span></a>
+               <a class="park-btn light" href="browse.html">Browse homes & people</a>`
+            : `<span id="connect-slot">${Commons.connects.has("person", p.id)
+                ? `<button class="park-btn light" disabled>Request sent ✓</button>`
+                : `<button class="lifted" id="connect"><span class="shadow"></span><span class="face">Say hi</span></button>`}</span>
+               <a class="park-btn light" href="gatherings.html">See gatherings they'll be at</a>`}
+        </div>
+      </div>`;
+
+      const btn = document.getElementById("connect");
+      if (btn) btn.addEventListener("click", () => {
+        Commons.connects.add("person", p.id);
+        document.getElementById("connect-slot").innerHTML = `<button class="park-btn light" disabled>Request sent ✓</button>`;
+        Shell.toast(`Sent — ${p.name.split(" ")[0]} will see your profile and match count`, "green");
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

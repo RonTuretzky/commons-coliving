@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Steward — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .steward-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 960px) { .steward-grid { grid-template-columns: 1fr; } }
+    .chat-scroll { min-height: 420px; max-height: 58vh; overflow-y: auto; padding: 4px 2px; margin-top: 18px; scroll-behavior: smooth; }
+    .vendor { width: 100%; border: 1px solid var(--paper-2); background: var(--paper-main); border-radius: 10px; padding: 10px 12px; }
+    .maint-row { padding: 12px 0; border-bottom: 1px solid var(--paper-1); }
+    .maint-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .glance-row { padding: 10px 0; border-bottom: 1px solid var(--paper-1); }
+    .glance-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    #msg { flex: 1; min-width: 0; }
+    .bot-face { font-size: 1.55rem; background: var(--pine); }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="section">
+      <div class="container">
+
+        <!-- Guard: shown when the demo user has no house -->
+        <div id="guard" class="hidden">
+          <div class="empty stack" style="max-width: 560px; margin: 32px auto;">
+            <div style="font-size: 2.6rem">🤖</div>
+            <h2 class="text-h3">The steward works for a house</h2>
+            <p class="muted">Once you have a home crew, I handle the reminders, the bill rotation, and the guy-for-everything list — so no housemate has to be the nag. First step: find your people.</p>
+            <div class="row center wrap">
+              <a class="lifted sm" href="browse.html"><span class="shadow"></span><span class="face">Browse homes</span></a>
+              <a class="park-btn light" href="create.html">Start a house</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- The page proper -->
+        <div id="page" class="hidden">
+          <div style="margin-bottom: 24px">
+            <div class="kicker">Run the house</div>
+            <h2 class="text-h2">Ask the steward</h2>
+          </div>
+
+          <div class="steward-grid">
+
+            <!-- MAIN: chat -->
+            <div class="card">
+              <div class="row" style="gap: 14px; align-items: flex-start;">
+                <span class="avatar lg bot-face">🤖</span>
+                <div>
+                  <h3 class="text-h3" style="font-size: 1.5rem">Steward</h3>
+                  <div class="text-caption muted">Knows the schedule, the rules, and a guy for everything. Drafts only — a human approves anything that leaves the house.</div>
+                </div>
+              </div>
+
+              <div class="chat chat-scroll" id="chat"></div>
+
+              <div class="row wrap" id="quick" style="margin-top: 14px; gap: 8px;">
+                <button type="button" class="chip" data-say="What's due this week?">What's due this week?</button>
+                <button type="button" class="chip" data-say="Who pays Con Ed?">Who pays Con Ed?</button>
+                <button type="button" class="chip" data-say="Something's broken">Something's broken</button>
+                <button type="button" class="chip" data-say="House rules?">House rules?</button>
+                <button type="button" class="chip" data-say="Find a plumber">Find a plumber</button>
+              </div>
+
+              <form id="ask" class="row wrap" style="margin-top: 12px; gap: 10px;">
+                <input class="input" id="msg" placeholder="Ask the steward anything…" autocomplete="off" />
+                <button class="lifted sm" type="submit"><span class="shadow"></span><span class="face">Send</span></button>
+                <button class="park-btn ghost sm" type="button" id="clear">Clear chat</button>
+              </form>
+            </div>
+
+            <!-- SIDEBAR -->
+            <div class="stack">
+              <div class="card">
+                <div class="kicker" style="margin-bottom: 2px">Follow-ups</div>
+                <h3 class="text-h4">Maintenance log</h3>
+                <div id="maint"></div>
+              </div>
+
+              <div class="card">
+                <div class="kicker" style="margin-bottom: 2px">Right now</div>
+                <h3 class="text-h4">At a glance</h3>
+                <div id="glance"></div>
+              </div>
+
+              <div class="card flat text-caption muted">
+                The steward reminds, triages, and drafts. Accounts, payments, and final sends stay human.
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("steward");
+
+    const U = Commons.util;
+    const house = Commons.houses.mine();
+
+    if (!house) {
+      document.getElementById("guard").classList.remove("hidden");
+    } else {
+      document.getElementById("page").classList.remove("hidden");
+      initSteward();
+    }
+
+    function initSteward() {
+      /* ---------- constants ---------- */
+      const ASK_BREAK = "On it. What broke, and where? One sentence is plenty — I'll open a ticket the whole house can see.";
+      const QUICK = ["What's due this week?", "Who pays Con Ed?", "Something's broken", "House rules?", "Find a plumber"];
+      const VENDORS = [
+        { kind: "vendor", name: "Ridgewood Pipeworks", meta: "⭐ 4.9 · $$", tag: "“the co-op plumber” — three houses in the network swear by him" },
+        { kind: "vendor", name: "Sunset Drain Co", meta: "⭐ 4.7 · $", tag: "fast, cash-friendly, zero drama" },
+        { kind: "vendor", name: "DIY: enzyme + 20 min", meta: "free", tag: "half of all slow drains fix themselves — you've got this" },
+      ];
+
+      const chatEl = document.getElementById("chat");
+      const maintEl = document.getElementById("maint");
+      const glanceEl = document.getElementById("glance");
+      const form = document.getElementById("ask");
+      const input = document.getElementById("msg");
+      let busy = false;
+
+      /* ---------- helpers ---------- */
+      const firstName = (id) => {
+        const p = Commons.people.get(id);
+        return p ? p.name.split(/\s+/)[0] : "someone";
+      };
+      const ord = (n) => { const v = n % 100, s = ["th", "st", "nd", "rd"]; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+      const openChores = () => Commons.chores.all()
+        .map((c) => ({ c, period: Commons.chores.period(c) }))
+        .filter((x) => !Commons.chores.done(x.c.id, x.period))
+        .map((x) => ({ chore: x.c, period: x.period, who: Commons.chores.assignee(x.c, x.period) }));
+      const myOpenChores = () => openChores().filter((x) => x.who === "me");
+      const myBills = () => Commons.money.bills().filter((b) => Commons.money.billPayer(b) === "me");
+
+      /* ---------- the brain ---------- */
+      function respond(text) {
+        const t = text.toLowerCase();
+        if (/(due|week|chore)/.test(t)) return choresReply();
+        if (/(bill|con ed|coned|internet|electric|util|pay)/.test(t)) return billsReply();
+        if (/(rule|quiet|polic)/.test(t)) return rulesReply();
+        if (/(broke|leak|fix|maint|repair|drip|clog|mold|stuck)/.test(t)) return { text: ASK_BREAK };
+        if (/(plumb|vendor|electrician|handy|contractor)/.test(t)) return vendorsReply();
+        if (/(treasur|money|balance|fund|pool)/.test(t)) return treasuryReply();
+        if (/(event|mixer|retreat|gather|dinner|calendar)/.test(t)) return eventsReply();
+        return helpReply();
+      }
+
+      function choresReply() {
+        const open = openChores();
+        if (!open.length) return { text: "Every chore this period is done. The house is spotless and I have nothing to nag about. Savor it. ✨" };
+        const lines = open.map((x) =>
+          `• ${x.chore.emoji} ${x.chore.name} — ${x.who === "me" ? "that's you" : firstName(x.who)}`
+        );
+        return {
+          text: `Still open this period:\n${lines.join("\n")}\nAny housemate can mark one done — no permission needed, just glory.`,
+          actions: [{ kind: "link", href: "chores.html", label: "Open Chores" }],
+        };
+      }
+
+      function billsReply() {
+        const lines = Commons.money.bills().map((b) => {
+          const payer = Commons.money.billPayer(b);
+          const who = payer === "me" ? "you pay" : firstName(payer) + " pays";
+          const tail = Commons.money.billIsPaid(b.id) ? "paid ✓" : "due the " + ord(b.dueDay);
+          return `• ${b.name}: ${who} ${U.fmtMoney(b.amount)} — ${tail}`;
+        });
+        return {
+          text: `This month's bill rotation:\n${lines.join("\n")}\nNext month it rotates on its own — remembering is my job, not yours.`,
+          actions: [{ kind: "link", href: "dashboard.html", label: "See the rotation" }],
+        };
+      }
+
+      function rulesReply() {
+        const rules = house.rules || [];
+        if (!rules.length) return { text: `${house.name} keeps it unwritten — no rules on file yet. Want some? Open a proposal on My House.` };
+        return {
+          text: `House rules at ${house.name}:\n${rules.map((r) => "• " + r).join("\n")}\nWant one changed? Open a proposal — two-thirds of the crew and it's official.`,
+          actions: [{ kind: "link", href: "dashboard.html", label: "Open My House" }],
+        };
+      }
+
+      function triageFor(t) {
+        if (/(drain|sink|clog|leak|drip|pipe|toilet|faucet)/.test(t)) return "Try this first: enzyme cleaner down the drain, wait 20 minutes, flush with hot water — fixes it half the time and costs nothing.";
+        if (/(heat|radiator|cold|boiler)/.test(t)) return "Try this first: bleed the radiator valve a quarter-turn until it hisses and then drips — that knock is almost always trapped air.";
+        if (/(light|power|outlet|electric|breaker)/.test(t)) return "Try this first: check the breaker panel — flip the tripped switch fully off, then on. Half of “broken” is a tripped breaker.";
+        if (/(fridge|freezer)/.test(t)) return "Try this first: unplug it, vacuum the coils on the back, and give it two hours before you panic.";
+        return "Try this first: take a photo, shut off whatever feeds it, and don't let it get worse overnight.";
+      }
+
+      function ticketReply(text) {
+        Commons.steward.addMaintenance({ title: text });
+        return {
+          text: `Ticket opened: “${text}” — it's on the maintenance log for the whole house.\n${triageFor(text.toLowerCase())}\nIf that doesn't do it, here's the little black book. Want me to draft a request? A human hits send.`,
+          actions: VENDORS.slice(),
+        };
+      }
+
+      function vendorsReply() {
+        return {
+          text: "Here's the little black book — vetted by houses in the network. I draft the request; a human approves before anything leaves the house.",
+          actions: VENDORS.slice(),
+        };
+      }
+
+      function treasuryReply() {
+        const t = Commons.money.treasury();
+        const open = Commons.proposals.all().filter((p) => p.status === "open").length;
+        return {
+          text: `The pool is holding ${U.fmtMoney(t.balance)} ${t.currency}, with ${open} proposal${open === 1 ? "" : "s"} open for a vote. Money only moves by house vote — never by me. The full ledger lives on My House.`,
+          actions: [{ kind: "link", href: "dashboard.html", label: "Open My House" }],
+        };
+      }
+
+      function eventsReply() {
+        const up = Commons.events.upcoming().slice(0, 2);
+        if (!up.length) return { text: "Nothing on the calendar right now — which might be a sign the house should host something." };
+        const lines = up.map((e) => `• ${e.title} — ${U.fmtDateLong(e.when)} (${U.relDate(e.when)})`);
+        return {
+          text: `Coming up:\n${lines.join("\n")}\nRSVPs live on Gatherings.`,
+          actions: [{ kind: "link", href: "gatherings.html", label: "Open Gatherings" }],
+        };
+      }
+
+      function helpReply() {
+        return {
+          text: `Hey! I'm the steward for ${house.name} — I know the schedule, the rules, and a guy for everything. Try me on:\n• What's due this week?\n• Who pays Con Ed?\n• Something's broken\n• House rules?\n• Find a plumber\nI remind, triage, and draft. A human approves anything that leaves the house.`,
+        };
+      }
+
+      /* ---------- proactive greeting (first load, empty chat) ---------- */
+      function greet() {
+        const me = Commons.me();
+        const first = me.name === "You" ? "there" : me.name.split(/\s+/)[0];
+        const mine = myOpenChores();
+        const bills = myBills();
+        const next = Commons.events.upcoming()[0];
+        const parts = [`Hey ${first}! Steward here — I keep ${house.name} humming.`];
+        parts.push(mine.length
+          ? `On your plate this period: ${mine.map((x) => `${x.chore.emoji} ${x.chore.name}`).join(", ")}.`
+          : "You're clear on chores this period — nothing with your name on it.");
+        parts.push(bills.length
+          ? `Heads up: ${bills.map((b) => `${b.name} (${U.fmtMoney(b.amount)}, due the ${ord(b.dueDay)})`).join(" and ")} — that one's yours this month.`
+          : "No bills on you this month — the rotation's covering you.");
+        if (next) parts.push(`Next gathering: ${next.title}, ${U.fmtDate(next.when)} (${U.relDate(next.when)}).`);
+        parts.push("Ask me anything, or tap a chip below.");
+        Commons.steward.push({ who: "steward", text: parts.join("\n") });
+      }
+
+      /* ---------- rendering ---------- */
+      function bubbleHtml(m) {
+        const body = U.esc(m.text).replace(/\n/g, "<br>");
+        let actions = "";
+        if (m.actions && m.actions.length) {
+          actions = `<div class="bubble-actions">` + m.actions.map((a) => {
+            if (a.kind === "vendor") return `
+              <div class="vendor">
+                <div class="row between wrap" style="gap:6px">
+                  <strong class="small">${U.esc(a.name)}</strong>
+                  <span class="pill paper">${U.esc(a.meta)}</span>
+                </div>
+                <div class="text-caption muted">${U.esc(a.tag)}</div>
+                <button type="button" class="park-btn sm light" data-draft="${U.esc(a.name)}" style="margin-top:6px">Draft request</button>
+              </div>`;
+            if (a.kind === "link") return `<a class="park-btn sm secondary" href="${U.esc(a.href)}">${U.esc(a.label)}</a>`;
+            return "";
+          }).join("") + `</div>`;
+        }
+        return `<div class="bubble ${m.who === "me" ? "me" : "steward"}">${body}${actions}</div>`;
+      }
+
+      function renderChat() {
+        chatEl.innerHTML = Commons.steward.chat().map(bubbleHtml).join("") ||
+          `<div class="empty">Quiet in here. Say hi — I'm friendly and extremely organized.</div>`;
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      function showTyping() {
+        chatEl.insertAdjacentHTML("beforeend",
+          `<div class="bubble steward" id="typing-bubble"><span class="typing"><i></i><i></i><i></i></span></div>`);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      function renderMaint() {
+        const rows = Commons.steward.maintenance();
+        if (!rows.length) {
+          maintEl.innerHTML = `<div class="empty" style="padding:24px 12px;margin-top:10px">Nothing broken. Suspicious, but I'll take it.</div>`;
+          return;
+        }
+        maintEl.innerHTML = rows.map((m) => {
+          const opener = m.openedBy === "me" ? "you" : firstName(m.openedBy);
+          const pill = m.status === "open"
+            ? `<span class="pill warn">open</span>`
+            : `<span class="pill match">resolved</span>`;
+          return `<div class="maint-row">
+            <div class="row between wrap" style="gap:6px">
+              <strong class="small">${U.esc(m.title)}</strong>
+              ${pill}
+            </div>
+            <div class="text-caption muted">opened by ${U.esc(opener)} · ${U.esc(U.relDate(m.at))}</div>
+            ${m.notes ? `<div class="text-caption muted">${U.esc(m.notes)}</div>` : ""}
+            ${m.status === "open" ? `<button type="button" class="park-btn sm light" data-resolve="${U.esc(m.id)}" style="margin-top:6px">Mark resolved</button>` : ""}
+          </div>`;
+        }).join("");
+      }
+
+      function renderGlance() {
+        const mine = myOpenChores();
+        const bills = myBills();
+        const next = Commons.events.upcoming()[0];
+        const t = Commons.money.treasury();
+        glanceEl.innerHTML = `
+          <div class="glance-row">
+            <div class="text-caption muted">Chores on you now</div>
+            <div class="small"><strong>${mine.length}</strong>${mine.length ? " — " + U.esc(mine.map((x) => `${x.chore.emoji} ${x.chore.name}`).join(", ")) : " — all clear 🎉"}</div>
+          </div>
+          <div class="glance-row">
+            <div class="text-caption muted">Your bills this month</div>
+            <div class="small">${bills.length
+              ? bills.map((b) => `${U.esc(b.name)} · <span class="amount">${U.fmtMoney(b.amount)}</span>${Commons.money.billIsPaid(b.id) ? " ✓" : ""}`).join("<br>")
+              : "None — rotation's got you"}</div>
+          </div>
+          <div class="glance-row">
+            <div class="text-caption muted">Next gathering</div>
+            <div class="small">${next ? `${U.esc(next.title)} · ${U.esc(U.fmtDate(next.when))}` : "Nothing booked"}</div>
+          </div>
+          <div class="glance-row">
+            <div class="text-caption muted">Pool balance</div>
+            <div class="small"><span class="amount pos">${U.fmtMoney(t.balance)}</span> ${U.esc(t.currency)}</div>
+          </div>`;
+      }
+
+      /* ---------- interactions ---------- */
+      function send(text) {
+        text = String(text || "").trim();
+        if (!text || busy) return;
+        const prior = Commons.steward.chat();
+        const last = prior[prior.length - 1];
+        const wasAwaiting = !!last && last.who === "steward" && last.text === ASK_BREAK && !QUICK.includes(text);
+        Commons.steward.push({ who: "me", text });
+        renderChat();
+        Shell.toast("Sent to the steward");
+        busy = true;
+        showTyping();
+        setTimeout(() => {
+          busy = false;
+          const bubble = document.getElementById("typing-bubble");
+          if (bubble) bubble.remove();
+          const reply = wasAwaiting ? ticketReply(text) : respond(text);
+          Commons.steward.push(Object.assign({ who: "steward" }, reply));
+          renderChat();
+          renderMaint();
+          renderGlance();
+        }, 700);
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        send(input.value);
+        input.value = "";
+        input.focus();
+      });
+
+      document.getElementById("quick").addEventListener("click", (e) => {
+        const chip = e.target.closest("[data-say]");
+        if (chip) send(chip.getAttribute("data-say"));
+      });
+
+      chatEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-draft]");
+        if (btn) Shell.toast("Drafted — waiting on a human to approve ✋", "green");
+      });
+
+      maintEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-resolve]");
+        if (!btn) return;
+        const id = btn.getAttribute("data-resolve");
+        // Store API has no maintenance-status mutation; flip the object in place and save().
+        const item = Commons.steward.maintenance().find((m) => m.id === id);
+        if (item && item.status === "open") {
+          item.status = "resolved";
+          Commons.save();
+          renderMaint();
+          Shell.toast("Marked resolved — the house thanks you", "green");
+        }
+      });
+
+      document.getElementById("clear").addEventListener("click", () => {
+        Commons.steward.clear();
+        greet();
+        renderChat();
+        Shell.toast("Chat cleared — fresh start");
+      });
+
+      /* ---------- boot ---------- */
+      if (!Commons.steward.chat().length) greet();
+      renderChat();
+      renderMaint();
+      renderGlance();
+    }
+  </script>
+</body>
+</html>

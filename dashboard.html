@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My House — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <!-- New proposal modal -->
+  <div class="modal-backdrop hidden" id="modal-bg">
+    <div class="modal stack" role="dialog" aria-modal="true">
+      <h3 class="text-h3">New proposal</h3>
+      <p class="small muted">Needs <span id="m-threshold"></span> yes votes — two-thirds of the house — then it executes itself.</p>
+      <div class="field">
+        <label>Kind</label>
+        <div class="choice-row" id="m-kinds">
+          <button type="button" class="choice on" data-kind="spend">Spend from the fund</button>
+          <button type="button" class="choice" data-kind="rule">House rule</button>
+          <button type="button" class="choice" data-kind="dispute">Dispute an expense</button>
+        </div>
+      </div>
+      <div class="field"><label for="m-title">Title</label><input class="input" id="m-title" placeholder="Chest freezer for bulk buys" /></div>
+      <div class="field"><label for="m-desc">Why</label><textarea class="input" id="m-desc" placeholder="Make the case in a sentence or two."></textarea></div>
+      <div class="field" id="m-amount-wrap"><label for="m-amount">Amount ($)</label><input class="input" id="m-amount" type="number" min="1" placeholder="340" /></div>
+      <div class="field hidden" id="m-reassign-wrap"><label for="m-reassign">Reassign to</label><select class="input" id="m-reassign"></select></div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="park-btn ghost" id="m-cancel">Cancel</button>
+        <button class="lifted sm" id="m-submit"><span class="shadow"></span><span class="face">Propose it</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("dashboard");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+
+    function member(id) { return Commons.people.get(id); }
+    function firstName(id) { const p = member(id); return p ? p.name.split(" ")[0] : id; }
+
+    function render() {
+      const house = Commons.houses.mine();
+      if (!house) {
+        page.innerHTML = `<div class="empty stack">
+          <h2 class="text-h3">You're not in a house yet</h2>
+          <p>Start one, or find a crew worth joining.</p>
+          <div class="row center wrap">
+            <a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+            <a class="park-btn light" href="browse.html">Browse homes</a>
+          </div></div>`;
+        return;
+      }
+
+      const t = Commons.money.treasury();
+      const contribs = Commons.money.contributions();
+      const paidCount = contribs.filter((c) => c.paid).length;
+      const bills = Commons.money.bills();
+      const proposals = Commons.proposals.all();
+      const open = proposals.filter((p) => p.status === "open");
+      const resolved = proposals.filter((p) => p.status !== "open");
+      const threshold = Commons.proposals.threshold();
+      const nMembers = house.members.length;
+
+      const stack = house.members.map((id) => Shell.avatarHtml(member(id))).join("");
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="row between wrap">
+          <div class="stack" style="--gap:4px">
+            <div class="kicker">My house</div>
+            <h1 class="text-h2">${U.esc(house.name)}</h1>
+            <div class="row wrap">
+              <span class="pill paper">${U.esc(house.borough)}</span>
+              <span class="pill paper">${U.fmtMoney(house.rent)}/mo</span>
+              ${house.roomsOpen ? `<span class="pill open">${house.roomsOpen} room${house.roomsOpen > 1 ? "s" : ""} open</span>` : ""}
+              <span class="pill pine">${U.esc(Commons.econ.label(house.poolModel))}</span>
+            </div>
+          </div>
+          <span class="avatar-stack">${stack}</span>
+        </div>
+        <p class="text-caption muted">Money here runs on the <a href="templates.html">economic template</a> the house picked — the ledger does the remembering, so nobody has to nag.</p>
+
+        <div class="grid grid-3">
+          <div class="card stack">
+            <div class="kicker">House fund</div>
+            <div><span class="text-h2 amount pos">${U.fmtMoney(t.balance)}</span></div>
+            <p class="small muted">${U.fmtMoney(house.poolMonthly)}/mo each into the pool · <a href="templates.html">${U.esc(Commons.econ.label(house.poolModel))}</a> template.</p>
+            <div class="progress green"><i style="width:${Math.round((paidCount / nMembers) * 100)}%"></i></div>
+            <p class="text-caption muted">${paidCount} of ${nMembers} contributions in this month. Spending moves only by two-thirds vote.</p>
+          </div>
+
+          <div class="card stack">
+            <div class="kicker">Contributions</div>
+            ${contribs.map((c) => {
+              const p = member(c.member);
+              const mine = c.member === "me" && !c.paid;
+              return `<div class="row between">
+                <span class="row">${Shell.avatarHtml(p, "sm")} <span class="small">${U.esc(p.name)}</span></span>
+                ${c.paid ? `<span class="pill match">Paid</span>`
+                  : mine ? `<button class="park-btn sm primary" data-act="pay-contrib">Pay yours</button>`
+                  : `<span class="pill warn">Due</span>`}
+              </div>`;
+            }).join("")}
+            ${paidCount === nMembers ? `<p class="text-caption muted">Everyone's in ✓</p>` : ""}
+          </div>
+
+          <div class="card stack">
+            <div class="kicker">This month's bills</div>
+            ${bills.map((b) => {
+              const payerId = Commons.money.billPayer(b);
+              const payer = member(payerId);
+              const paid = Commons.money.billIsPaid(b.id);
+              const mine = payerId === "me";
+              const rot = Commons.money.rotationPreview(b, 4).map((r) =>
+                `<span class="chip soft" style="padding:1px 8px;font-size:.72rem" title="${U.esc(member(r.payer).name)}">${U.esc(r.month)} · ${U.esc(U.initials(member(r.payer).name))}</span>`).join("");
+              return `<div class="stack" style="border-top:1px solid var(--paper-1);padding-top:10px;${mine && !paid ? "background:var(--paper-main);margin-inline:-10px;padding-inline:10px;border-radius:8px" : ""}">
+                <div class="row between wrap">
+                  <span class="small"><strong>${U.esc(b.name)}</strong> · <span class="amount">${U.fmtMoney(b.amount)}</span> <span class="muted">due the ${b.dueDay}th</span></span>
+                  ${paid ? `<span class="pill match">Paid</span>`
+                    : mine ? `<button class="lifted xs" data-act="pay-bill" data-bill="${b.id}"><span class="shadow"></span><span class="face">Mark paid</span></button>`
+                    : `<span class="pill warn">Waiting</span>`}
+                </div>
+                <div class="row" style="gap:6px"><span class="row" style="gap:6px">${Shell.avatarHtml(payer, "sm")}<span class="text-caption">${mine ? "You pay" : U.esc(firstName(payerId)) + " pays"} this month</span></span></div>
+                <div class="row wrap" style="gap:4px">${rot}</div>
+              </div>`;
+            }).join("")}
+            <p class="text-caption muted">Rotates automatically — nobody has to remember.</p>
+          </div>
+        </div>
+
+        <div class="row between wrap" style="margin-top:12px">
+          <div>
+            <div class="kicker">Decisions</div>
+            <h2 class="text-h3">Proposals</h2>
+          </div>
+          <span class="row wrap">
+            <span class="pill ink">Passes at ${threshold} of ${nMembers} — two-thirds, then it executes itself</span>
+            <button class="lifted sm" data-act="new-proposal"><span class="shadow"></span><span class="face">New proposal</span></button>
+          </span>
+        </div>
+
+        <div class="grid grid-2">
+          ${open.length ? open.map((p) => proposalCard(p, threshold)).join("") : `<div class="empty">Nothing on the table. Beautiful, or suspicious.</div>`}
+        </div>
+
+        ${resolved.length ? `<div class="card flat stack">
+          <div class="kicker">Resolved</div>
+          ${resolved.map((p) => `<div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:8px">
+            <span class="small"><strong>${U.esc(p.title)}</strong>${p.amount ? ` · <span class="amount">${U.fmtMoney(p.amount)}</span>` : ""}</span>
+            <span class="row">
+              ${p.status === "passed" ? `<span class="pill match">Passed</span>` : `<span class="pill conflict">Rejected</span>`}
+              ${p.executed ? `<span class="text-caption muted">paid from the fund</span>` : ""}
+              <span class="text-caption muted">${p.resolvedAt ? U.fmtDate(p.resolvedAt) : ""}</span>
+            </span>
+          </div>`).join("")}
+        </div>` : ""}
+      </div>`;
+
+      wire();
+    }
+
+    function proposalCard(p, threshold) {
+      const yes = Object.entries(p.votes).filter(([, v]) => v);
+      const no = Object.entries(p.votes).filter(([, v]) => v === false);
+      const iVoted = "me" in p.votes;
+      const kindPill = p.kind === "spend"
+        ? `<span class="pill pine">${U.fmtMoney(p.amount)} from the fund</span>`
+        : p.kind === "dispute"
+          ? `<span class="pill warn">Dispute — reassigns to ${U.esc(firstName(p.reassignTo || ""))}</span>`
+          : `<span class="pill paper">House rule</span>`;
+      return `<div class="card stack">
+        <div class="row between wrap">${kindPill}<span class="text-caption muted">${U.esc(firstName(p.proposer))} · ${U.relDate(p.createdAt)}</span></div>
+        <h3 class="text-h4">${U.esc(p.title)}</h3>
+        <p class="small muted">${U.esc(p.desc)}</p>
+        <div class="row between wrap">
+          <span class="row" style="gap:2px">
+            <span class="avatar-stack">${yes.map(([id]) => Shell.avatarHtml(Commons.people.get(id), "sm")).join("")}</span>
+            <span class="text-caption muted" style="margin-left:8px">${yes.length} of ${threshold} needed${no.length ? ` · ${no.length} against` : ""}</span>
+          </span>
+          ${iVoted
+            ? `<span class="text-caption muted">You voted — waiting on the house.</span>`
+            : `<span class="row"><button class="park-btn sm green" data-act="vote" data-id="${p.id}" data-val="1">Yes</button>
+               <button class="park-btn sm light" data-act="vote" data-id="${p.id}" data-val="0">No</button></span>`}
+        </div>
+        <div class="progress"><i style="width:${Math.min(100, Math.round((yes.length / threshold) * 100))}%"></i></div>
+      </div>`;
+    }
+
+    /* ---------- interactions ---------- */
+    function wire() {
+      page.querySelectorAll("[data-act]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const act = el.dataset.act;
+          if (act === "pay-contrib") {
+            Commons.money.payContribution("me");
+            render(); Shell.toast("Contribution in — the pool thanks you", "green");
+          }
+          if (act === "pay-bill") {
+            Commons.money.payBill(el.dataset.bill);
+            render(); Shell.toast("Marked paid — rotation moves on without you next month", "green");
+          }
+          if (act === "vote") {
+            const before = Commons.proposals.get(el.dataset.id).status;
+            const p = Commons.proposals.vote(el.dataset.id, "me", el.dataset.val === "1");
+            render();
+            if (p.status === "passed" && before === "open") {
+              Shell.toast(p.kind === "spend" && p.amount ? `Passed — ${U.fmtMoney(p.amount)} moved from the house fund` : "Passed — it's house law now", "green");
+            } else if (p.status === "rejected" && before === "open") {
+              Shell.toast("Rejected — the house has spoken");
+            } else {
+              Shell.toast("Vote in — waiting on the rest of the house");
+            }
+          }
+          if (act === "new-proposal") openModal();
+        });
+      });
+    }
+
+    /* ---------- modal ---------- */
+    const bg = document.getElementById("modal-bg");
+    let kind = "spend";
+    function openModal() {
+      const house = Commons.houses.mine();
+      document.getElementById("m-threshold").textContent = `${Commons.proposals.threshold()} of ${house.members.length}`;
+      const sel = document.getElementById("m-reassign");
+      sel.innerHTML = house.members.filter((m) => m !== "me")
+        .map((m) => `<option value="${m}">${U.esc(Commons.people.get(m).name)}</option>`).join("");
+      bg.classList.remove("hidden");
+    }
+    function closeModal() { bg.classList.add("hidden"); }
+    document.getElementById("m-cancel").addEventListener("click", closeModal);
+    bg.addEventListener("click", (e) => { if (e.target === bg) closeModal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+    document.getElementById("m-kinds").querySelectorAll(".choice").forEach((c) => {
+      c.addEventListener("click", () => {
+        kind = c.dataset.kind;
+        document.getElementById("m-kinds").querySelectorAll(".choice").forEach((x) => x.classList.toggle("on", x === c));
+        document.getElementById("m-amount-wrap").classList.toggle("hidden", kind === "rule");
+        document.getElementById("m-reassign-wrap").classList.toggle("hidden", kind !== "dispute");
+      });
+    });
+    document.getElementById("m-submit").addEventListener("click", () => {
+      const title = document.getElementById("m-title").value.trim();
+      const desc = document.getElementById("m-desc").value.trim();
+      const amount = Number(document.getElementById("m-amount").value) || 0;
+      if (!title) { Shell.toast("Give it a title"); return; }
+      const p = { title, desc, kind, proposer: "me" };
+      if (kind !== "rule") p.amount = amount || undefined;
+      if (kind === "dispute") p.reassignTo = document.getElementById("m-reassign").value;
+      Commons.proposals.add(p);
+      closeModal();
+      document.getElementById("m-title").value = ""; document.getElementById("m-desc").value = ""; document.getElementById("m-amount").value = "";
+      render();
+      Shell.toast(`Proposed — needs ${Commons.proposals.threshold()} of ${Commons.houses.mine().members.length}`, "green");
+    });
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Start a house — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local helpers only — shared files untouched */
+    .money-wrap { position: relative; }
+    .money-wrap .cur { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--grey-soft); font-weight: 500; pointer-events: none; }
+    .money-wrap .input { padding-left: 30px; }
+    .pool-card { cursor: pointer; transition: border-color .15s, transform .15s, box-shadow .15s; }
+    .pool-card:hover { border-color: var(--app-0); transform: translateY(-2px); }
+    .pool-card.on { border-color: var(--app); outline: 2px solid var(--app); outline-offset: -1px; }
+    .pool-card .pick { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--grey); flex: none; }
+    .pool-card.on .pick { border-color: var(--app); background: var(--app); box-shadow: inset 0 0 0 3px var(--paper-0); }
+    .rev-row { display: flex; gap: 14px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--paper-1); }
+    .rev-row:last-child { border-bottom: 0; }
+    .rev-label { font-family: var(--display); font-weight: 500; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-soft); flex: none; width: 96px; padding-top: 2px; }
+    .rev-val { flex: 1; min-width: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .84rem; }
+    .wizard-step { animation: step-in .25s ease-out; }
+    @keyframes step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 640px) { .rev-row { flex-direction: column; gap: 4px; } .rev-label { width: auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="section">
+      <div class="container narrow stack-lg">
+
+        <!-- ======= Wizard header ======= -->
+        <div id="wizard-head">
+          <div class="row between wrap" style="margin-bottom:10px">
+            <div>
+              <div class="kicker">Start a house</div>
+              <h1 class="text-h3" id="step-title" style="margin-top:6px">Step 1 of 4 — Basics</h1>
+              <p class="muted small" id="step-lede" style="margin-top:6px">Name it, place it, size it.</p>
+            </div>
+            <a href="#" id="back-link" class="small hidden">← Back</a>
+          </div>
+          <div class="progress"><i id="prog" style="width:25%"></i></div>
+        </div>
+
+        <!-- ======= STEP 1 — Basics ======= -->
+        <div id="step-1" class="wizard-step card stack">
+          <div class="field">
+            <label for="f-name">House name</label>
+            <input id="f-name" class="input" type="text" maxlength="40" placeholder="e.g. Myrtle Ave Marmalade" autocomplete="off" />
+            <div class="help">The thing people will say out loud at mixers. Make it fun to say.</div>
+          </div>
+          <div class="field">
+            <label for="f-blurb">One-line vibe</label>
+            <input id="f-blurb" class="input" type="text" maxlength="140" placeholder="e.g. Loud kitchen, quiet bedrooms, a stoop that collects neighbors." autocomplete="off" />
+            <div class="help">This goes on your card in the gallery — lead with warmth.</div>
+          </div>
+          <div class="field">
+            <label>Do you have a place?</label>
+            <div class="choice-row" id="hasloc-row">
+              <button type="button" class="choice on" data-v="yes">🔑 We have a lease/deed</button>
+              <button type="button" class="choice" data-v="no">🔭 Still looking</button>
+            </div>
+            <div class="help" id="hasloc-help">Great — the hard part's done. Now fill it with the right people.</div>
+          </div>
+          <div class="field">
+            <label for="f-borough" id="borough-label">Neighborhood</label>
+            <select id="f-borough" class="input">
+              <option value="">Pick a neighborhood…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Target house size</label>
+            <div class="choice-row" id="size-row"></div>
+            <div class="help">Counting everyone — current crew and future housemates.</div>
+          </div>
+          <div class="row between" style="margin-top:8px">
+            <span></span>
+            <button type="button" class="lifted" id="next-1"><span class="shadow"></span><span class="face">Next — Money →</span></button>
+          </div>
+        </div>
+
+        <!-- ======= STEP 2 — Money ======= -->
+        <div id="step-2" class="wizard-step stack hidden">
+          <div class="card stack">
+            <div class="field">
+              <label for="f-rent">Monthly rent per person</label>
+              <div class="money-wrap"><span class="cur">$</span><input id="f-rent" class="input" type="number" min="0" step="25" placeholder="1400" /></div>
+              <div class="help">Ballpark is fine — seekers filter by budget, so honest beats optimistic.</div>
+            </div>
+            <div class="field">
+              <label>How does money work in this house?</label>
+              <div class="grid grid-3" id="pool-cards" style="gap:14px">
+                <div class="card flat pool-card stack" data-model="split" role="radio" aria-checked="false" tabindex="0">
+                  <div class="row between"><strong class="display-bold">Split &amp; settle</strong><span class="pick"></span></div>
+                  <p class="small muted">Every cost divided to the cent, settled monthly. Money stays yours; the ledger stays clean.</p>
+                  <span class="pill zero">no shared pot</span>
+                </div>
+                <div class="card flat pool-card stack" data-model="fund" role="radio" aria-checked="false" tabindex="0">
+                  <div class="row between"><strong class="display-bold">House fund</strong><span class="pick"></span></div>
+                  <p class="small muted">One pot everyone pays into monthly — groceries, repairs, the occasional feast. Spending needs a 2/3 vote.</p>
+                  <span class="pill pine">most houses pick this</span>
+                </div>
+                <div class="card flat pool-card stack" data-model="commons" role="radio" aria-checked="false" tabindex="0">
+                  <div class="row between"><strong class="display-bold">Fund + deposit</strong><span class="pick"></span></div>
+                  <p class="small muted">The house fund, plus a refundable commitment deposit when you join — returned in full when you leave well.</p>
+                  <span class="pill ink">maximum trust</span>
+                </div>
+              </div>
+              <div class="help">Want room-weighted rent, sliding scale, or work-trade? Browse all <a href="templates.html">economic templates</a> — a house can switch any time.</div>
+            </div>
+            <div class="field hidden" id="pool-field">
+              <label for="f-pool">Monthly pool amount (per person)</label>
+              <div class="money-wrap"><span class="cur">$</span><input id="f-pool" class="input" type="number" min="0" step="10" value="150" /></div>
+              <div class="help">This is on top of rent. It's the house's money — spending it needs a 2/3 vote, no exceptions, no landlord energy.</div>
+              <div class="help hidden" id="stake-note">🔒 New members also put down a refundable commitment deposit (one month's pool) when they join — returned in full when someone leaves in good standing. It's held by the house, not in anyone's pocket.</div>
+            </div>
+          </div>
+          <div class="row between">
+            <button type="button" class="park-btn ghost" data-back="1">← Back</button>
+            <button type="button" class="lifted" id="next-2"><span class="shadow"></span><span class="face">Next — Culture →</span></button>
+          </div>
+        </div>
+
+        <!-- ======= STEP 3 — Culture ======= -->
+        <div id="step-3" class="wizard-step stack hidden">
+          <div class="card stack">
+            <div class="field">
+              <label for="f-mission">Mission <span class="muted" style="font-weight:400">(optional)</span></label>
+              <textarea id="f-mission" class="input" maxlength="240" placeholder="What is this house FOR — beyond good living? Leave blank if the answer is 'a lovely home', that's valid"></textarea>
+            </div>
+            <div class="field">
+              <label for="f-networked">How open is the house to the wider world?</label>
+              <input type="range" class="slider" id="f-networked" min="0" max="100" value="55" />
+              <div class="range-labels"><span>Keep it inward</span><span>Open house energy</span></div>
+              <div class="help" id="net-caption"></div>
+            </div>
+            <div class="field">
+              <label for="f-rule">House rules</label>
+              <div class="help">The stuff future-you will thank present-you for writing down. Tap a rule to remove it.</div>
+              <div class="row">
+                <input id="f-rule" class="input" type="text" maxlength="60" placeholder="e.g. Whoever cooks last clears the dish rack" autocomplete="off" />
+                <button type="button" class="park-btn primary" id="rule-add">Add</button>
+              </div>
+              <div class="row wrap" id="rules-list" style="margin-top:10px"></div>
+              <div class="help" style="margin-top:8px" id="suggest-label">Need a starter pack?</div>
+              <div class="row wrap" id="rules-suggest"></div>
+            </div>
+          </div>
+          <div class="row between">
+            <button type="button" class="park-btn ghost" data-back="2">← Back</button>
+            <button type="button" class="lifted" id="next-3"><span class="shadow"></span><span class="face">Next — Rooms →</span></button>
+          </div>
+        </div>
+
+        <!-- ======= STEP 4 — Rooms & review ======= -->
+        <div id="step-4" class="wizard-step stack hidden">
+          <div class="card stack">
+            <div class="field">
+              <label id="rooms-label">Rooms open right now</label>
+              <div class="choice-row" id="rooms-row"></div>
+              <div class="help">Zero is fine — you can open rooms any time.</div>
+            </div>
+            <div class="field">
+              <label for="f-movein">Earliest move-in</label>
+              <input id="f-movein" class="input" type="date" style="max-width:220px" />
+              <div class="help">When could someone actually get keys?</div>
+            </div>
+          </div>
+
+          <div class="card" id="review-card">
+            <div class="kicker">Check your work</div>
+            <h2 class="text-h4" style="margin:6px 0 4px">The house, on one card</h2>
+            <div id="review-body"></div>
+          </div>
+
+          <div class="row between">
+            <button type="button" class="park-btn ghost" data-back="3">← Back</button>
+            <button type="button" class="lifted green" id="launch-btn"><span class="shadow"></span><span class="face">🏠 Launch the house</span></button>
+          </div>
+        </div>
+
+        <!-- ======= SUCCESS ======= -->
+        <div id="step-success" class="wizard-step stack-lg hidden"></div>
+
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("create");
+    (function () {
+      const U = Commons.util;
+      const esc = U.esc;
+      const qs = (s) => document.querySelector(s);
+
+      /* ---------- constants ---------- */
+      const BOROUGHS = ["Bed-Stuy", "Bushwick", "Crown Heights", "Greenpoint", "Gowanus", "Red Hook", "Ridgewood", "Sunset Park", "Bay Ridge", "Hudson Valley"];
+      const SIZES = [3, 4, 5, 6, 8];
+      const ROOM_OPTS = [0, 1, 2, 3, 4];
+      const SUGGESTED = ["Quiet hours 11pm weeknights", "Guests welcome with a heads-up", "Sunday reset hour"];
+      const DEFAULT_VALUES = ["Good dinners", "Fair splits", "Soft landings"];
+      const HUES = ["#0d9488", "#16a34a", "#0284c7", "#166534", "#075985", "#0f766e"];
+      const MODEL_NAMES = { split: "Split & settle", weighted: "Room-weighted split", fund: "House fund", sliding: "Sliding scale", commons: "Fund + deposit", labor: "Points & pool" };
+      const STEP_META = {
+        1: ["Basics", "Name it, place it, size it."],
+        2: ["Money", "The part nobody likes talking about — so we made it the easy part."],
+        3: ["Culture", "What it actually feels like to live here."],
+        4: ["Rooms & review", "Open the doors and check your work."],
+      };
+
+      /* ---------- draft state ---------- */
+      const defaultMoveIn = new Date(Date.now() + 28 * Commons.DAY);
+      const dateVal = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const draft = {
+        name: "", blurb: "", hasLocation: true, borough: "", size: 5,
+        rent: null, poolModel: null, poolMonthly: 150,
+        mission: "", networked: 55, rules: [],
+        roomsOpen: 1, moveIn: dateVal(defaultMoveIn),
+      };
+      let step = 1;
+      let launched = null, inviteLink = "";
+
+      /* ---------- pure helpers ---------- */
+      function slug(name) {
+        const s = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        return s || "house";
+      }
+      function rand(n) {
+        const A = "abcdefghijklmnopqrstuvwxyz0123456789"; let s = "";
+        for (let i = 0; i < n; i++) s += A[Math.floor(Math.random() * A.length)];
+        return s;
+      }
+      function hueFor(name) {
+        let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+        return HUES[h % HUES.length];
+      }
+      function netCaption(v) {
+        if (v < 25) return "Mostly ours — a sanctuary with a doorbell.";
+        if (v <= 60) return "Balanced — hosts sometimes, hibernates sometimes.";
+        return "Open house — guests, gatherings, and friends of friends of friends.";
+      }
+
+      /* ---------- navigation ---------- */
+      function go(n) {
+        step = n;
+        for (let i = 1; i <= 4; i++) qs("#step-" + i).classList.toggle("hidden", i !== n);
+        qs("#step-success").classList.add("hidden");
+        qs("#wizard-head").classList.remove("hidden");
+        qs("#step-title").textContent = "Step " + n + " of 4 — " + STEP_META[n][0];
+        qs("#step-lede").textContent = STEP_META[n][1];
+        qs("#prog").style.width = (n / 4) * 100 + "%";
+        qs("#back-link").classList.toggle("hidden", n === 1);
+        if (n === 4) renderReview();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      /* ---------- step 1 ---------- */
+      function renderLocCopy() {
+        qs("#borough-label").textContent = draft.hasLocation ? "Neighborhood" : "Target area";
+        qs("#f-borough").options[0].textContent = draft.hasLocation ? "Pick a neighborhood…" : "Pick a target area…";
+        qs("#hasloc-help").textContent = draft.hasLocation
+          ? "Great — the hard part's done. Now fill it with the right people."
+          : "Also great — founding crews with no address are first-class here. Pick where you're hunting.";
+      }
+      function renderSizeChips() {
+        qs("#size-row").innerHTML = SIZES.map((s) =>
+          `<button type="button" class="choice ${draft.size === s ? "on" : ""}" data-size="${s}">${s} people</button>`).join("");
+      }
+      function bindStep1() {
+        const sel = qs("#f-borough");
+        BOROUGHS.forEach((b) => { const o = document.createElement("option"); o.value = b; o.textContent = b; sel.appendChild(o); });
+        qs("#f-name").addEventListener("input", (e) => { draft.name = e.target.value.trim(); });
+        qs("#f-blurb").addEventListener("input", (e) => { draft.blurb = e.target.value.trim(); });
+        sel.addEventListener("change", (e) => { draft.borough = e.target.value; });
+        qs("#hasloc-row").addEventListener("click", (e) => {
+          const btn = e.target.closest(".choice"); if (!btn) return;
+          draft.hasLocation = btn.dataset.v === "yes";
+          qs("#hasloc-row").querySelectorAll(".choice").forEach((c) => c.classList.toggle("on", c === btn));
+          renderLocCopy();
+          Shell.toast(draft.hasLocation ? "Lease in hand — nice" : "House hunting mode on");
+        });
+        qs("#size-row").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-size]"); if (!btn) return;
+          draft.size = Number(btn.dataset.size); renderSizeChips();
+        });
+        qs("#next-1").addEventListener("click", () => {
+          if (!draft.name) { Shell.toast("Give the house a name first"); qs("#f-name").focus(); return; }
+          if (!draft.borough) { Shell.toast(draft.hasLocation ? "Pick a neighborhood" : "Pick a target area"); qs("#f-borough").focus(); return; }
+          Shell.toast("Basics locked in", "green"); go(2);
+        });
+      }
+
+      /* ---------- step 2 ---------- */
+      function renderPoolCards() {
+        document.querySelectorAll(".pool-card").forEach((c) => {
+          const on = c.dataset.model === draft.poolModel;
+          c.classList.toggle("on", on);
+          c.setAttribute("aria-checked", on ? "true" : "false");
+        });
+        qs("#pool-field").classList.toggle("hidden", !draft.poolModel || draft.poolModel === "split");
+        qs("#stake-note").classList.toggle("hidden", draft.poolModel !== "commons");
+      }
+      function bindStep2() {
+        qs("#f-rent").addEventListener("input", (e) => { draft.rent = Number(e.target.value) || null; });
+        qs("#f-pool").addEventListener("input", (e) => { draft.poolMonthly = Math.max(0, Number(e.target.value) || 0); });
+        const pick = (model) => {
+          draft.poolModel = model;
+          renderPoolCards();
+          Shell.toast(MODEL_NAMES[model] + " it is");
+        };
+        qs("#pool-cards").addEventListener("click", (e) => {
+          const c = e.target.closest(".pool-card"); if (c) pick(c.dataset.model);
+        });
+        qs("#pool-cards").addEventListener("keydown", (e) => {
+          const c = e.target.closest(".pool-card");
+          if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pick(c.dataset.model); }
+        });
+        qs("#next-2").addEventListener("click", () => {
+          if (!draft.rent || draft.rent <= 0) { Shell.toast("What's the monthly rent per person?"); qs("#f-rent").focus(); return; }
+          if (!draft.poolModel) { Shell.toast("Pick how money works in this house"); return; }
+          if (draft.poolModel !== "split" && !(draft.poolMonthly > 0)) { Shell.toast("Set a monthly pool amount"); qs("#f-pool").focus(); return; }
+          Shell.toast("Money settled — the easy way", "green"); go(3);
+        });
+      }
+
+      /* ---------- step 3 ---------- */
+      function renderRules() {
+        const list = qs("#rules-list");
+        list.innerHTML = draft.rules.length
+          ? draft.rules.map((r, i) => `<button type="button" class="chip on" data-rm="${i}" title="Remove this rule">${esc(r)} ✕</button>`).join("")
+          : `<span class="small muted">No rules yet — chaos is also a system, technically.</span>`;
+        const left = SUGGESTED.filter((s) => !draft.rules.includes(s));
+        qs("#rules-suggest").innerHTML = left.map((s) => `<button type="button" class="chip soft" data-add="${esc(s)}">+ ${esc(s)}</button>`).join("");
+        qs("#suggest-label").classList.toggle("hidden", left.length === 0);
+      }
+      function addRule(text) {
+        const t = String(text || "").trim();
+        if (!t) { Shell.toast("Type a rule first"); return; }
+        if (draft.rules.includes(t)) { Shell.toast("Already on the list"); return; }
+        if (draft.rules.length >= 8) { Shell.toast("Eight rules is plenty — trust the vibes a little"); return; }
+        draft.rules.push(t); renderRules();
+        Shell.toast("Rule added", "green");
+      }
+      function bindStep3() {
+        qs("#f-mission").addEventListener("input", (e) => { draft.mission = e.target.value.trim(); });
+        const slider = qs("#f-networked");
+        const cap = () => { qs("#net-caption").textContent = netCaption(draft.networked); };
+        slider.addEventListener("input", (e) => { draft.networked = Number(e.target.value); cap(); });
+        cap();
+        qs("#rule-add").addEventListener("click", () => { addRule(qs("#f-rule").value); qs("#f-rule").value = ""; qs("#f-rule").focus(); });
+        qs("#f-rule").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); addRule(e.target.value); e.target.value = ""; }
+        });
+        qs("#rules-list").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-rm]"); if (!btn) return;
+          const removed = draft.rules.splice(Number(btn.dataset.rm), 1)[0];
+          renderRules(); Shell.toast("Removed “" + removed + "”");
+        });
+        qs("#rules-suggest").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-add]"); if (!btn) return;
+          addRule(btn.dataset.add);
+        });
+        qs("#next-3").addEventListener("click", () => { Shell.toast("Culture set", "green"); go(4); });
+      }
+
+      /* ---------- step 4 ---------- */
+      function renderRoomChips() {
+        qs("#rooms-row").innerHTML = ROOM_OPTS.map((r) =>
+          `<button type="button" class="choice ${draft.roomsOpen === r ? "on" : ""}" data-rooms="${r}">${r === 0 ? "None yet" : r}</button>`).join("");
+        qs("#rooms-label").textContent = draft.hasLocation ? "Rooms open right now" : "Rooms you'll want filled at move-in";
+      }
+      function renderReview() {
+        renderRoomChips();
+        const rulesHtml = draft.rules.length
+          ? `<div class="row wrap" style="gap:6px">${draft.rules.map((r) => `<span class="chip soft" style="font-size:.8rem">${esc(r)}</span>`).join("")}</div>`
+          : `<span class="muted small">None written down — living dangerously.</span>`;
+        const money = esc(U.fmtMoney(draft.rent || 0)) + "/mo · " + esc(MODEL_NAMES[draft.poolModel] || "—")
+          + (draft.poolModel && draft.poolModel !== "split" ? " · " + esc(U.fmtMoney(draft.poolMonthly)) + "/mo pool" : "")
+          + (draft.poolModel === "commons" ? " + refundable deposit" : "");
+        const edit = (n) => `<button type="button" class="park-btn ghost sm" data-go="${n}">Edit</button>`;
+        qs("#review-body").innerHTML = `
+          <div class="rev-row"><span class="rev-label">House</span>
+            <span class="rev-val"><strong class="display-bold">${esc(draft.name)}</strong><br>
+            <span class="small muted">${esc(draft.blurb) || "No vibe line yet"}</span></span>${edit(1)}</div>
+          <div class="rev-row"><span class="rev-label">Where</span>
+            <span class="rev-val">${esc(draft.borough)} · ${draft.hasLocation ? "lease in hand" : "still hunting"} · aiming for ${draft.size} people</span>${edit(1)}</div>
+          <div class="rev-row"><span class="rev-label">Money</span>
+            <span class="rev-val">${money}</span>${edit(2)}</div>
+          <div class="rev-row"><span class="rev-label">Mission</span>
+            <span class="rev-val">${draft.mission ? esc(draft.mission) : `<span class="muted">A lovely home. That's the whole mission, and it's valid.</span>`}</span>${edit(3)}</div>
+          <div class="rev-row"><span class="rev-label">Openness</span>
+            <span class="rev-val">${esc(netCaption(draft.networked))}</span>${edit(3)}</div>
+          <div class="rev-row"><span class="rev-label">Rules</span>
+            <span class="rev-val">${rulesHtml}</span>${edit(3)}</div>
+          <div class="rev-row"><span class="rev-label">Rooms</span>
+            <span class="rev-val">${draft.roomsOpen === 0 ? "No rooms open yet — just the founding crew" : draft.roomsOpen + " room" + (draft.roomsOpen > 1 ? "s" : "") + " open"} · earliest move-in ${esc(U.fmtDateLong(draft.moveIn + "T12:00:00"))}</span></div>`;
+      }
+      function bindStep4() {
+        const mv = qs("#f-movein");
+        mv.value = draft.moveIn;
+        mv.addEventListener("change", (e) => { if (e.target.value) { draft.moveIn = e.target.value; renderReview(); } });
+        qs("#rooms-row").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-rooms]"); if (!btn) return;
+          draft.roomsOpen = Number(btn.dataset.rooms); renderReview();
+        });
+        qs("#review-card").addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-go]"); if (btn) go(Number(btn.dataset.go));
+        });
+        qs("#launch-btn").addEventListener("click", launch);
+      }
+
+      /* ---------- launch & success ---------- */
+      function buildHouse() {
+        return {
+          id: "h-" + slug(draft.name) + "-" + rand(4),
+          name: draft.name,
+          borough: draft.borough,
+          hasLocation: draft.hasLocation,
+          rent: draft.rent,
+          poolModel: draft.poolModel,
+          poolMonthly: draft.poolModel === "split" ? 0 : draft.poolMonthly,
+          mission: draft.mission,
+          networked: draft.networked,
+          roomsOpen: draft.roomsOpen,
+          moveIn: new Date(draft.moveIn + "T12:00:00").toISOString(),
+          founded: "forming",
+          members: ["me"],
+          values: draft.rules.length ? draft.rules.slice(0, 3) : DEFAULT_VALUES.slice(),
+          rules: draft.rules.slice(),
+          hue: hueFor(draft.name),
+          blurb: draft.blurb || "Brand new and full of intent — looking for the first few people who mean it.",
+        };
+      }
+      function launch() {
+        if (!draft.moveIn) { Shell.toast("Pick an earliest move-in date"); return; }
+        launched = buildHouse();
+        Commons.houses.add(launched);
+        inviteLink = "commons.decentralpark.nyc/join/" + launched.id + "#" + rand(6);
+        Shell.toast("🎉 " + launched.name + " is live", "green");
+        renderSuccess();
+      }
+
+      // same card style browse uses for houses
+      function houseCardHtml(h) {
+        const m = Commons.matchHouse(Commons.me(), h);
+        const members = h.members.map((id) => Shell.avatarHtml(Commons.people.get(id), "sm")).join("");
+        return `
+          <a class="card clickable" href="house.html?id=${encodeURIComponent(h.id)}">
+            <div class="card-band" style="background:${esc(h.hue)}">${esc(h.name)}</div>
+            <div class="row wrap" style="margin-bottom:10px">
+              <span class="pill paper">${esc(h.borough)}</span>
+              ${h.roomsOpen > 0 ? `<span class="pill open">${h.roomsOpen} room${h.roomsOpen > 1 ? "s" : ""} open</span>` : `<span class="pill zero">full right now</span>`}
+              ${h.founded === "forming" ? `<span class="pill warn">forming</span>` : ""}
+            </div>
+            <p class="small muted" style="margin-bottom:10px">${esc(h.blurb)}</p>
+            ${h.mission ? `<p class="small" style="margin-bottom:10px">🌱 ${esc(h.mission)}</p>` : ""}
+            <div class="row between wrap">
+              <span class="amount">${esc(U.fmtMoney(h.rent))}<span class="small muted" style="font-weight:400">/mo</span></span>
+              <span class="avatar-stack">${members}</span>
+            </div>
+            <div class="row wrap" style="margin-top:12px">${Shell.matchPill(m)}</div>
+          </a>`;
+      }
+      function renderSuccess() {
+        for (let i = 1; i <= 4; i++) qs("#step-" + i).classList.add("hidden");
+        qs("#wizard-head").classList.add("hidden");
+        const box = qs("#step-success");
+        box.classList.remove("hidden");
+        box.innerHTML = `
+          <div class="center-text">
+            <div class="kicker green">House launched</div>
+            <h2 class="text-h2" style="margin:8px 0 10px">🎉 ${esc(launched.name)} is on the map</h2>
+            <p class="lede">It's live in the gallery — one member (you), ${launched.roomsOpen === 0 ? "no rooms listed yet" : launched.roomsOpen + " open room" + (launched.roomsOpen > 1 ? "s" : "")}, and a story worth joining.</p>
+          </div>
+          ${houseCardHtml(launched)}
+          <div class="card">
+            <div class="kicker">Founding crew</div>
+            <h3 class="text-h4" style="margin:6px 0 4px">Invite your people</h3>
+            <p class="small muted" style="margin-bottom:12px">The house is invite-gated — nobody joins without a link from a member.</p>
+            <div class="row wrap">
+              <input id="invite-link" class="input mono" readonly value="${esc(inviteLink)}" style="flex:1;min-width:220px" />
+              <button type="button" class="park-btn secondary" id="copy-invite">Copy invite</button>
+            </div>
+            <p class="text-caption muted" style="margin-top:8px">Invites are single-use and signed — only people you invite can join.</p>
+          </div>
+          <div class="row wrap center">
+            <a class="lifted green" href="house.html?id=${encodeURIComponent(launched.id)}"><span class="shadow"></span><span class="face">See your house page</span></a>
+            <a class="park-btn light" href="browse.html">Back to browse</a>
+          </div>`;
+        qs("#copy-invite").addEventListener("click", copyInvite);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      function copyInvite() {
+        const input = qs("#invite-link");
+        const done = () => Shell.toast("Invite copied — each link is single-use", "green");
+        const fallback = () => {
+          try { input.focus(); input.select(); document.execCommand("copy"); done(); }
+          catch (e) { input.focus(); input.select(); Shell.toast("Select and copy the link above"); }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(input.value).then(done).catch(fallback);
+        } else fallback();
+      }
+
+      /* ---------- boot ---------- */
+      bindStep1(); bindStep2(); bindStep3(); bindStep4();
+      renderLocCopy(); renderSizeChips(); renderPoolCards(); renderRules(); renderRoomChips();
+      qs("#back-link").addEventListener("click", (e) => { e.preventDefault(); if (step > 1) go(step - 1); });
+      document.querySelectorAll("[data-back]").forEach((b) =>
+        b.addEventListener("click", () => go(Number(b.dataset.back))));
+      go(1);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Browse — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local helpers only — shared files untouched */
+    .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .browse-band { font-size: 1.45rem; line-height: 1.08; }
+    .chip.xs { padding: 2px 10px; font-size: .78rem; }
+    .filter-label { font-family: var(--display); font-weight: 500; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--grey-soft); margin-right: 2px; }
+    .nudge-card { padding: 14px 20px; }
+    .card-foot { margin-top: auto; }
+    .browse-card { display: flex; flex-direction: column; gap: 10px; }
+    .plus-bubble { margin-left: -10px; z-index: 1; background: var(--paper-1); color: var(--ink); }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="section">
+      <div class="container stack-lg">
+
+        <div class="stack">
+          <div class="kicker">Browse</div>
+          <h2 class="text-h2">Homes &amp; people</h2>
+          <p class="lede" style="max-width:640px">Every card shows how you'd fit — a match score across six dimensions, plus how many dealbreakers collide. Never which ones. That stays private, always.</p>
+        </div>
+
+        <div class="card flat nudge-card">
+          <div class="row wrap">
+            <span aria-hidden="true">✨</span>
+            <span class="small" id="nudge-copy"></span>
+            <span class="spacer"></span>
+            <a href="quiz.html" class="small display" id="nudge-link">Tune your matches →</a>
+          </div>
+        </div>
+
+        <div id="browse-root" class="stack-lg">
+          <div class="tabs" id="tabs"></div>
+          <div class="stack" id="filters"></div>
+          <div id="results"></div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("browse");
+
+    const U = Commons.util;
+    const esc = U.esc;
+
+    /* ---------- page-local state (never persisted) ---------- */
+    let tab = "homes";
+    const F = {
+      homes:  { rooms: false, budget: false, mission: false, location: null, boroughs: new Set() },
+      people: { seeking: new Set(), boroughs: new Set() },
+    };
+
+    const SEEK = [
+      { id: "room",      chip: "A room",        line: "Looking for a room" },
+      { id: "founding",  chip: "Founding crew", line: "Building a founding crew" },
+      { id: "has-house", chip: "Has a house",   line: "Settled in a house" },
+    ];
+    const seekLine = (s) => (SEEK.find((x) => x.id === s) || SEEK[0]).line;
+
+    const houseBoroughs = [...new Set(Commons.houses.all().map((h) => h.borough))].sort();
+    const peopleBoroughs = [...new Set(Commons.people.all().map((p) => p.borough))].sort();
+
+    /* ---------- filtering + sorting ---------- */
+    function homesFiltered() {
+      const me = Commons.me();
+      const f = F.homes;
+      let hs = Commons.houses.all();
+      if (f.rooms) hs = hs.filter((h) => h.roomsOpen > 0);
+      if (f.budget) hs = hs.filter((h) => h.rent <= me.budget * 1.05);
+      if (f.mission) hs = hs.filter((h) => (h.mission || "").trim().length > 0);
+      if (f.location === "has") hs = hs.filter((h) => h.hasLocation);
+      if (f.location === "seeking") hs = hs.filter((h) => !h.hasLocation);
+      if (f.boroughs.size) hs = hs.filter((h) => f.boroughs.has(h.borough));
+      return hs
+        .map((h) => ({ h, m: Commons.matchHouse(me, h) }))
+        .sort((a, b) => b.m.score - a.m.score || b.h.roomsOpen - a.h.roomsOpen);
+    }
+
+    function peopleFiltered() {
+      const me = Commons.me();
+      const f = F.people;
+      let ps = Commons.people.all();
+      if (f.seeking.size) ps = ps.filter((p) => f.seeking.has(p.seeking));
+      if (f.boroughs.size) ps = ps.filter((p) => f.boroughs.has(p.borough));
+      return ps
+        .map((p) => ({ p, m: Commons.match(me, p) }))
+        .sort((a, b) => b.m.score - a.m.score || a.m.conflicts - b.m.conflicts);
+    }
+
+    const anyFilterOn = () =>
+      tab === "homes"
+        ? F.homes.rooms || F.homes.budget || F.homes.mission || F.homes.location !== null || F.homes.boroughs.size > 0
+        : F.people.seeking.size > 0 || F.people.boroughs.size > 0;
+
+    /* ---------- renderers ---------- */
+    function renderNudge() {
+      const me = Commons.me();
+      document.getElementById("nudge-copy").innerHTML = me.quizDone
+        ? `Matches below are tuned by your quiz. The more honest the answers, the better the houses.`
+        : `You haven't taken the quiz yet — two minutes, and every match on this page gets sharper.`;
+      document.getElementById("nudge-link").textContent = me.quizDone ? "Retake the quiz →" : "Take the quiz →";
+    }
+
+    function renderTabs() {
+      document.getElementById("tabs").innerHTML = `
+        <button type="button" class="tab ${tab === "homes" ? "on" : ""}" data-tab="homes">Homes (${homesFiltered().length})</button>
+        <button type="button" class="tab ${tab === "people" ? "on" : ""}" data-tab="people">People (${peopleFiltered().length})</button>`;
+    }
+
+    const chip = (on, attrs, label) =>
+      `<button type="button" class="chip ${on ? "on" : ""}" ${attrs}>${label}</button>`;
+
+    function renderFilters() {
+      const el = document.getElementById("filters");
+      if (tab === "homes") {
+        const f = F.homes;
+        el.innerHTML = `
+          <div class="row wrap">
+            <span class="filter-label">Show me</span>
+            ${chip(f.rooms, `data-f="rooms"`, "Rooms open")}
+            ${chip(f.budget, `data-f="budget"`, "Fits my budget")}
+            ${chip(f.mission, `data-f="mission"`, "Mission-driven")}
+            ${chip(f.location === "has", `data-loc="has"`, "Has a place")}
+            ${chip(f.location === "seeking", `data-loc="seeking"`, "Still looking")}
+            ${anyFilterOn() ? `<button type="button" class="park-btn ghost sm" data-clear="1">Clear all ✕</button>` : ""}
+          </div>
+          <div class="row wrap">
+            <span class="filter-label">Where</span>
+            ${houseBoroughs.map((b) => chip(f.boroughs.has(b), `data-borough="${esc(b)}"`, esc(b))).join("")}
+          </div>`;
+      } else {
+        const f = F.people;
+        el.innerHTML = `
+          <div class="row wrap">
+            <span class="filter-label">Seeking</span>
+            ${SEEK.map((s) => chip(f.seeking.has(s.id), `data-seek="${esc(s.id)}"`, esc(s.chip))).join("")}
+            ${anyFilterOn() ? `<button type="button" class="park-btn ghost sm" data-clear="1">Clear all ✕</button>` : ""}
+          </div>
+          <div class="row wrap">
+            <span class="filter-label">Where</span>
+            ${peopleBoroughs.map((b) => chip(f.boroughs.has(b), `data-borough="${esc(b)}"`, esc(b))).join("")}
+          </div>`;
+      }
+    }
+
+    function houseCard({ h, m }) {
+      const mine = Commons.houses.mine();
+      const isMine = mine && mine.id === h.id;
+
+      let statusPill;
+      if (!h.hasLocation) statusPill = `<span class="pill pine">Forming — seeking founders</span>`;
+      else if (h.roomsOpen > 0) statusPill = `<span class="pill open">${h.roomsOpen} room${h.roomsOpen > 1 ? "s" : ""} open</span>`;
+      else statusPill = `<span class="pill paper">Full</span>`;
+
+      const members = h.members.map((id) => Commons.people.get(id)).filter(Boolean);
+      const shown = members.slice(0, 5);
+      const extra = members.length - shown.length;
+      const stack = `<span class="avatar-stack">${shown.map((p) => Shell.avatarHtml(p, "sm")).join("")}${
+        extra > 0 ? `<span class="avatar sm plus-bubble">+${extra}</span>` : ""}</span>`;
+
+      const founded = h.founded === "forming" ? "Forming now" : `Est. ${esc(h.founded)}`;
+
+      return `
+        <a class="card clickable browse-card" href="house.html?id=${esc(h.id)}">
+          <div class="card-band browse-band" style="background:${esc(h.hue)}">${esc(h.name)}</div>
+          <div class="row wrap small">
+            <span class="muted">${esc(h.borough)}</span>
+            <span class="amount">${esc(U.fmtMoney(h.rent))}</span><span class="muted" style="margin-left:-8px">/mo</span>
+            <span class="spacer"></span>
+            ${isMine ? `<span class="pill ink">Your house</span>` : ""}
+            ${statusPill}
+          </div>
+          <div class="row wrap">${Shell.matchPill(m)}</div>
+          <p class="small muted clamp-2">${esc(h.blurb)}</p>
+          <div class="row between card-foot">
+            ${stack}
+            <span class="text-caption muted">${founded}</span>
+          </div>
+        </a>`;
+    }
+
+    function personCard({ p, m }) {
+      const arch = Commons.archetype(p.dims);
+      const values = (p.values || []).slice(0, 3);
+      return `
+        <a class="card clickable browse-card" href="person.html?id=${esc(p.id)}">
+          <div class="row">
+            ${Shell.avatarHtml(p, "lg")}
+            <span>
+              <span class="text-h4" style="display:block">${esc(p.name)}, ${esc(p.age)}</span>
+              <span class="small muted">${esc(p.borough)} · ${esc(seekLine(p.seeking))}</span>
+            </span>
+          </div>
+          <div class="small display">${esc(arch.emoji)} ${esc(arch.name)}</div>
+          <div class="row wrap">${Shell.matchPill(m)}</div>
+          <p class="small muted clamp-2">${esc(p.blurb)}</p>
+          <div class="row wrap" style="gap:6px">
+            ${values.map((v) => `<span class="chip soft xs">${esc(v)}</span>`).join("")}
+          </div>
+          <div class="text-caption muted card-foot">Budget up to ${esc(U.fmtMoney(p.budget))}/mo</div>
+        </a>`;
+    }
+
+    function renderResults() {
+      const el = document.getElementById("results");
+      const list = tab === "homes" ? homesFiltered() : peopleFiltered();
+      if (!list.length) {
+        el.innerHTML = `
+          <div class="empty stack">
+            <div style="font-size:2rem" aria-hidden="true">🍃</div>
+            <p class="text-h4">Nobody here — loosen a filter?</p>
+            <p class="small">Every filter is an AND. Stack enough of them and even the friendliest borough goes quiet.</p>
+            <div><button type="button" class="park-btn secondary" data-clear="1">Clear all filters</button></div>
+          </div>`;
+        return;
+      }
+      const meta = `<p class="text-caption muted" style="margin-bottom:12px">${list.length} ${tab === "homes" ? "home" : "person"}${list.length === 1 ? "" : tab === "homes" ? "s" : ""}${tab === "people" && list.length !== 1 ? "people".slice(0) && "" : ""}</p>`;
+      const label = tab === "homes"
+        ? `${list.length} home${list.length === 1 ? "" : "s"}`
+        : `${list.length} ${list.length === 1 ? "person" : "people"}`;
+      el.innerHTML = `
+        <p class="text-caption muted" style="margin-bottom:12px">${label} · sorted by match</p>
+        <div class="grid grid-3">
+          ${list.map(tab === "homes" ? houseCard : personCard).join("")}
+        </div>`;
+    }
+
+    function render() {
+      renderNudge();
+      renderTabs();
+      renderFilters();
+      renderResults();
+    }
+
+    /* ---------- events (delegated once; inner HTML re-renders freely) ---------- */
+    document.getElementById("browse-root").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-tab],[data-f],[data-loc],[data-borough],[data-seek],[data-clear]");
+      if (!btn) return;
+      ev.preventDefault();
+
+      if (btn.dataset.tab) {
+        if (btn.dataset.tab !== tab) {
+          tab = btn.dataset.tab;
+          Shell.toast(tab === "homes" ? "Showing homes" : "Showing people");
+          render();
+        }
+        return;
+      }
+
+      if (btn.dataset.clear) {
+        if (tab === "homes") F.homes = { rooms: false, budget: false, mission: false, location: null, boroughs: new Set() };
+        else F.people = { seeking: new Set(), boroughs: new Set() };
+        Shell.toast("Filters cleared", "green");
+        render();
+        return;
+      }
+
+      if (btn.dataset.f) {
+        const k = btn.dataset.f;
+        F.homes[k] = !F.homes[k];
+        const names = { rooms: "Rooms open", budget: "Fits my budget", mission: "Mission-driven" };
+        Shell.toast(F.homes[k] ? `Filter on: ${names[k]}` : `Filter off: ${names[k]}`);
+        render();
+        return;
+      }
+
+      if (btn.dataset.loc) {
+        const v = btn.dataset.loc;
+        F.homes.location = F.homes.location === v ? null : v; // mutually exclusive pair
+        Shell.toast(
+          F.homes.location === null ? "Showing every house"
+            : F.homes.location === "has" ? "Houses with a place" : "Crews still looking for a place"
+        );
+        render();
+        return;
+      }
+
+      if (btn.dataset.seek) {
+        const v = btn.dataset.seek;
+        const s = F.people.seeking;
+        s.has(v) ? s.delete(v) : s.add(v);
+        const label = (SEEK.find((x) => x.id === v) || {}).chip || v;
+        Shell.toast(s.has(v) ? `Filter on: ${label}` : `Filter off: ${label}`);
+        render();
+        return;
+      }
+
+      if (btn.dataset.borough) {
+        const v = btn.dataset.borough;
+        const set = tab === "homes" ? F.homes.boroughs : F.people.boroughs;
+        set.has(v) ? set.delete(v) : set.add(v);
+        Shell.toast(set.has(v) ? `Filtering by ${v}` : `Removed ${v}`);
+        render();
+        return;
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

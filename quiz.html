@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quiz — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .quiz-stage { animation: stage-in .28s ease-out; }
+    @keyframes stage-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .q-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .q-choices .choice { width: 100%; text-align: left; display: flex; align-items: center; gap: 14px; padding: 14px 18px; font-size: 1rem; }
+    .q-choices .choice .num { font-family: var(--display); font-weight: 700; font-size: .75rem; width: 22px; height: 22px; border: 1px solid currentColor; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex: none; opacity: .55; }
+    .db-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    .db-grid .chip { padding: 10px 18px; font-size: .95rem; }
+    .dim { margin-bottom: 18px; }
+    .dim:last-child { margin-bottom: 0; }
+    .dim .range-labels { margin: 4px 54px 0 120px; }
+    .dim .bar > i { transition: width .7s cubic-bezier(.22, 1, .36, 1); }
+    .big-emoji { font-size: 64px; line-height: 1; }
+    .back-link { color: var(--grey-soft); font-size: .9rem; padding: 4px 0; }
+    .back-link:hover { color: var(--ink); text-decoration: underline; }
+    @media (max-width: 640px) {
+      .dim .range-labels span { max-width: 46%; text-align: left; }
+      .dim .range-labels span:last-child { text-align: right; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="section">
+      <div class="container narrow" id="quiz-root"></div>
+    </section>
+  </main>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("quiz");
+
+    (function () {
+      const C = Commons, U = C.util, esc = U.esc;
+      const QUIZ = C.QUIZ, DIMS = C.DIMS, DBS = C.DEALBREAKERS;
+      const root = document.getElementById("quiz-root");
+
+      const BOROUGHS = ["Bed-Stuy", "Crown Heights", "Bushwick", "Ridgewood", "Sunset Park", "Greenpoint", "Gowanus", "Red Hook", "Bay Ridge", "Beacon, NY"];
+      const SEEKING = [
+        { v: "room", t: "A room in a house" },
+        { v: "founding", t: "People to start one" },
+        { v: "has-house", t: "I have a house — filling rooms" },
+      ];
+      const SEEKING_LABEL = { room: "Seeking a room", founding: "Starting a house", "has-house": "Filling rooms" };
+      const VALUE_LABELS = {
+        hearth: ["Quiet sanctuary", "Open-door dinners"],
+        order: ["Go with the flow", "Systems & labels"],
+        voice: ["Do-ocracy", "Decide together"],
+        mission: ["Just good living", "Shared purpose"],
+        porch: ["Home as haven", "Host everything"],
+        pool: ["Split the bills", "One shared pot"],
+      };
+      const ANSWER_TOASTS = ["Noted.", "Got it.", "Counted.", "Mmhm.", "Filed away."];
+
+      /* ---------- local state machine ---------- */
+      let stage = "intro"; // intro | questions | dealbreakers | basics | computing | reveal
+      let qIndex = 0;
+      let answers = [];          // chosen option index per question
+      let hardSet = new Set();
+      let noneHard = false;
+      let basics = null;         // {name, borough, budget, seeking}
+      let reveal = null;         // {arch, dims, values, hardCount}
+      let locked = false;
+      let computeToken = 0;
+
+      function defaultBasics() {
+        const me = C.me();
+        return {
+          name: me.name || "",
+          borough: BOROUGHS.includes(me.borough) ? me.borough : "Bed-Stuy",
+          budget: U.clamp(Math.round((me.budget || 1500) / 50) * 50, 800, 2500),
+          seeking: SEEKING.some((s) => s.v === me.seeking) ? me.seeking : "room",
+        };
+      }
+
+      /* ---------- scoring ---------- */
+      function computeDims() {
+        const sums = {}, counts = {};
+        answers.forEach((ai, qi) => {
+          const opt = QUIZ[qi] && QUIZ[qi].a[ai];
+          if (!opt) return;
+          Object.entries(opt.d).forEach(([k, v]) => {
+            sums[k] = (sums[k] || 0) + v;
+            counts[k] = (counts[k] || 0) + 1;
+          });
+        });
+        const dims = {};
+        DIMS.forEach((d) => { dims[d.id] = counts[d.id] ? Math.round(sums[d.id] / counts[d.id]) : 50; });
+        return dims;
+      }
+      function deriveValues(dims) {
+        const ranked = DIMS
+          .map((d) => ({ id: d.id, v: dims[d.id] ?? 50, lean: Math.abs((dims[d.id] ?? 50) - 50) }))
+          .sort((a, b) => b.lean - a.lean);
+        let picks = ranked.slice(0, 3).filter((x) => x.lean >= 8);
+        if (picks.length < 2) picks = ranked.slice(0, 2);
+        return picks.map((x) => VALUE_LABELS[x.id][x.v >= 50 ? 1 : 0]);
+      }
+
+      /* ---------- stage renderers ---------- */
+      function render() {
+        if (stage === "intro") renderIntro();
+        else if (stage === "questions") renderQuestion();
+        else if (stage === "dealbreakers") renderDealbreakers();
+        else if (stage === "basics") renderBasics();
+        else if (stage === "computing") renderComputing();
+        else renderReveal();
+        window.scrollTo(0, 0);
+      }
+
+      function renderIntro() {
+        root.innerHTML = `
+        <div class="card quiz-stage stack-lg" style="padding:clamp(26px,5vw,42px)">
+          <div>
+            <div class="kicker">The questionnaire</div>
+            <h2 class="text-h2" style="margin-top:8px">Twelve questions. Zero small talk.</h2>
+          </div>
+          <p class="lede">Soup, couches, mystery containers in the fridge — it's fun on purpose. Your answers map you across six dimensions, your dealbreakers stay completely private, and the whole thing takes about three minutes.</p>
+          <div class="row wrap">
+            ${DIMS.map((d) => `<span class="chip soft" title="${esc(d.low)} ↔ ${esc(d.high)}">${esc(d.label)}</span>`).join("")}
+          </div>
+          <div class="stack">
+            <div class="row"><span class="step-num">1</span><span>Twelve quick either/ors — pick the closest truth</span></div>
+            <div class="row"><span class="step-num">2</span><span>Your hard lines — houses only ever see a count, never which</span></div>
+            <div class="row"><span class="step-num">3</span><span>The practical stuff — borough, budget, what you're looking for</span></div>
+          </div>
+          <div>
+            <button class="lifted" id="start"><span class="shadow"></span><span class="face">Start</span></button>
+            <p class="small muted" style="margin-top:10px">Retaking overwrites your demo persona — that's the point.</p>
+          </div>
+        </div>`;
+        root.querySelector("#start").addEventListener("click", () => {
+          stage = "questions"; qIndex = 0; render();
+          Shell.toast("Question 1 — no pressure");
+        });
+      }
+
+      function renderQuestion() {
+        const q = QUIZ[qIndex];
+        const chosen = answers[qIndex];
+        const pct = Math.round(((qIndex + 1) / QUIZ.length) * 100);
+        root.innerHTML = `
+        <div class="card quiz-stage" style="padding:clamp(26px,5vw,42px)">
+          <div class="row between">
+            <button class="back-link" id="q-back">← Back</button>
+            <span class="small muted tnum">${qIndex + 1} / ${QUIZ.length}</span>
+          </div>
+          <div class="progress" style="margin:12px 0 28px"><i style="width:${pct}%"></i></div>
+          <h2 class="text-h3">${esc(q.q)}</h2>
+          <div class="q-choices">
+            ${q.a.map((o, i) => `
+              <button class="choice ${chosen === i ? "on" : ""}" data-i="${i}">
+                <span class="num">${i + 1}</span><span>${esc(o.t)}</span>
+              </button>`).join("")}
+          </div>
+          <p class="small muted" style="margin-top:16px">Pick the closest truth — or press <strong>1–${q.a.length}</strong>.</p>
+        </div>`;
+        root.querySelectorAll(".q-choices .choice").forEach((btn) => {
+          btn.addEventListener("click", () => pick(Number(btn.dataset.i)));
+        });
+        root.querySelector("#q-back").addEventListener("click", () => {
+          if (locked) return;
+          if (qIndex === 0) { stage = "intro"; } else { qIndex--; }
+          render();
+          Shell.toast("Went back a step");
+        });
+      }
+
+      function pick(i) {
+        if (locked || stage !== "questions") return;
+        locked = true;
+        answers[qIndex] = i;
+        root.querySelectorAll(".q-choices .choice").forEach((b) => b.classList.toggle("on", Number(b.dataset.i) === i));
+        Shell.toast(ANSWER_TOASTS[qIndex % ANSWER_TOASTS.length]);
+        setTimeout(() => {
+          locked = false;
+          if (qIndex < QUIZ.length - 1) { qIndex++; } else { stage = "dealbreakers"; }
+          render();
+        }, 300);
+      }
+
+      function renderDealbreakers() {
+        const canGo = hardSet.size > 0 || noneHard;
+        root.innerHTML = `
+        <div class="card quiz-stage" style="padding:clamp(26px,5vw,42px)">
+          <div class="row between">
+            <button class="back-link" id="db-back">← Back</button>
+            <span class="small muted">Step 2 of 3</span>
+          </div>
+          <div class="kicker" style="margin-top:12px">After the twelve</div>
+          <h2 class="text-h3" style="margin-top:6px">Hard lines</h2>
+          <p class="muted" style="margin-top:10px">Private. Houses only ever see how many conflict — never which. Tap anything you genuinely can't live with.</p>
+          <div class="db-grid" style="margin-top:20px">
+            ${DBS.map((d) => `<button class="chip ${hardSet.has(d.id) ? "on" : ""}" data-id="${esc(d.id)}">${esc(d.label)}</button>`).join("")}
+          </div>
+          <div style="margin-top:16px">
+            <button class="chip lg ${noneHard ? "on" : ""}" id="db-none">I have none — I contain multitudes</button>
+          </div>
+          <div class="row between wrap" style="margin-top:26px">
+            <span class="small muted" id="db-count">${hardSet.size ? hardSet.size + " hard line" + (hardSet.size > 1 ? "s" : "") + " · kept private" : (noneHard ? "Zero hard lines · noted" : "Pick some, or claim none")}</span>
+            <button class="lifted sm" id="db-continue" ${canGo ? "" : "disabled"}><span class="shadow"></span><span class="face">Continue</span></button>
+          </div>
+        </div>`;
+        root.querySelectorAll(".db-grid .chip").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.id;
+            if (hardSet.has(id)) { hardSet.delete(id); Shell.toast("Removed — living dangerously"); }
+            else { hardSet.add(id); noneHard = false; Shell.toast("Hard line set — private"); }
+            renderDealbreakers();
+          });
+        });
+        root.querySelector("#db-none").addEventListener("click", () => {
+          noneHard = !noneHard;
+          if (noneHard) { hardSet.clear(); Shell.toast("Zero hard lines — brave"); }
+          else Shell.toast("Un-claimed. Pick your lines");
+          renderDealbreakers();
+        });
+        root.querySelector("#db-back").addEventListener("click", () => {
+          stage = "questions"; qIndex = QUIZ.length - 1; render();
+          Shell.toast("Went back a step");
+        });
+        root.querySelector("#db-continue").addEventListener("click", () => {
+          stage = "basics"; render();
+          Shell.toast(hardSet.size ? hardSet.size + " hard line" + (hardSet.size > 1 ? "s" : "") + " locked in — private" : "Zero hard lines — on the record");
+        });
+      }
+
+      function renderBasics() {
+        if (!basics) basics = defaultBasics();
+        const b = basics;
+        root.innerHTML = `
+        <div class="card quiz-stage" style="padding:clamp(26px,5vw,42px)">
+          <div class="row between">
+            <button class="back-link" id="b-back">← Back</button>
+            <span class="small muted">Step 3 of 3</span>
+          </div>
+          <div class="kicker" style="margin-top:12px">The practical stuff</div>
+          <h2 class="text-h3" style="margin-top:6px">Money, place, and what you're after</h2>
+          <div class="stack-lg" style="margin-top:24px">
+            <div class="field">
+              <label for="f-name">Name</label>
+              <input id="f-name" class="input" type="text" maxlength="40" value="${esc(b.name)}" placeholder="What should houses call you?" />
+              <span class="help">This is what shows on your profile.</span>
+            </div>
+            <div class="field">
+              <label for="f-borough">Where are you looking?</label>
+              <select id="f-borough" class="input">
+                ${BOROUGHS.map((o) => `<option value="${esc(o)}" ${o === b.borough ? "selected" : ""}>${esc(o)}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <div class="row between">
+                <label for="f-budget">Monthly budget</label>
+                <span class="amount tnum" id="budget-label">${U.fmtMoney(b.budget)}/mo</span>
+              </div>
+              <input id="f-budget" class="slider" type="range" min="800" max="2500" step="50" value="${b.budget}" />
+              <div class="range-labels"><span>$800</span><span>$2,500</span></div>
+              <span class="help">Rent plus your share of the pool — the honest number.</span>
+            </div>
+            <div class="field">
+              <label>What are you looking for?</label>
+              <div class="choice-row" id="f-seeking">
+                ${SEEKING.map((s) => `<button class="choice ${b.seeking === s.v ? "on" : ""}" data-v="${esc(s.v)}">${esc(s.t)}</button>`).join("")}
+              </div>
+            </div>
+            <div>
+              <button class="lifted" id="b-continue"><span class="shadow"></span><span class="face">See who you are</span></button>
+            </div>
+          </div>
+        </div>`;
+        root.querySelector("#f-name").addEventListener("input", (e) => { basics.name = e.target.value; });
+        root.querySelector("#f-borough").addEventListener("change", (e) => { basics.borough = e.target.value; Shell.toast(e.target.value + " — good ground"); });
+        root.querySelector("#f-budget").addEventListener("input", (e) => {
+          basics.budget = Number(e.target.value);
+          root.querySelector("#budget-label").textContent = U.fmtMoney(basics.budget) + "/mo";
+        });
+        root.querySelectorAll("#f-seeking .choice").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            basics.seeking = btn.dataset.v;
+            root.querySelectorAll("#f-seeking .choice").forEach((x) => x.classList.toggle("on", x === btn));
+            Shell.toast(SEEKING_LABEL[basics.seeking]);
+          });
+        });
+        root.querySelector("#b-back").addEventListener("click", () => { stage = "dealbreakers"; render(); Shell.toast("Went back a step"); });
+        root.querySelector("#b-continue").addEventListener("click", goCompute);
+      }
+
+      function goCompute() {
+        const me = C.me();
+        const name = (basics.name || "").trim() || me.name || "You";
+        const dims = computeDims();
+        const arch = C.archetype(dims);
+        const values = deriveValues(dims);
+        const hard = Array.from(hardSet);
+        C.setMe({
+          dims, hard, name,
+          borough: basics.borough,
+          budget: basics.budget,
+          seeking: basics.seeking,
+          quizDone: true,
+          values: values.length ? values : (me.values || []),
+          blurb: "Fresh off the questionnaire — " + arch.name + " energy.",
+        });
+        reveal = { arch, dims, values: C.me().values, hardCount: hard.length };
+        stage = "computing";
+        render();
+        Shell.toast("Crunching the numbers…");
+        const token = ++computeToken;
+        const lines = ["Weighing your hard lines…", "Naming you…"];
+        [300, 600].forEach((ms, i) => setTimeout(() => {
+          if (stage !== "computing" || token !== computeToken) return;
+          const el = document.getElementById("compute-line");
+          const bar = document.getElementById("compute-bar");
+          if (el) el.textContent = lines[i];
+          if (bar) bar.style.width = (45 + i * 35) + "%";
+        }, ms));
+        setTimeout(() => {
+          if (stage !== "computing" || token !== computeToken) return;
+          stage = "reveal";
+          render();
+          Shell.toast("Saved — you're " + reveal.arch.name, "green");
+        }, 950);
+      }
+
+      function renderComputing() {
+        root.innerHTML = `
+        <div class="card quiz-stage center-text" style="padding:56px 28px">
+          <div class="typing"><i></i><i></i><i></i></div>
+          <p class="display" id="compute-line" style="margin-top:16px">Reading your twelve answers…</p>
+          <div class="progress" style="max-width:320px;margin:18px auto 0"><i id="compute-bar" style="width:12%"></i></div>
+        </div>`;
+      }
+
+      function topMatches() {
+        const me = C.me();
+        const mine = C.houses.mine();
+        const houses = C.houses.all()
+          .filter((h) => !mine || h.id !== mine.id)
+          .map((h) => ({ h, m: C.matchHouse(me, h) }))
+          .sort((a, b) => b.m.score - a.m.score || a.m.conflicts - b.m.conflicts);
+        const people = C.people.seekers()
+          .map((p) => ({ p, m: C.match(me, p) }))
+          .sort((a, b) => b.m.score - a.m.score || a.m.conflicts - b.m.conflicts);
+        return { house: houses[0], person: people[0] };
+      }
+
+      function renderReveal() {
+        const me = C.me();
+        const { arch, dims, hardCount } = reveal;
+        const t = topMatches();
+        const hardLine = hardCount
+          ? `<span class="pill ink">${hardCount} hard line${hardCount > 1 ? "s" : ""} set</span>`
+          : `<span class="pill zero">0 hard lines</span>`;
+        root.innerHTML = `
+        <div class="quiz-stage stack-lg">
+          <div class="card center-text" style="padding:clamp(30px,5vw,46px)">
+            <div class="big-emoji">${arch.emoji}</div>
+            <div class="kicker" style="margin-top:14px">Your archetype</div>
+            <h2 class="text-h2" style="margin-top:6px">You're ${esc(arch.name)}</h2>
+            <p class="lede" style="margin:14px auto 0;max-width:520px">${esc(arch.desc)}</p>
+            <div class="row center wrap" style="margin-top:20px">
+              ${(me.values || []).map((v) => `<span class="chip pine">${esc(v)}</span>`).join("")}
+            </div>
+            <div class="row center wrap" style="margin-top:10px">
+              <span class="chip soft">${esc(me.borough)}</span>
+              <span class="chip soft">${U.fmtMoney(me.budget)}/mo</span>
+              <span class="chip soft">${esc(SEEKING_LABEL[me.seeking] || "Looking around")}</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="kicker">The six dimensions</div>
+            <h3 class="text-h3" style="margin:6px 0 20px">Where you land</h3>
+            ${DIMS.map((d) => {
+              const v = U.clamp(dims[d.id] ?? 50, 0, 100);
+              return `
+              <div class="dim">
+                <div class="meter">
+                  <span title="${esc(d.desc)}">${esc(d.label)}</span>
+                  <div class="bar"><i style="width:0%" data-w="${v}"></i></div>
+                  <span class="tnum" style="text-align:right">${v}</span>
+                </div>
+                <div class="range-labels"><span>${esc(d.low)}</span><span>${esc(d.high)}</span></div>
+              </div>`;
+            }).join("")}
+            <div class="row wrap" style="margin-top:20px">
+              ${hardLine}
+              <span class="small muted">Houses only ever see how many conflict — never which.</span>
+            </div>
+          </div>
+
+          ${t.house || t.person ? `
+          <div class="card">
+            <div class="kicker">Early signal</div>
+            <h3 class="text-h3" style="margin:6px 0 18px">Doors already open</h3>
+            <div class="grid grid-2">
+              ${t.house ? `
+              <a class="card flat clickable" href="house.html?id=${esc(t.house.h.id)}">
+                <div class="row">
+                  <span class="avatar" style="background:${esc(t.house.h.hue)}">${esc(U.initials(t.house.h.name))}</span>
+                  <div>
+                    <strong class="display-bold">${esc(t.house.h.name)}</strong>
+                    <div class="small muted">${esc(t.house.h.borough)} · ${t.house.h.roomsOpen > 0 ? t.house.h.roomsOpen + " room" + (t.house.h.roomsOpen > 1 ? "s" : "") + " open" : "full right now"}</div>
+                  </div>
+                </div>
+                <div class="row wrap" style="margin-top:12px">${Shell.matchPill(t.house.m)}</div>
+              </a>` : ""}
+              ${t.person ? `
+              <a class="card flat clickable" href="person.html?id=${esc(t.person.p.id)}">
+                <div class="row">
+                  ${Shell.avatarHtml(t.person.p)}
+                  <div>
+                    <strong class="display-bold">${esc(t.person.p.name)}</strong>
+                    <div class="small muted">${esc(t.person.p.borough)} · ${esc(C.archetype(t.person.p.dims).name)}</div>
+                  </div>
+                </div>
+                <div class="row wrap" style="margin-top:12px">${Shell.matchPill(t.person.m)}</div>
+              </a>` : ""}
+            </div>
+          </div>` : ""}
+
+          <div class="row center wrap">
+            <a class="lifted green" href="browse.html"><span class="shadow"></span><span class="face">See your matches</span></a>
+            <button class="park-btn light" id="retake">Retake</button>
+          </div>
+        </div>`;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          root.querySelectorAll(".dim .bar > i").forEach((el) => { el.style.width = el.dataset.w + "%"; });
+        }));
+        root.querySelector("#retake").addEventListener("click", () => {
+          answers = []; hardSet = new Set(); noneHard = false; basics = null; reveal = null;
+          qIndex = 0; stage = "intro"; render();
+          Shell.toast("Fresh slate — twelve questions await");
+        });
+      }
+
+      /* keyboard: 1–3 answer the current question */
+      document.addEventListener("keydown", (e) => {
+        if (stage !== "questions" || locked) return;
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= QUIZ[qIndex].a.length) pick(n - 1);
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

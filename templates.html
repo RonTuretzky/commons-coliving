@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Templates — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("templates");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+
+    /* ---------- Local calculator state ---------- */
+
+    const MODS = [
+      { id: "window", label: "Big window", emoji: "☀️", pct: 15 },
+      { id: "closet", label: "Real closet", emoji: "🚪", pct: 10 },
+      { id: "bath",   label: "Private bath", emoji: "🛁", pct: 25 },
+      { id: "noise",  label: "Street noise", emoji: "🚛", pct: -10 },
+    ];
+    let rooms = [
+      { name: "Room 1", size: 220, mods: { window: true, closet: true } },
+      { name: "Room 2", size: 160, mods: { bath: true } },
+      { name: "Room 3", size: 130, mods: { noise: true } },
+      { name: "Room 4", size: 90,  mods: {} },
+    ];
+    const roomPoints = (r) => MODS.reduce((pts, m) => pts * (r.mods[m.id] ? 1 + m.pct / 100 : 1), r.size);
+
+    let folks = [
+      { name: "Housemate 1", income: 2600 },
+      { name: "Housemate 2", income: 3400 },
+      { name: "Housemate 3", income: 5200 },
+      { name: "Housemate 4", income: 7800 },
+    ];
+
+    const house = Commons.houses.mine();
+    const defaultRent = house ? house.rent * house.members.length : 8700;
+    const defaultPool = house && house.poolMonthly ? house.poolMonthly * house.members.length : 1080;
+
+    /* ---------- Page skeleton (rendered once) ---------- */
+
+    page.innerHTML = `
+    <div class="stack-lg">
+      <header>
+        <div class="kicker">House money</div>
+        <h1 class="text-h2">Pick a template, skip the awkward talks</h1>
+        <p class="lede" style="max-width:720px;margin-top:10px">Every house needs a money answer, and most never say it out loud.
+        These are the six that actually work — borrowed from real co-living houses and co-ops. Money runs on the
+        template, a ledger, and votes. Never on nagging.</p>
+        <p class="text-caption muted" style="margin-top:10px">Every number on this page is an estimate — a place to start
+        the conversation, not an invoice. The ledger keeps the real score.</p>
+      </header>
+
+      <section>
+        <div class="kicker">The six templates</div>
+        <div class="grid grid-3" id="tpl-grid" style="margin-top:14px"></div>
+      </section>
+
+      <section class="card stack">
+        <div>
+          <div class="kicker">Calculator</div>
+          <h2 class="text-h3">Room-weighted rent splitter</h2>
+          <p class="muted" style="margin-top:6px">The parlor floor should not cost the same as the closet room.
+          Weigh each room and the rent follows — this is the math behind the 📐 Room-Weighted Split template.</p>
+        </div>
+        <div class="row wrap between" style="align-items:flex-end">
+          <div class="field" style="min-width:220px">
+            <label for="rent-total">Total monthly rent</label>
+            <input id="rent-total" class="input" type="number" min="0" step="50" value="${defaultRent}" />
+          </div>
+          <button class="park-btn secondary" id="room-add" type="button">＋ Add a room</button>
+        </div>
+        <div class="grid grid-2" style="align-items:start">
+          <div class="stack" id="room-rows"></div>
+          <div class="card flat stack" style="background:var(--paper-main)">
+            <div class="kicker">The split</div>
+            <div id="room-out"></div>
+            <p class="text-caption muted">Agree on the weights before you see the numbers — it goes better, trust us.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card stack">
+        <div>
+          <div class="kicker">Calculator</div>
+          <h2 class="text-h3">Sliding-scale contributions</h2>
+          <p class="muted" style="margin-top:6px">The pool shouldn't price anyone out. Set the target, slide the
+          take-homes, and the split scales itself — the math behind the ⚖️ Sliding Scale template.</p>
+        </div>
+        <div class="row wrap between" style="align-items:flex-end">
+          <div class="field" style="min-width:220px">
+            <label for="pool-total">Target monthly pool</label>
+            <input id="pool-total" class="input" type="number" min="0" step="20" value="${defaultPool}" />
+          </div>
+          <button class="park-btn secondary" id="folk-add" type="button">＋ Add a person</button>
+        </div>
+        <div class="grid grid-2" style="align-items:start">
+          <div class="stack" id="folk-rows"></div>
+          <div class="card flat stack" style="background:var(--paper-main)">
+            <div class="kicker">Who chips in what</div>
+            <div id="scale-out"></div>
+            <p class="text-caption muted">Incomes stay between housemates — the app only ever needs the split, never anyone's paystub.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="card flat">
+        <p class="small muted">Templates are starting points, not law. A house can switch templates whenever it likes —
+        by a 2/3 vote, the same way it decides everything else. <a href="dashboard.html">See how votes work →</a></p>
+      </div>
+    </div>`;
+
+    /* ---------- Section 1: the six templates ---------- */
+
+    function renderTemplates() {
+      const mine = Commons.houses.mine();
+      const current = mine ? mine.poolModel : null;
+      document.getElementById("tpl-grid").innerHTML = Commons.econ.all().map((t) => {
+        const active = t.id === current;
+        const knobs = t.knobs.map((k) =>
+          `<span class="chip soft" style="font-size:.78rem;white-space:normal;text-align:left">🎚 ${U.esc(k)}</span>`).join("");
+        return `<div class="card stack" style="display:flex;flex-direction:column${active ? ";border:2px solid var(--pine)" : ""}">
+          <div class="row between">
+            <span style="font-size:2.2rem;line-height:1">${t.emoji}</span>
+            <span class="row wrap" style="gap:6px;justify-content:flex-end">
+              ${active ? `<span class="pill ink">Your house runs this</span>` : ""}
+              ${t.pool ? `<span class="pill pine">Shared pot</span>` : `<span class="pill zero">No pot</span>`}
+            </span>
+          </div>
+          <h3 class="text-h4">${U.esc(t.name)}</h3>
+          <p class="small"><strong>${U.esc(t.tagline)}</strong></p>
+          <p class="small"><span class="display-bold" style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--grey-soft)">How it works</span><br />${U.esc(t.how)}</p>
+          <p class="text-caption muted"><strong>Best for:</strong> ${U.esc(t.bestFor)}</p>
+          <div class="row wrap" style="gap:8px">${knobs}</div>
+          ${mine && !active
+            ? `<div style="margin-top:auto;padding-top:14px"><button class="park-btn sm light" type="button" data-apply="${t.id}">Use for my house</button></div>`
+            : ""}
+        </div>`;
+      }).join("");
+
+      document.querySelectorAll("[data-apply]").forEach((btn) => btn.addEventListener("click", () => {
+        const h = Commons.houses.mine();
+        if (!h) return;
+        Commons.econ.apply(h.id, btn.dataset.apply);
+        renderTemplates();
+        Shell.toast("Template switched — takes effect next month", "green");
+      }));
+    }
+
+    /* ---------- Section 2: room-weighted rent splitter ---------- */
+
+    function renderRooms() {
+      const wrap = document.getElementById("room-rows");
+      wrap.innerHTML = rooms.map((r, i) => `
+        <div class="card flat stack" style="padding:16px">
+          <div class="row between">
+            <input class="input" style="max-width:190px;padding:6px 10px" value="${U.esc(r.name)}" data-rname="${i}" aria-label="Room name" />
+            ${rooms.length > 2 ? `<button class="park-btn ghost sm" type="button" data-rdel="${i}" aria-label="Remove room">✕</button>` : ""}
+          </div>
+          <div>
+            <div class="range-labels"><span>Size</span><span><strong class="tnum" id="rsize-val-${i}">${r.size}</strong> sq ft</span></div>
+            <input type="range" class="slider" min="60" max="300" step="5" value="${r.size}" data-rsize="${i}" aria-label="Room size" />
+          </div>
+          <div class="row wrap" style="gap:8px">
+            ${MODS.map((m) => `<button type="button" class="chip ${r.mods[m.id] ? "on" : ""}" style="font-size:.8rem" data-rmod="${i}:${m.id}">${m.emoji} ${m.label} ${m.pct > 0 ? "+" : "−"}${Math.abs(m.pct)}%</button>`).join("")}
+          </div>
+        </div>`).join("");
+
+      wrap.querySelectorAll("[data-rname]").forEach((el) => el.addEventListener("input", () => {
+        rooms[+el.dataset.rname].name = el.value;
+        renderRoomsOut();
+      }));
+      wrap.querySelectorAll("[data-rsize]").forEach((el) => el.addEventListener("input", () => {
+        const i = +el.dataset.rsize;
+        rooms[i].size = +el.value;
+        document.getElementById("rsize-val-" + i).textContent = el.value;
+        renderRoomsOut();
+      }));
+      wrap.querySelectorAll("[data-rmod]").forEach((el) => el.addEventListener("click", () => {
+        const [i, id] = el.dataset.rmod.split(":");
+        rooms[+i].mods[id] = !rooms[+i].mods[id];
+        el.classList.toggle("on");
+        renderRoomsOut();
+      }));
+      wrap.querySelectorAll("[data-rdel]").forEach((el) => el.addEventListener("click", () => {
+        const gone = rooms.splice(+el.dataset.rdel, 1)[0];
+        renderRooms();
+        renderRoomsOut();
+        Shell.toast((gone.name || "Room") + " removed");
+      }));
+    }
+
+    function renderRoomsOut() {
+      const rent = Math.max(0, Number(document.getElementById("rent-total").value) || 0);
+      const pts = rooms.map(roomPoints);
+      const total = pts.reduce((a, b) => a + b, 0) || 1;
+      const rows = rooms.map((r, i) => `<tr>
+        <td>${U.esc(r.name || "Room " + (i + 1))}</td>
+        <td class="tnum">${Math.round(pts[i])}</td>
+        <td class="amount">${U.fmtMoney(Math.round((pts[i] / total) * rent))}</td>
+      </tr>`).join("");
+      document.getElementById("room-out").innerHTML = `
+        <table class="ledger">
+          <thead><tr><th>Room</th><th>Points</th><th>Share / mo</th></tr></thead>
+          <tbody>${rows}
+            <tr><td><strong>Whole house</strong></td><td class="tnum"><strong>${Math.round(total)}</strong></td>
+            <td class="amount">${U.fmtMoney(rent)}</td></tr>
+          </tbody>
+        </table>`;
+    }
+
+    document.getElementById("rent-total").addEventListener("input", renderRoomsOut);
+    document.getElementById("room-add").addEventListener("click", () => {
+      if (rooms.length >= 8) { Shell.toast("Eight rooms is plenty — even for a loft"); return; }
+      rooms.push({ name: "Room " + (rooms.length + 1), size: 140, mods: {} });
+      renderRooms();
+      renderRoomsOut();
+      Shell.toast("Room added", "green");
+    });
+
+    /* ---------- Section 3: sliding-scale contributions ---------- */
+
+    function renderFolks() {
+      const wrap = document.getElementById("folk-rows");
+      wrap.innerHTML = folks.map((f, i) => `
+        <div class="card flat stack" style="padding:16px">
+          <div class="row between">
+            <input class="input" style="max-width:190px;padding:6px 10px" value="${U.esc(f.name)}" data-pname="${i}" aria-label="Person name" />
+            ${folks.length > 2 ? `<button class="park-btn ghost sm" type="button" data-pdel="${i}" aria-label="Remove person">✕</button>` : ""}
+          </div>
+          <div>
+            <div class="range-labels"><span>Monthly take-home</span><span><strong class="tnum" id="pinc-val-${i}">${U.fmtMoney(f.income)}</strong></span></div>
+            <input type="range" class="slider" min="1500" max="10000" step="100" value="${f.income}" data-pinc="${i}" aria-label="Monthly take-home" />
+          </div>
+        </div>`).join("");
+
+      wrap.querySelectorAll("[data-pname]").forEach((el) => el.addEventListener("input", () => {
+        folks[+el.dataset.pname].name = el.value;
+        renderFolksOut();
+      }));
+      wrap.querySelectorAll("[data-pinc]").forEach((el) => el.addEventListener("input", () => {
+        const i = +el.dataset.pinc;
+        folks[i].income = +el.value;
+        document.getElementById("pinc-val-" + i).textContent = U.fmtMoney(+el.value);
+        renderFolksOut();
+      }));
+      wrap.querySelectorAll("[data-pdel]").forEach((el) => el.addEventListener("click", () => {
+        const gone = folks.splice(+el.dataset.pdel, 1)[0];
+        renderFolks();
+        renderFolksOut();
+        Shell.toast((gone.name || "Housemate") + " removed");
+      }));
+    }
+
+    function renderFolksOut() {
+      const pool = Math.max(0, Number(document.getElementById("pool-total").value) || 0);
+      const sum = folks.reduce((s, f) => s + f.income, 0) || 1;
+      const flat = pool / (folks.length || 1);
+      const pct = (pool / sum) * 100;
+      const rows = folks.map((f, i) => {
+        const share = (f.income / sum) * pool;
+        const diff = Math.round(share - flat);
+        return `<tr>
+          <td>${U.esc(f.name || "Housemate " + (i + 1))}</td>
+          <td class="amount">${U.fmtMoney(Math.round(share))}</td>
+          <td class="tnum muted small">${diff >= 0 ? "+" : "−"}$${Math.abs(diff).toLocaleString("en-US")}</td>
+          <td class="tnum">${f.income ? ((share / f.income) * 100).toFixed(1) : "0.0"}%</td>
+        </tr>`;
+      }).join("");
+      document.getElementById("scale-out").innerHTML = `
+        <table class="ledger">
+          <thead><tr><th>Person</th><th>Chips in</th><th>vs ${U.fmtMoney(Math.round(flat))} flat</th><th>% of income</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="text-caption muted" style="margin-top:10px">Everyone lands at the same ${pct.toFixed(1)}% of take-home —
+        that's the whole idea. A flat split would be ${U.fmtMoney(Math.round(flat))} each, no matter the month someone's having.</p>`;
+    }
+
+    document.getElementById("pool-total").addEventListener("input", renderFolksOut);
+    document.getElementById("folk-add").addEventListener("click", () => {
+      if (folks.length >= 8) { Shell.toast("Eight is a full table already"); return; }
+      folks.push({ name: "Housemate " + (folks.length + 1), income: 3000 });
+      renderFolks();
+      renderFolksOut();
+      Shell.toast("Person added", "green");
+    });
+
+    /* ---------- First paint ---------- */
+    renderTemplates();
+    renderRooms();
+    renderRoomsOut();
+    renderFolks();
+    renderFolksOut();
+  </script>
+</body>
+</html>

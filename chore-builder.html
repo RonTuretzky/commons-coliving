@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chore builder — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("chores");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+
+    const spaces = Commons.chorePlanner.spaces();
+    const presets = Commons.chorePlanner.presets();
+    const house = Commons.houses.mine();
+    const crew = house ? house.members.slice() : null;
+
+    const firstName = (id) => {
+      if (id === "me") return "You";
+      const p = Commons.people.get(id);
+      return p ? p.name.split(" ")[0] : id;
+    };
+    const freqLabel = (d) => (d === 7 ? "weekly" : d === 14 ? "every 2 weeks" : d === 30 ? "monthly" : `every ${d} days`);
+    const vibe = (m) => {
+      if (m <= 0) return "nothing yet — switch a space on";
+      if (m <= 25) return "a coffee break";
+      if (m <= 45) return "one album side";
+      if (m <= 70) return "an episode of something good";
+      if (m <= 90) return "a full album, start to finish";
+      if (m <= 120) return "a feature film — every week";
+      return "a part-time job — split it harder or hire out the deep cleans";
+    };
+
+    /* ----- Builder state: start from the preset closest to my crew ----- */
+    let startPreset = presets[0];
+    if (crew) startPreset = presets.reduce((a, b) =>
+      Math.abs(b.people - crew.length) < Math.abs(a.people - crew.length) ? b : a, presets[0]);
+    let sel = Object.assign({}, startPreset.spaces);
+    let people = crew ? U.clamp(crew.length, 2, 12) : startPreset.people;
+    let confirming = false;
+    let applied = false;
+
+    const opener = (i) => (crew ? firstName(crew[i % crew.length]) : "Housemate " + ((i % people) + 1));
+
+    function presetIsActive(p) {
+      if (p.people !== people) return false;
+      const ids = new Set(Object.keys(p.spaces).concat(Object.keys(sel)));
+      for (const id of ids) if ((sel[id] || 0) !== (p.spaces[id] || 0)) return false;
+      return true;
+    }
+
+    function render() {
+      const est = Commons.chorePlanner.estimate(sel, people);
+      const per = est.perPersonWeekly;
+      const heavy = per > 90;
+
+      /* ----- Preset chips ----- */
+      const presetChips = presets.map((p) =>
+        `<button class="chip lg ${presetIsActive(p) ? "on" : ""}" data-preset="${p.id}">${p.emoji} ${U.esc(p.name)} · ${p.people}</button>`
+      ).join("");
+
+      /* ----- Spaces column ----- */
+      const spaceRows = spaces.map((sp) => {
+        const count = sel[sp.id] || 0;
+        const on = count > 0;
+        const control = sp.countable
+          ? `<span class="row" style="gap:10px">
+              <button class="park-btn sm light" data-step="${sp.id}:-1" ${count <= 0 ? "disabled" : ""}>−</button>
+              <span class="display-bold tnum" style="min-width:20px;text-align:center">${count}</span>
+              <button class="park-btn sm light" data-step="${sp.id}:1" ${count >= (sp.max || 4) ? "disabled" : ""}>+</button>
+            </span>`
+          : `<button class="chip ${on ? "on" : ""}" data-toggle="${sp.id}">${on ? "✓ On" : "Off"}</button>`;
+        const tasks = on
+          ? `<div class="text-caption muted" style="margin-top:6px">${sp.tasks.map((t) =>
+              `${U.esc(t.name)} · ${t.minutes} min · ${freqLabel(t.freqDays)}`).join("<br>")}</div>`
+          : "";
+        return `<div style="border-bottom:1px solid var(--paper-1);padding:10px 0">
+          <div class="row between">
+            <span class="row" style="gap:9px"><span style="font-size:1.25rem">${sp.emoji}</span>
+              <strong class="small">${U.esc(sp.label)}${sp.countable && count > 1 ? ` ×${count}` : ""}</strong></span>
+            ${control}
+          </div>
+          ${tasks}
+        </div>`;
+      }).join("");
+
+      /* ----- Breakdown meters ----- */
+      const breakdown = spaces.map((sp) => {
+        const count = sel[sp.id] || 0;
+        if (!count) return "";
+        const n = sp.countable ? count : 1;
+        const wk = Math.round(sp.tasks.reduce((s, t) => s + t.minutes * (7 / t.freqDays), 0) * n);
+        const pct = est.weeklyMinutes ? Math.round((wk / est.weeklyMinutes) * 100) : 0;
+        return `<div class="meter">
+          <span class="small">${sp.emoji} ${U.esc(sp.label)}${n > 1 ? ` ×${n}` : ""}</span>
+          <div class="bar"><i style="width:${Math.max(pct, 2)}%"></i></div>
+          <span class="small tnum">${pct}%</span>
+        </div>`;
+      }).join("");
+
+      /* ----- Schedule preview ----- */
+      const CAP = 14;
+      const rows = est.chores.slice(0, CAP).map((c, i) =>
+        `<tr>
+          <td><span class="row" style="gap:8px"><span>${c.emoji}</span><strong class="small">${U.esc(c.name)}</strong></span></td>
+          <td class="small muted">${freqLabel(c.freqDays)}</td>
+          <td class="small tnum">${c.minutes} min</td>
+          <td class="small">${U.esc(opener(i))}</td>
+        </tr>`).join("");
+      const extra = est.chores.length - CAP;
+      const scheduleHtml = est.chores.length
+        ? `<div style="overflow-x:auto"><table class="ledger">
+            <thead><tr><th>Chore</th><th>Cadence</th><th>Time</th><th>First up</th></tr></thead>
+            <tbody>${rows}${extra > 0 ? `<tr><td colspan="4" class="small muted">+${extra} more in the full rotation</td></tr>` : ""}</tbody>
+          </table></div>
+          <p class="text-caption muted">Starts are staggered so nobody opens every chore.</p>`
+        : `<div class="empty"><p>Nothing selected — switch a space on and the schedule writes itself.</p></div>`;
+
+      /* ----- Apply section ----- */
+      let applyHtml;
+      if (!house) {
+        applyHtml = `<div class="card flat row between wrap" style="gap:16px">
+          <p class="small muted" style="max-width:620px">No house on file yet — the math still works, that's what Housemate 1–${people} are for.
+          Once you have a crew, this page can put the rotation straight on the board.</p>
+          <a class="chip pine" href="create.html">Start a house →</a>
+        </div>`;
+      } else if (applied) {
+        applyHtml = `<div class="card row wrap" style="gap:14px">
+          <span class="pill match">Rotation live</span>
+          <span class="small muted">First periods start today.</span>
+          <a class="chip pine" href="chores.html">See it on the board →</a>
+        </div>`;
+      } else if (confirming) {
+        applyHtml = `<div class="card stack" style="border-color:var(--warning);background:#fff8ef">
+          <div class="row" style="gap:10px"><span style="font-size:1.3rem">⚠️</span>
+            <strong>Replace ${U.esc(house.name)}'s current rotation?</strong></div>
+          <p class="small muted">This retires the ${Commons.chores.all().length} chores on the board and clears their completion
+          history. The new ${est.chores.length}-chore rotation starts fresh today.</p>
+          <div class="row wrap">
+            <button class="lifted sm green" id="confirm-apply"><span class="shadow"></span><span class="face">Confirm — replace it</span></button>
+            <button class="park-btn ghost" id="cancel-apply">Cancel</button>
+          </div>
+        </div>`;
+      } else {
+        const crewNote = people !== crew.length
+          ? `<p class="text-caption muted">Heads up: the math above assumes ${people} people — the real rotation is built for your actual crew of ${crew.length}.</p>`
+          : "";
+        applyHtml = `<div class="card row between wrap" style="gap:16px">
+          <div style="max-width:560px">
+            <strong>Ready to put it on the board?</strong>
+            <p class="small muted">This becomes ${U.esc(house.name)}'s rotation — from today, assignments are pure calendar math.</p>
+            ${crewNote}
+          </div>
+          <button class="lifted green" id="apply-btn" ${est.chores.length ? "" : "disabled"}><span class="shadow"></span><span class="face">Make this the house rotation</span></button>
+        </div>`;
+      }
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div>
+          <div class="kicker">Chore calculator</div>
+          <h1 class="text-h2">Map the house, split the sweat</h1>
+          <p class="lede" style="max-width:720px">Tell it what spaces you actually have. It knows how long things take —
+          maintenance-clean times from professional guides, not deep-clean fantasies — and builds a rotation where
+          everyone carries the same minutes.</p>
+        </div>
+
+        <div>
+          <div class="kicker">Start from a shape</div>
+          <div class="row wrap" style="margin-top:12px">${presetChips}</div>
+        </div>
+
+        <div class="card">
+          <div class="grid grid-2" style="gap:28px">
+            <div>
+              <div class="kicker">Your spaces</div>
+              ${spaceRows}
+            </div>
+            <div class="stack">
+              <div class="kicker">Your people</div>
+              <div class="row between" style="border:1px solid var(--paper-2);border-radius:var(--radius-sm);padding:10px 14px">
+                <span class="row" style="gap:9px"><span style="font-size:1.25rem">👥</span><strong class="small">Housemates</strong></span>
+                <span class="row" style="gap:10px">
+                  <button class="park-btn sm light" data-people="-1" ${people <= 2 ? "disabled" : ""}>−</button>
+                  <span class="display-bold tnum" style="min-width:20px;text-align:center">${people}</span>
+                  <button class="park-btn sm light" data-people="1" ${people >= 12 ? "disabled" : ""}>+</button>
+                </span>
+              </div>
+
+              <div>
+                <div class="kicker">The math, live</div>
+                <div class="row wrap" style="gap:28px;margin-top:10px">
+                  <div>
+                    <div class="text-h3 tnum">${est.weeklyMinutes}<span class="text-h5 muted"> min</span></div>
+                    <div class="text-caption muted">whole-house upkeep per week (≈ ${Math.round(est.weeklyMinutes / 6) / 10} hrs)</div>
+                  </div>
+                  <div>
+                    <div class="text-h3 tnum">${per}<span class="text-h5 muted"> min</span></div>
+                    <div class="text-caption muted">per person per week · ~${est.perPersonDaily} min a day</div>
+                  </div>
+                </div>
+                <p class="small" style="margin-top:10px">≈ ${per} min/week each — ${vibe(per)}.</p>
+              </div>
+
+              <div>
+                <div class="row between wrap">
+                  <span class="text-caption muted">Load check</span>
+                  ${per <= 0 ? "" : heavy
+                    ? `<span class="pill warn">heavy — consider hiring out deep cleans</span>`
+                    : `<span class="pill match">fair and doable</span>`}
+                </div>
+                <div class="progress ${heavy ? "warn" : "green"}" style="margin-top:6px"><i style="width:${U.clamp(Math.round((per / 120) * 100), 2, 100)}%"></i></div>
+                <div class="range-labels"><span>0</span><span>90 min — the comfort line</span><span>120+</span></div>
+              </div>
+
+              <div>
+                <div class="kicker">Where the minutes go</div>
+                <div class="stack" style="margin-top:10px">${breakdown || `<p class="small muted">Nothing on yet.</p>`}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <div class="row between wrap">
+            <div class="kicker">The rotation this builds</div>
+            ${est.chores.length ? `<span class="pill paper">${est.chores.length} chores</span>` : ""}
+          </div>
+          ${scheduleHtml}
+        </div>
+
+        ${applyHtml}
+
+        <div class="card flat">
+          <p class="text-caption muted">Timing sources: professional cleaning guides put a maintenance bathroom at 20–45 min,
+          a kitchen reset at 15–20, floors around 10–15 per room — maintenance cleans, not deep cleans. Every number here is
+          an estimate and editable reality; argue with it at a house meeting.</p>
+        </div>
+      </div>`;
+
+      /* ----- Wiring ----- */
+      page.querySelectorAll("[data-preset]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const p = presets.find((x) => x.id === btn.dataset.preset);
+          sel = Object.assign({}, p.spaces);
+          people = p.people;
+          applied = false; confirming = false;
+          render();
+          Shell.toast(`${p.name} loaded — ${p.people} housemates, tweak from here`);
+        });
+      });
+      page.querySelectorAll("[data-toggle]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          sel[btn.dataset.toggle] = sel[btn.dataset.toggle] ? 0 : 1;
+          applied = false; confirming = false;
+          render();
+        });
+      });
+      page.querySelectorAll("[data-step]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const [id, d] = btn.dataset.step.split(":");
+          const sp = spaces.find((s) => s.id === id);
+          sel[id] = U.clamp((sel[id] || 0) + Number(d), 0, sp.max || 4);
+          applied = false; confirming = false;
+          render();
+        });
+      });
+      page.querySelectorAll("[data-people]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          people = U.clamp(people + Number(btn.dataset.people), 2, 12);
+          applied = false; confirming = false;
+          render();
+        });
+      });
+      const applyBtn = page.querySelector("#apply-btn");
+      if (applyBtn) applyBtn.addEventListener("click", () => { confirming = true; render(); });
+      const confirmBtn = page.querySelector("#confirm-apply");
+      if (confirmBtn) confirmBtn.addEventListener("click", () => {
+        Commons.chorePlanner.apply(Commons.chorePlanner.estimate(sel, people).chores);
+        applied = true; confirming = false;
+        render();
+        Shell.toast("New rotation live — first periods start today", "green");
+      });
+      const cancelBtn = page.querySelector("#cancel-apply");
+      if (cancelBtn) cancelBtn.addEventListener("click", () => { confirming = false; render(); Shell.toast("Kept the current rotation"); });
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gatherings — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local tweaks only — shared files untouched */
+    .pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; }
+    .pipeline .p-step { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 500; font-size: .95rem; }
+    .pipeline .p-arrow { color: var(--grey); font-size: 1.1rem; }
+    .event-card { display: flex; flex-direction: column; gap: 12px; }
+    .event-card .actions { margin-top: auto; padding-top: 4px; }
+    .escrow-note { display: flex; align-items: center; gap: 10px; background: var(--paper-main); border: 1px solid var(--paper-2); border-radius: var(--radius-sm); padding: 10px 14px; }
+    .crossed { color: var(--pine-1); font-size: .875rem; font-weight: 500; }
+    .past-card { display: flex; flex-direction: column; gap: 10px; }
+    .overlap-card { display: flex; flex-direction: column; gap: 12px; }
+    .overlap-card .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .overlap-card .chip.soft { font-size: .8rem; padding: 3px 12px; }
+    .host-cta { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .host-cta p { max-width: 560px; }
+  </style>
+</head>
+<body>
+  <main>
+
+    <!-- ============ Header ============ -->
+    <section class="section hero-wash" style="padding-bottom: clamp(24px, 4vw, 48px)">
+      <div class="container stack">
+        <div class="kicker">Gatherings</div>
+        <h2 class="text-h2">Houses are catalyzed,<br />not assembled</h2>
+        <p class="lede" style="max-width: 680px">Nobody founds a house from a cold DM. The funnel is older than the internet: you meet at a mixer, a matched cluster spends a catalyst weekend under one roof, and somewhere between the campfire and the Sunday pancakes a founding crew decides to keep going.</p>
+        <div class="pipeline">
+          <span class="p-step"><span class="step-num">1</span> Meet at a mixer</span>
+          <span class="p-arrow">→</span>
+          <span class="p-step"><span class="step-num">2</span> Spend a weekend together</span>
+          <span class="p-arrow">→</span>
+          <span class="p-step"><span class="step-num">3</span> Leave with a house</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Upcoming ============ -->
+    <section class="section" style="padding-top: 0">
+      <div class="container stack-lg">
+        <div class="stack">
+          <div class="kicker">Coming up</div>
+          <h3 class="text-h3">Pull up a chair</h3>
+        </div>
+        <div class="grid grid-2" id="upcoming-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ Crossing paths ============ -->
+    <section class="section" style="padding-top: 0">
+      <div class="container stack-lg">
+        <div class="stack">
+          <div class="kicker">Familiar faces</div>
+          <h3 class="text-h3">People you keep crossing paths with</h3>
+          <p class="muted small">Shared containers beat cold intros — this is how houses start.</p>
+        </div>
+        <div class="grid grid-3" id="overlap-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ Past ============ -->
+    <section class="section" style="padding-top: 0">
+      <div class="container stack-lg">
+        <div class="stack">
+          <div class="kicker">The archive</div>
+          <h3 class="text-h3">Where crews came from</h3>
+        </div>
+        <div class="grid grid-3" id="past-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ Host your own ============ -->
+    <section class="section" style="padding-top: 0">
+      <div class="container">
+        <div class="card ink host-cta">
+          <div>
+            <div class="kicker" style="color: var(--pine-0)">Host your own</div>
+            <p style="margin-top: 8px">Want to host a mixer? The Switchboard (Ridgewood) runs them monthly and will co-host your first — they bring the name tags, you bring the living room.</p>
+          </div>
+          <button class="lifted sm stroke" data-action="raise-hand"><span class="shadow"></span><span class="face">Raise your hand</span></button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("gatherings");
+
+    const U = Commons.util;
+    const esc = U.esc;
+
+    const TYPE_PILL = {
+      mixer:   { cls: "open",  label: "Mixer" },
+      dinner:  { cls: "paper", label: "Open dinner" },
+      retreat: { cls: "pine",  label: "Catalyst retreat" },
+      workday: { cls: "warn",  label: "Work day" },
+    };
+    function typePill(type) {
+      const t = TYPE_PILL[type] || { cls: "paper", label: type };
+      return `<span class="pill ${t.cls}">${esc(t.label)}</span>`;
+    }
+
+    // Past events I actually attended — the "people I've met" container set.
+    function myPastEventIds() {
+      return new Set(
+        Commons.events.past()
+          .filter((e) => (e.attendees || []).includes("me"))
+          .map((e) => e.id)
+      );
+    }
+
+    // How many attendees of `ev` share a past event with me.
+    function crossedPathsCount(ev) {
+      const mine = myPastEventIds();
+      return (ev.attendees || [])
+        .filter((id) => id !== "me")
+        .map((id) => Commons.people.get(id))
+        .filter((p) => p && (p.events || []).some((eid) => mine.has(eid)))
+        .length;
+    }
+
+    function avatarStack(ids, max) {
+      const shown = ids.slice(0, max);
+      const extra = ids.length - shown.length;
+      let html = shown.map((id) => Shell.avatarHtml(Commons.people.get(id), "sm")).join("");
+      if (extra > 0) html += `<span class="avatar sm" style="background: var(--grey-soft)">+${extra}</span>`;
+      return `<span class="avatar-stack">${html}</span>`;
+    }
+
+    function hostedBy(ev) {
+      if (!ev.host) return "";
+      const h = Commons.houses.get(ev.host);
+      if (!h) return "";
+      return `<div class="text-caption muted">Hosted by <a href="house.html?id=${encodeURIComponent(h.id)}">${esc(h.name)}</a></div>`;
+    }
+
+    function escrowNote(ev) {
+      if (!ev.escrow) return "";
+      return `
+        <div class="escrow-note">
+          <span class="dot"></span>
+          <span class="small">${esc(ev.escrow.note)}</span>
+          <span class="spacer"></span>
+          <span class="amount pos tnum">${esc(U.fmtMoney(ev.escrow.total))}</span>
+        </div>`;
+    }
+
+    function actionsHtml(ev) {
+      const going = Commons.events.isRsvpd(ev.id);
+      if (ev.price > 0) {
+        const paid = Commons.events.escrowPaid(ev.id);
+        if (paid) {
+          return `
+            <div class="stack" style="--gap: 8px">
+              <div class="row wrap">
+                <span class="pill match">✓ ${esc(U.fmtMoney(paid))} held in escrow</span>
+                <button class="park-btn light sm" data-action="refund" data-id="${esc(ev.id)}">Un-RSVP (refunds instantly)</button>
+              </div>
+              <div class="text-caption muted">Released to the lodge on check-in. Refunded if the weekend doesn't happen.</div>
+            </div>`;
+        }
+        return `
+          <div class="stack" style="--gap: 8px">
+            <button class="lifted sm green" data-action="reserve" data-id="${esc(ev.id)}" data-amount="${Number(ev.price)}"><span class="shadow"></span><span class="face">Reserve · ${esc(U.fmtMoney(ev.price))} into escrow</span></button>
+            <div class="text-caption muted">Held by the platform, not the host — your deposit only moves when the weekend happens.</div>
+          </div>`;
+      }
+      return going
+        ? `<button class="park-btn light sm" data-action="unrsvp" data-id="${esc(ev.id)}">You're going ✓ · Un-RSVP</button>`
+        : `<button class="lifted sm" data-action="rsvp" data-id="${esc(ev.id)}"><span class="shadow"></span><span class="face">RSVP</span></button>`;
+    }
+
+    function upcomingCard(ev) {
+      const count = (ev.attendees || []).length;
+      const pct = U.clamp(Math.round((count / (ev.capacity || 1)) * 100), 0, 100);
+      const crossed = crossedPathsCount(ev);
+      return `
+        <article class="card event-card">
+          <div class="row between wrap">
+            ${typePill(ev.type)}
+            <span class="text-caption muted">${esc(U.fmtDateLong(ev.when))} · ${esc(U.relDate(ev.when))}</span>
+          </div>
+          <h3 class="text-h4">${esc(ev.title)}</h3>
+          <div class="text-caption muted">${esc(ev.where)}</div>
+          <p class="small">${esc(ev.desc)}</p>
+          <div class="stack" style="--gap: 6px">
+            <div class="progress${pct >= 85 ? " warn" : ""}"><i style="width: ${pct}%"></i></div>
+            <div class="text-caption muted tnum">${count} of ${ev.capacity} going</div>
+          </div>
+          <div class="row wrap">
+            ${avatarStack(ev.attendees || [], 6)}
+            ${crossed > 0 ? `<span class="crossed">You've crossed paths with ${crossed} of them</span>` : ""}
+          </div>
+          ${hostedBy(ev)}
+          ${escrowNote(ev)}
+          <div class="actions">${actionsHtml(ev)}</div>
+        </article>`;
+    }
+
+    function pastCard(ev) {
+      const count = (ev.attendees || []).length;
+      return `
+        <article class="card flat past-card">
+          <div class="row between wrap">
+            ${typePill(ev.type)}
+            <span class="text-caption muted">${esc(U.fmtDate(ev.when))}</span>
+          </div>
+          <h3 class="text-h5 display-bold">${esc(ev.title)}</h3>
+          <p class="small muted">${esc(ev.desc)}</p>
+          ${hostedBy(ev)}
+          <div class="row wrap" style="margin-top: auto">
+            ${avatarStack(ev.attendees || [], 5)}
+            <span class="text-caption muted">${count} ${count === 1 ? "person" : "people"} went</span>
+          </div>
+        </article>`;
+    }
+
+    function overlapCard(entry) {
+      const me = Commons.me();
+      const p = entry.p;
+      const chips = entry.shared
+        .map((eid) => Commons.events.get(eid))
+        .filter(Boolean)
+        .slice(0, 3)
+        .map((e) => `<span class="chip soft">${esc(e.title)}</span>`)
+        .join("");
+      return `
+        <article class="card overlap-card">
+          <div class="row">
+            ${Shell.avatarHtml(p)}
+            <div>
+              <a href="person.html?id=${encodeURIComponent(p.id)}" class="display-bold">${esc(p.name)}</a>
+              <div class="text-caption muted">${esc(p.borough)} · ${entry.shared.length} shared gathering${entry.shared.length > 1 ? "s" : ""}</div>
+            </div>
+          </div>
+          <div class="chips">${chips}</div>
+          <div class="row wrap" style="margin-top: auto">${Shell.matchPill(Commons.match(me, p))}</div>
+        </article>`;
+    }
+
+    function render() {
+      const upcoming = Commons.events.upcoming();
+      const past = Commons.events.past();
+      const overlap = Commons.events.overlap(Commons.me()).slice(0, 6);
+
+      document.getElementById("upcoming-grid").innerHTML = upcoming.length
+        ? upcoming.map(upcomingCard).join("")
+        : `<div class="empty" style="grid-column: 1 / -1">Nothing on the calendar yet — check back after the Switchboard's next planning night.</div>`;
+
+      document.getElementById("past-grid").innerHTML = past.length
+        ? past.map(pastCard).join("")
+        : `<div class="empty" style="grid-column: 1 / -1">No gatherings in the archive yet. The first one is always the strangest — go make it.</div>`;
+
+      document.getElementById("overlap-grid").innerHTML = overlap.length
+        ? overlap.map(overlapCard).join("")
+        : `<div class="empty" style="grid-column: 1 / -1">RSVP to a mixer and this space fills itself — familiar faces come from shared rooms.</div>`;
+    }
+
+    document.addEventListener("click", (evt) => {
+      const btn = evt.target.closest("[data-action]");
+      if (!btn) return;
+      const id = btn.dataset.id;
+      switch (btn.dataset.action) {
+        case "rsvp": {
+          Commons.events.rsvp(id);
+          Shell.toast("You're going — see you there", "green");
+          render();
+          break;
+        }
+        case "unrsvp": {
+          Commons.events.unrsvp(id);
+          Shell.toast("Taken off the list");
+          render();
+          break;
+        }
+        case "reserve": {
+          const amt = Number(btn.dataset.amount) || 0;
+          Commons.events.payEscrow(id, amt);
+          Shell.toast("Held in escrow — not paid to anyone yet", "green");
+          render();
+          break;
+        }
+        case "refund": {
+          // The store has no refund API — un-RSVP, then unwind the escrow
+          // record locally through the exposed state so the demo stays honest.
+          const amt = Commons.events.escrowPaid(id);
+          Commons.events.unrsvp(id);
+          const ev = Commons.events.get(id);
+          if (amt && ev && ev.escrow) ev.escrow.total = Math.max(0, ev.escrow.total - amt);
+          if (amt) { delete Commons.state.escrowPaid[id]; Commons.save(); }
+          Shell.toast(`Refunded instantly — ${U.fmtMoney(amt)} back in your pocket`, "green");
+          render();
+          break;
+        }
+        case "raise-hand": {
+          Shell.toast("Passed to the Switchboard — they'll be in touch", "green");
+          break;
+        }
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

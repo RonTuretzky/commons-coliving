@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>House — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local layout only — everything else comes from park.css */
+    .house-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; align-items: start; }
+    @media (max-width: 900px) { .house-grid { grid-template-columns: 1fr; } }
+    .house-band { height: 148px; font-size: clamp(1.7rem, 4vw, 2.5rem); justify-content: space-between; align-items: flex-end; gap: 12px; }
+    .house-band .since { font-family: var(--body); font-weight: 500; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; opacity: .85; padding-bottom: 8px; white-space: nowrap; }
+    .side-col { position: sticky; top: 112px; display: flex; flex-direction: column; gap: 18px; }
+    @media (max-width: 900px) { .side-col { position: static; } }
+    .side-card { background: var(--paper-main); }
+    .member-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (max-width: 640px) { .member-grid { grid-template-columns: 1fr; } }
+    .card.member-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .rule-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .rule-list li { display: flex; gap: 10px; align-items: flex-start; }
+    .rule-list .dot { margin-top: 7px; }
+    .meter-stack { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+    .fit-line { display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container section" id="page"></div>
+  </main>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("");
+
+    const U = Commons.util;
+    const esc = U.esc;
+    const root = document.getElementById("page");
+
+    const POOL_LABEL = { split: "Split & settle", weighted: "Room-weighted split", fund: "House fund", sliding: "Sliding scale", commons: "Fund + deposit", labor: "Points & pool" };
+    const EVENT_META = {
+      dinner: { emoji: "🍽️", label: "Dinner" },
+      mixer: { emoji: "🎪", label: "Mixer" },
+      retreat: { emoji: "🏕️", label: "Retreat" },
+      workday: { emoji: "🔨", label: "Work day" },
+    };
+    const plural = (n, one, many) => (n === 1 ? one : many);
+
+    const id = U.qp("id");
+    const house = id ? Commons.houses.get(id) : null;
+
+    function renderEmpty() {
+      root.innerHTML = `
+        <div class="empty stack">
+          <div class="text-h3">No house at this address</div>
+          <p>That link points somewhere we can't find — maybe the crew moved on, maybe the link got smudged. The gallery has plenty of open doors.</p>
+          <div><a class="lifted sm" href="browse.html"><span class="shadow"></span><span class="face">Browse homes</span></a></div>
+        </div>`;
+    }
+
+    function pillsRow(h) {
+      const pills = [];
+      pills.push(`<span class="pill ink">📍 ${esc(h.borough)}</span>`);
+      pills.push(`<span class="pill paper">${esc(U.fmtMoney(h.rent))}/mo</span>`);
+      pills.push(`<span class="pill zero">${esc(POOL_LABEL[h.poolModel] || "Shared costs")}</span>`);
+      if (h.roomsOpen > 0) pills.push(`<span class="pill open">${h.roomsOpen} ${plural(h.roomsOpen, "room", "rooms")} open</span>`);
+      else pills.push(`<span class="pill paper">Full</span>`);
+      if (!h.hasLocation) pills.push(`<span class="pill pine">Seeking a place</span>`);
+      return `<div class="row wrap">${pills.join(" ")}</div>`;
+    }
+
+    function memberCards(h) {
+      return h.members.map((mid) => {
+        const p = Commons.people.get(mid);
+        if (!p) return "";
+        const arch = Commons.archetype(p.dims || {});
+        const inner = `
+          ${Shell.avatarHtml(p)}
+          <div style="min-width:0">
+            <div class="display-bold" style="line-height:1.25">${esc(p.name)}${mid === "me" ? ` <span class="pill pine" style="margin-left:4px">that's you</span>` : ""}</div>
+            <div class="text-caption muted">${esc(arch.emoji)} ${esc(arch.name)}</div>
+          </div>`;
+        if (mid === "me") return `<div class="card flat member-card">${inner}</div>`;
+        return `<a class="card flat clickable member-card" href="person.html?id=${encodeURIComponent(p.id)}">${inner}</a>`;
+      }).join("");
+    }
+
+    function mainCol(h) {
+      const parts = [];
+      parts.push(pillsRow(h));
+      parts.push(`<p class="lede" style="margin-top:16px">${esc(h.blurb)}</p>`);
+
+      if (h.mission) {
+        parts.push(`
+          <div style="margin-top:26px">
+            <div class="kicker">The point</div>
+            <p class="text-h5" style="margin-top:6px">${esc(h.mission)}</p>
+          </div>`);
+      }
+
+      if ((h.values || []).length) {
+        parts.push(`
+          <div style="margin-top:26px">
+            <div class="kicker">What they're about</div>
+            <div class="row wrap" style="margin-top:10px">${h.values.map((v) => `<span class="chip">${esc(v)}</span>`).join(" ")}</div>
+          </div>`);
+      }
+
+      if ((h.rules || []).length) {
+        parts.push(`
+          <div style="margin-top:26px">
+            <div class="kicker">House rules</div>
+            <ul class="rule-list" style="margin-top:10px">
+              ${h.rules.map((r) => `<li><span class="dot pine"></span><span>${esc(r)}</span></li>`).join("")}
+            </ul>
+          </div>`);
+      }
+
+      parts.push(`
+        <div style="margin-top:26px">
+          <div class="row between wrap">
+            <div class="kicker">The crew</div>
+            <span class="text-caption muted">${h.members.length} ${plural(h.members.length, "person", "people")}</span>
+          </div>
+          <div class="member-grid" style="margin-top:10px">${memberCards(h)}</div>
+        </div>`);
+
+      return parts.join("");
+    }
+
+    function compatCard(h, mine) {
+      if (mine) {
+        return `
+          <div class="card flat side-card">
+            <div class="kicker">Compatibility</div>
+            <p class="display-bold" style="margin-top:8px">This is your house.</p>
+            <p class="small muted" style="margin-top:6px">No match math needed — you already share the table. Treasury, bills, and votes live on your dashboard.</p>
+            <a class="park-btn primary" href="dashboard.html" style="margin-top:14px">Go to my dashboard</a>
+          </div>`;
+      }
+
+      const me = Commons.me();
+      const m = Commons.matchHouse(me, h);
+      const others = h.members.filter((x) => x !== "me").length;
+      const hd = Commons.houses.dims(h);
+
+      const conflictLine = m.conflictMembers === 0
+        ? `No dealbreaker conflicts with any of the ${others} ${plural(others, "housemate", "housemates")}.`
+        : `${m.conflictMembers} of ${others} ${plural(others, "housemate", "housemates")} ${plural(m.conflictMembers, "has", "have")} a dealbreaker conflict with you.`;
+
+      const meters = Commons.DIMS.map((d) => {
+        const hv = U.clamp(hd[d.id] ?? 50, 0, 100);
+        const mv = U.clamp((me.dims || {})[d.id] ?? 50, 0, 100);
+        return `
+          <div class="meter" title="${esc(d.desc)} ${esc(d.low)} ↔ ${esc(d.high)}">
+            <span>${esc(d.label)}</span>
+            <div class="bar"><i style="width:${hv}%"></i><i class="you" style="width:${mv}%"></i></div>
+            <span class="tnum text-caption muted">${hv}</span>
+          </div>`;
+      }).join("");
+
+      return `
+        <div class="card flat side-card">
+          <div class="kicker">Compatibility</div>
+          <div class="text-h2 tnum" style="margin-top:6px">${m.score}%</div>
+          <div class="text-caption muted">match with your profile</div>
+          <div class="row wrap" style="margin-top:10px">${Shell.matchPill(m)}</div>
+          <p class="small" style="margin-top:12px">${conflictLine}</p>
+          <p class="text-caption muted" style="margin-top:4px">We only ever show the count, never which ones — enough signal to pass, and nobody has to over-share.</p>
+          <div class="fit-line">
+            <span class="dot ${m.budgetFit ? "" : "warn"}"></span>
+            <span>${m.budgetFit ? "Within your budget" : "Above your budget"}</span>
+            <span class="text-caption muted">${esc(U.fmtMoney(h.rent))}/mo vs your ${esc(U.fmtMoney(me.budget))}</span>
+          </div>
+          <div class="row text-caption muted" style="gap:16px; margin-top:16px">
+            <span class="row" style="gap:6px"><span class="dot pine"></span> the house</span>
+            <span class="row" style="gap:6px"><span class="dot sky"></span> you</span>
+          </div>
+          <div class="meter-stack">${meters}</div>
+        </div>`;
+    }
+
+    function roomsCard(h, mine) {
+      const requested = Commons.connects.has("house", h.id);
+      const parts = [`<div class="kicker">Rooms</div>`];
+
+      if (h.roomsOpen > 0) {
+        const noun = h.hasLocation ? plural(h.roomsOpen, "room", "rooms") : plural(h.roomsOpen, "founding spot", "founding spots");
+        parts.push(`<p class="display-bold" style="margin-top:8px">${h.roomsOpen} ${noun} open <span class="muted" style="font-weight:400">· move-in ~ ${h.moveIn ? esc(U.fmtDate(h.moveIn)) : "flexible"}</span></p>`);
+      }
+
+      if (mine) {
+        if (h.roomsOpen > 0) {
+          parts.push(`<p class="small muted" style="margin-top:6px">Your open room is live in the gallery — seekers see the crew's match numbers, never anyone's dealbreakers.</p>`);
+          parts.push(`<a class="park-btn light" href="browse.html" style="margin-top:12px">See who's seeking</a>`);
+        } else {
+          parts.push(`<p class="small muted" style="margin-top:8px">Full — the whole crew's home. When a room opens, list it here and the gallery does the rest.</p>`);
+        }
+      } else if (requested) {
+        parts.push(`<button class="park-btn light" disabled style="margin-top:12px">Request sent ✓</button>`);
+        parts.push(`<p class="text-caption muted" style="margin-top:8px">They'll reach out. Meanwhile, <a href="gatherings.html">say hi at a gathering</a> — houses meet their people in person.</p>`);
+      } else if (!h.hasLocation) {
+        parts.push(`<p class="small muted" style="margin-top:6px">No address yet — this crew is forming. First the people, then the lease.</p>`);
+        parts.push(`<div style="margin-top:12px"><button class="lifted sm" id="join-btn" type="button"><span class="shadow"></span><span class="face">Join the founding crew</span></button></div>`);
+      } else if (h.roomsOpen > 0) {
+        parts.push(`<p class="small muted" style="margin-top:6px">Requesting doesn't commit you to anything — it opens a conversation.</p>`);
+        parts.push(`<div style="margin-top:12px"><button class="lifted sm" id="join-btn" type="button"><span class="shadow"></span><span class="face">Request to join</span></button></div>`);
+      } else {
+        parts.push(`<p class="small muted" style="margin-top:8px">Full right now — but crews remember friendly faces. Catch them at the next gathering.</p>`);
+        parts.push(`<a class="park-btn light" href="gatherings.html" style="margin-top:12px">Say hi at a mixer</a>`);
+      }
+
+      return `<div class="card flat side-card">${parts.join("")}</div>`;
+    }
+
+    function hostedSection(h) {
+      const hosted = Commons.events.upcoming().filter((e) => e.host === h.id)
+        .concat(Commons.events.past().filter((e) => e.host === h.id));
+      if (!hosted.length) return "";
+
+      const cards = hosted.map((e) => {
+        const past = new Date(e.when) <= new Date();
+        const meta = EVENT_META[e.type] || { emoji: "🌳", label: "Gathering" };
+        return `
+          <a class="card clickable" href="gatherings.html">
+            <div class="row between">
+              <span class="pill ${past ? "zero" : "open"}">${past ? "happened" : "upcoming"}</span>
+              <span class="text-caption muted">${esc(U.relDate(e.when))}</span>
+            </div>
+            <div class="text-h4" style="margin-top:10px">${esc(e.title)}</div>
+            <div class="small muted" style="margin-top:4px">${esc(meta.emoji)} ${esc(meta.label)} · ${esc(U.fmtDate(e.when))} · ${esc(e.where)}${e.price > 0 ? " · " + esc(U.fmtMoney(e.price)) : ""}</div>
+            <div class="text-caption muted" style="margin-top:8px">${e.attendees.length} ${past ? "went" : "going"}</div>
+          </a>`;
+      }).join("");
+
+      return `
+        <div style="margin-top:44px">
+          <div class="kicker">On the calendar</div>
+          <h2 class="text-h3" style="margin-top:4px">Gatherings hosted here</h2>
+          <div class="grid grid-3" style="margin-top:18px">${cards}</div>
+        </div>`;
+    }
+
+    function render() {
+      if (!house) { renderEmpty(); return; }
+      document.title = house.name + " — Commons by Decentral Park";
+      const myHouse = Commons.houses.mine();
+      const mine = !!myHouse && myHouse.id === house.id;
+
+      root.innerHTML = `
+        <div class="card">
+          <div class="card-band house-band" style="background: radial-gradient(620px 220px at 85% -60%, rgba(255,255,255,.28), transparent 60%), ${esc(house.hue)}">
+            <span>${esc(house.name)}</span>
+            <span class="since">${house.founded === "forming" ? "Forming now" : "Since " + esc(house.founded)}</span>
+          </div>
+          <div class="house-grid">
+            <div>${mainCol(house)}</div>
+            <div class="side-col">
+              ${compatCard(house, mine)}
+              ${roomsCard(house, mine)}
+            </div>
+          </div>
+        </div>
+        ${hostedSection(house)}`;
+
+      const btn = document.getElementById("join-btn");
+      if (btn) {
+        btn.addEventListener("click", () => {
+          Commons.connects.add("house", house.id);
+          Shell.toast(house.hasLocation ? "Request sent — the house will reach out" : "You're in the mix — the founders will be in touch", "green");
+          render();
+        });
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meals — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .stat-block { background: var(--paper-1); border-radius: 12px; padding: 14px 12px; text-align: center; }
+    .stat-block .big { font-family: var(--display); font-weight: 700; font-size: 1.7rem; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .preset-card { text-align: left; width: 100%; border: 2px solid var(--paper-2); }
+    .preset-card.picked { border-color: var(--pine); }
+    .batch-strip { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-family: var(--display); font-weight: 500; font-size: .95rem; }
+    .batch-strip .sep { color: var(--grey); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("meals");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const PRESETS = Commons.meals.presets();
+
+    const house = Commons.houses.mine();
+    const houseMembers = house ? house.members.slice() : [];
+
+    /* ----- working config (page-local until saved) ----- */
+    const saved = Commons.meals.plan();
+    const cfg = {
+      presetId: (saved && saved.presetId) || PRESETS[0].id,
+      eaters: U.clamp((saved && saved.eaters) || (house ? houseMembers.length : 5), 2, 12),
+      dinners: (saved && saved.dinners) || PRESETS[0].dinners,
+      veg: saved ? Math.round((saved.vegShare ?? 0.5) * 100) : 50,
+      tier: (saved && saved.tier) || "standard",
+    };
+
+    const firstName = (id) => {
+      if (id === "me") return "You";
+      const p = Commons.people.get(id);
+      if (p) return p.name.split(" ")[0];
+      const i = Number(String(id).replace("cook-", "")) || 0;
+      return "Cook " + String.fromCharCode(65 + (i % 26));
+    };
+    const rotationIds = () => {
+      if (house) {
+        const plan = Commons.meals.plan();
+        return (plan && plan.rotation && plan.rotation.length) ? plan.rotation : houseMembers;
+      }
+      return Array.from({ length: cfg.eaters }, (_, i) => "cook-" + i);
+    };
+    const estimate = () => Commons.meals.estimate({
+      presetId: cfg.presetId, eaters: cfg.eaters, dinners: cfg.dinners,
+      vegShare: cfg.veg / 100, tier: cfg.tier, rotation: rotationIds(),
+    });
+
+    // batch afternoon clock: kicks off at 1:00, milestones scale with the batch length
+    const clockAt = (mins) => {
+      const t = 13 * 60 + Math.round(mins);
+      return (Math.floor(t / 60) % 12 || 12) + ":" + String(t % 60).padStart(2, "0");
+    };
+    const BATCH_STEPS = [["grains on", 0], ["sheet-pan veg", 0.15], ["proteins", 0.45], ["sauces", 0.75], ["fridge tetris", 1]];
+
+    /* ----- live outputs (no full re-render mid-slide) ----- */
+    function renderOutputs() {
+      const est = estimate();
+      document.getElementById("val-eaters").textContent = cfg.eaters;
+      document.getElementById("val-dinners").textContent = cfg.dinners;
+      document.getElementById("val-veg").textContent = cfg.veg + "%";
+
+      document.getElementById("stat-serving").textContent = U.fmtMoney(est.perServing);
+      document.getElementById("stat-person").textContent = U.fmtMoney(est.perPersonWeekly);
+      document.getElementById("stat-week").textContent = U.fmtMoney(est.weeklyCost);
+      document.getElementById("stat-takeout").textContent = "~" + U.fmtMoney(est.takeoutComparison);
+      document.getElementById("stat-servings-note").textContent =
+        est.servings + " plates a week, cooked at home";
+
+      document.getElementById("shop-body").innerHTML = est.list.map((s) => `
+        <tr>
+          <td><strong class="small">${U.esc(s.name)}</strong></td>
+          <td class="tnum">${s.qty} ${U.esc(s.unit === "lb" ? "lb" : s.unit + "s")}</td>
+          <td class="amount tnum">${U.fmtMoney(Math.round(s.cost))}</td>
+          <td class="text-caption muted">${U.esc(s.note)}</td>
+        </tr>`).join("");
+      document.getElementById("shop-total").textContent = U.fmtMoney(est.weeklyCost);
+
+      document.getElementById("rotation-chips").innerHTML = est.nights.map((n) => `
+        <span class="chip soft" style="padding:8px 14px">🍳 Night ${n.night} — ${n.cooks.map((c) => U.esc(firstName(c))).join(" + ")}</span>`).join("");
+
+      const batch = document.getElementById("batch-wrap");
+      if (est.batchMinutes > 0) {
+        batch.classList.remove("hidden");
+        document.getElementById("batch-strip").innerHTML = BATCH_STEPS.map(([label, frac]) =>
+          `<span>${clockAt(est.batchMinutes * frac)} ${label}</span>`).join(`<span class="sep">▸</span>`);
+        document.getElementById("batch-note").textContent =
+          "~" + Math.round(est.batchMinutes / 6) / 10 + "h active, music mandatory";
+      } else {
+        batch.classList.add("hidden");
+      }
+    }
+
+    /* ----- full page render ----- */
+    function render() {
+      const plan = Commons.meals.plan();
+
+      const presetCards = PRESETS.map((p) => {
+        const picked = p.id === cfg.presetId;
+        const isPlan = plan && plan.presetId === p.id;
+        return `<button class="card clickable stack preset-card ${picked ? "picked" : ""}" data-preset="${p.id}">
+          <div class="row between">
+            <span style="font-size:2rem">${p.emoji}</span>
+            ${isPlan ? `<span class="pill match">House plan</span>` : picked ? `<span class="pill pine">Selected</span>` : ""}
+          </div>
+          <h3 class="text-h4">${U.esc(p.name)}</h3>
+          <p class="small muted">${U.esc(p.desc)}</p>
+          <div class="row wrap" style="gap:8px">
+            <span class="pill paper">${p.dinners} dinners/wk</span>
+            <span class="pill zero">${p.cooksPerNight === 1 ? "solo cook" : "cooks in pairs"}</span>
+          </div>
+        </button>`;
+      }).join("");
+
+      const tierBtns = [["thrifty", "Thrifty"], ["standard", "Standard"], ["generous", "Generous"]].map(([id, label]) =>
+        `<button class="choice ${cfg.tier === id ? "on" : ""}" data-tier="${id}">${label}</button>`).join("");
+
+      const saveSection = house
+        ? `<div class="card stack">
+            <div class="kicker">Make it official</div>
+            ${plan ? `
+              <p class="small">Current plan: <strong>${U.esc((PRESETS.find((p) => p.id === plan.presetId) || PRESETS[0]).emoji + " " + (PRESETS.find((p) => p.id === plan.presetId) || PRESETS[0]).name)}</strong>
+              — ${plan.eaters} eaters, ${plan.dinners} dinners/wk, ${Math.round((plan.vegShare ?? 0.5) * 100)}% plant-based,
+              ${U.esc(plan.tier)} tier, batch day ${U.esc(plan.batchDay || "Sunday")}.</p>`
+              : `<p class="small muted">No plan on file yet — the kitchen is running on vibes.</p>`}
+            <div class="row wrap">
+              <button class="lifted sm" id="save-plan"><span class="shadow"></span><span class="face">Save as the house plan</span></button>
+              ${plan ? `<button class="park-btn ghost" id="clear-plan">Clear plan</button>` : ""}
+            </div>
+          </div>`
+        : `<div class="card flat stack">
+            <div class="kicker">Make it official</div>
+            <p class="small muted">Saving is hidden for now — a meal plan belongs to a kitchen, and you don't have a house yet.
+            The math above works fine solo; the cook rotation fills in with real names the day you do.</p>
+            <div class="row wrap">
+              <a class="lifted sm" href="browse.html"><span class="shadow"></span><span class="face">Browse homes</span></a>
+              <a class="park-btn light" href="create.html">Start a house</a>
+            </div>
+          </div>`;
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div>
+          <div class="kicker">Meals</div>
+          <h1 class="text-h2">The cheapest restaurant in the city is your kitchen</h1>
+          <p class="lede" style="max-width:720px">The honest math: batch-cooked dinners run ~$2.50–4.50 a serving,
+          against ~$16 a plate ordering in. The plan below does the arithmetic for your actual house.</p>
+        </div>
+
+        <div>
+          <div class="kicker">Start from a preset</div>
+          <div class="grid grid-3" style="margin-top:14px">${presetCards}</div>
+        </div>
+
+        <div class="card stack">
+          <div class="kicker">The calculator</div>
+
+          <div class="grid grid-4">
+            <div class="field">
+              <label>Eaters · <span id="val-eaters">${cfg.eaters}</span></label>
+              <input type="range" class="slider" id="in-eaters" min="2" max="12" step="1" value="${cfg.eaters}" />
+              <div class="range-labels"><span>2</span><span>12</span></div>
+            </div>
+            <div class="field">
+              <label>Dinners a week · <span id="val-dinners">${cfg.dinners}</span></label>
+              <input type="range" class="slider" id="in-dinners" min="1" max="7" step="1" value="${cfg.dinners}" />
+              <div class="range-labels"><span>1</span><span>7</span></div>
+            </div>
+            <div class="field">
+              <label>Plant-based plates · <span id="val-veg">${cfg.veg}%</span></label>
+              <input type="range" class="slider" id="in-veg" min="0" max="100" step="5" value="${cfg.veg}" />
+              <div class="range-labels"><span>0%</span><span>100%</span></div>
+            </div>
+            <div class="field">
+              <label>Budget tier</label>
+              <div class="choice-row">${tierBtns}</div>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-top:6px">
+            <div class="stat-block">
+              <div class="big amount" id="stat-serving"></div>
+              <div class="text-caption muted">per serving</div>
+            </div>
+            <div class="stat-block">
+              <div class="big" id="stat-person"></div>
+              <div class="text-caption muted">per person, per week</div>
+            </div>
+            <div class="stat-block">
+              <div class="big" id="stat-week"></div>
+              <div class="text-caption muted" id="stat-servings-note"></div>
+            </div>
+            <div class="stat-block">
+              <div class="big amount neg" id="stat-takeout" style="text-decoration:line-through"></div>
+              <div class="text-caption muted">same plates ordering in, ~$16 each</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="kicker" style="margin-bottom:8px">Shopping list</div>
+            <div style="overflow-x:auto">
+              <table class="ledger">
+                <thead><tr><th>Staple</th><th>Qty</th><th>Est. cost</th><th>Note</th></tr></thead>
+                <tbody id="shop-body"></tbody>
+                <tfoot><tr>
+                  <td><strong>Weekly total</strong></td><td></td>
+                  <td class="amount pos tnum" id="shop-total"></td><td></td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <p class="text-caption muted">Bulk-pantry prices, editable reality — every number is an estimate; treat this as a starting list.</p>
+          </div>
+
+          <div>
+            <div class="kicker" style="margin-bottom:8px">Cook rotation</div>
+            <div class="row wrap" id="rotation-chips" style="gap:8px"></div>
+            <p class="text-caption muted" style="margin-top:8px">Cooking counts as your chore that day — dinner shift, no dish duty.${house ? "" : " No house yet, so the roster runs on stand-ins."}</p>
+          </div>
+
+          <div id="batch-wrap" class="hidden">
+            <div class="kicker" style="margin-bottom:8px">Batch timeline</div>
+            <div class="batch-strip" id="batch-strip"></div>
+            <p class="text-caption muted" style="margin-top:8px" id="batch-note"></p>
+          </div>
+        </div>
+
+        ${saveSection}
+
+        <div class="card flat">
+          <p class="text-caption muted">The defaults, so the house can argue with them productively:
+          1 lb dry rice ≈ 6 cups cooked ≈ 6 main-dish servings · ~100g dry pasta a plate ·
+          4–6 oz protein a plate · half of every plate, by weight, is vegetables.
+          Sliding the plant-based dial trades protein spend for beans and lentils — the cheapest ingredient in the list by a mile.</p>
+        </div>
+      </div>`;
+
+      /* ----- wire up ----- */
+      page.querySelectorAll("[data-preset]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const p = PRESETS.find((x) => x.id === btn.dataset.preset);
+          cfg.presetId = p.id;
+          cfg.dinners = p.dinners;
+          render();
+          Shell.toast(`${p.name} — ${p.dinners} dinners a week on the dials`);
+        });
+      });
+      page.querySelectorAll("[data-tier]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          cfg.tier = btn.dataset.tier;
+          render();
+          Shell.toast(btn.textContent + " tier — the list repriced itself");
+        });
+      });
+      const bind = (id, key) => page.querySelector(id).addEventListener("input", (e) => {
+        cfg[key] = Number(e.target.value);
+        renderOutputs();
+      });
+      bind("#in-eaters", "eaters");
+      bind("#in-dinners", "dinners");
+      bind("#in-veg", "veg");
+
+      const saveBtn = document.getElementById("save-plan");
+      if (saveBtn) saveBtn.addEventListener("click", () => {
+        Commons.meals.setPlan({
+          presetId: cfg.presetId, eaters: cfg.eaters, dinners: cfg.dinners,
+          vegShare: cfg.veg / 100, tier: cfg.tier, batchDay: "Sunday",
+          rotation: houseMembers.slice(),
+        });
+        render();
+        Shell.toast("Plan saved — the steward will nag accordingly", "green");
+      });
+      const clearBtn = document.getElementById("clear-plan");
+      if (clearBtn) clearBtn.addEventListener("click", () => {
+        Commons.meals.clearPlan();
+        render();
+        Shell.toast("Plan cleared — back to takeout roulette");
+      });
+
+      renderOutputs();
+    }
+
+    render();
+  </script>
+</body>
+</html>
