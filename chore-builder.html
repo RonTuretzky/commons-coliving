@@ -17,6 +17,14 @@
   <script>
     Shell.render("chores");
     Shell.gate();
+    if (Commons.util.qp("setup")) {
+      document.querySelector("main").insertAdjacentHTML("afterbegin",
+        `<div class="container" style="padding-top:20px"><div class="card flat row between wrap" style="border-color:var(--pine);gap:10px">
+          <span class="row" style="gap:10px"><span class="step-num">1</span><strong class="display-bold">House setup · chores</strong>
+          <span class="small muted">Map the spaces, apply the rotation — then the meal plan.</span></span>
+          <a class="park-btn ghost sm" href="meals.html?setup=1">Skip to meals →</a>
+        </div></div>`);
+    }
     const U = Commons.util;
     const page = document.getElementById("page");
 
@@ -135,10 +143,14 @@
           <a class="chip pine" href="create.html">Start a house →</a>
         </div>`;
       } else if (applied) {
+        const inSetup = Commons.util.qp("setup");
         applyHtml = `<div class="card row wrap" style="gap:14px">
           <span class="pill match">Rotation live</span>
           <span class="small muted">First periods start today.</span>
-          <a class="chip pine" href="chores.html">See it on the board →</a>
+          ${inSetup
+            ? `<a class="lifted sm green" href="meals.html?setup=1"><span class="shadow"></span><span class="face">Next: the meal plan →</span></a>
+               <a class="chip soft" href="chores.html">or peek at the board</a>`
+            : `<a class="chip pine" href="chores.html">See it on the board →</a>`}
         </div>`;
       } else if (confirming) {
         applyHtml = `<div class="card stack" style="border-color:var(--warning);background:#fff8ef">

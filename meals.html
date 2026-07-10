@@ -25,6 +25,14 @@
   <script>
     Shell.render("meals");
     Shell.gate();
+    if (Commons.util.qp("setup")) {
+      document.querySelector("main").insertAdjacentHTML("afterbegin",
+        `<div class="container" style="padding-top:20px"><div class="card flat row between wrap" style="border-color:var(--pine);gap:10px">
+          <span class="row" style="gap:10px"><span class="step-num">2</span><strong class="display-bold">House setup · meals</strong>
+          <span class="small muted">Pick a preset, tune the sliders, save the plan — last step.</span></span>
+          <a class="park-btn ghost sm" href="dashboard.html">Skip — finish setup →</a>
+        </div></div>`);
+    }
     const U = Commons.util;
     const page = document.getElementById("page");
     const PRESETS = Commons.meals.presets();
@@ -291,7 +299,12 @@
           rotation: houseMembers.slice(),
         });
         render();
-        Shell.toast("Plan saved — the steward will nag accordingly", "green");
+        if (Commons.util.qp("setup")) {
+          Shell.toast("Plan saved — your house is fully set up 🎉", "green");
+          setTimeout(() => { location.href = "dashboard.html"; }, 1100);
+        } else {
+          Shell.toast("Plan saved — the rotation knows", "green");
+        }
       });
       const clearBtn = document.getElementById("clear-plan");
       if (clearBtn) clearBtn.addEventListener("click", () => {

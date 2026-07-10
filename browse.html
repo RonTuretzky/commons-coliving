@@ -16,6 +16,7 @@
     .card-foot { margin-top: auto; }
     .browse-card { display: flex; flex-direction: column; gap: 10px; }
     .plus-bubble { margin-left: -10px; z-index: 1; background: var(--paper-1); color: var(--ink); }
+    .you-card { outline: 2px solid var(--app); outline-offset: -1px; }
   </style>
 </head>
 <body>
@@ -92,12 +93,14 @@
     function peopleFiltered() {
       const me = Commons.me();
       const f = F.people;
-      let ps = Commons.people.all();
+      // Your own profile lives in the gallery too — pinned first so you can see
+      // yourself the way other seekers do. It still respects the active filters.
+      let ps = [me, ...Commons.people.all().filter((p) => p.id !== "me")];
       if (f.seeking.size) ps = ps.filter((p) => f.seeking.has(p.seeking));
       if (f.boroughs.size) ps = ps.filter((p) => f.boroughs.has(p.borough));
       return ps
-        .map((p) => ({ p, m: Commons.match(me, p) }))
-        .sort((a, b) => b.m.score - a.m.score || a.m.conflicts - b.m.conflicts);
+        .map((p) => ({ p, m: Commons.match(me, p), isMe: p.id === "me" }))
+        .sort((a, b) => (b.isMe - a.isMe) || (b.m.score - a.m.score) || (a.m.conflicts - b.m.conflicts));
     }
 
     const anyFilterOn = () =>
@@ -192,25 +195,29 @@
         </a>`;
     }
 
-    function personCard({ p, m }) {
+    function personCard({ p, m, isMe }) {
       const arch = Commons.archetype(p.dims);
       const values = (p.values || []).slice(0, 3);
+      const name = p.age ? `${esc(p.name)}, ${esc(p.age)}` : esc(p.name);
+      const pill = isMe
+        ? `<span class="pill ink">This is you</span>`
+        : Shell.matchPill(m);
       return `
-        <a class="card clickable browse-card" href="person.html?id=${esc(p.id)}">
+        <a class="card clickable browse-card${isMe ? " you-card" : ""}" href="person.html?id=${esc(p.id)}">
           <div class="row">
             ${Shell.avatarHtml(p, "lg")}
             <span>
-              <span class="text-h4" style="display:block">${esc(p.name)}, ${esc(p.age)}</span>
+              <span class="text-h4" style="display:block">${name}</span>
               <span class="small muted">${esc(p.borough)} · ${esc(seekLine(p.seeking))}</span>
             </span>
           </div>
           <div class="small display">${esc(arch.emoji)} ${esc(arch.name)}</div>
-          <div class="row wrap">${Shell.matchPill(m)}</div>
+          <div class="row wrap">${pill}</div>
           <p class="small muted clamp-2">${esc(p.blurb)}</p>
           <div class="row wrap" style="gap:6px">
             ${values.map((v) => `<span class="chip soft xs">${esc(v)}</span>`).join("")}
           </div>
-          <div class="text-caption muted card-foot">Budget up to ${esc(U.fmtMoney(p.budget))}/mo</div>
+          <div class="text-caption muted card-foot">${isMe ? "Your profile — edit it any time" : "Budget up to " + esc(U.fmtMoney(p.budget)) + "/mo"}</div>
         </a>`;
     }
 

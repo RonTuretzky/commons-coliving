@@ -275,6 +275,31 @@ await test('found your own house: clean systems, gallery keeps the world', async
   assert(body.includes('E2E Test House') && body.includes('Cypress Yard'), 'gallery lost a house');
 });
 
+await test('setup wizard: launch → chores → meals → dashboard complete', async () => {
+  await go('dashboard.html');
+  assert((await ev(() => document.getElementById('page').textContent.includes('Finish setting up'))), 'no setup nudge on fresh house');
+  await go('chore-builder.html?setup=1');
+  assert((await ev(() => document.body.textContent.includes('House setup · chores'))), 'no setup banner on chore-builder');
+  await page.locator('button', { hasText: 'Apartment crew' }).click();
+  await page.waitForTimeout(400);
+  await page.locator('button', { hasText: /Make this the house rotation/ }).click();
+  await page.waitForTimeout(300);
+  const confirm = page.locator('button', { hasText: /^Confirm/ });
+  if (await confirm.count()) { await confirm.click(); await page.waitForTimeout(400); }
+  assert((await ev(() => window.Commons.chores.all().length)) > 3, 'setup did not apply chores');
+  await page.locator('a', { hasText: /Next: the meal plan/ }).click();
+  await page.waitForTimeout(500);
+  assert(page.url().includes('meals.html?setup=1'), 'did not chain to meals: ' + page.url());
+  assert((await ev(() => document.body.textContent.includes('House setup · meals'))), 'no setup banner on meals');
+  await page.locator('main .card', { hasText: 'Dinner Club' }).first().click();
+  await page.waitForTimeout(300);
+  await page.locator('button', { hasText: /Save as the house plan/ }).click();
+  await page.waitForTimeout(1600); // toast + redirect
+  assert(page.url().includes('dashboard.html'), 'did not finish on dashboard: ' + page.url());
+  assert((await ev(() => window.Commons.meals.plan()?.presetId)) === 'dinner-club', 'plan not saved in setup');
+  assert(!(await ev(() => document.getElementById('page').textContent.includes('Finish setting up'))), 'setup nudge still showing after completion');
+});
+
 await browser.close();
 
 const fails = results.filter(([s]) => s === 'FAIL');

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Quiz, Rebuilt on Evidence — Commons proposal</title>
+<link rel="icon" href="assets/img/logomark.png" />
+<style>
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-700.woff2") format("woff2"); font-weight: 700; }
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-500.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-700.woff2") format("woff2"); font-weight: 700; }
+  :root{
+    --green:#16a34a; --green-0:#86efac; --green-1:#15803d; --green-2:#166534;
+    --pine:#0d9488; --pine-0:#5eead4; --pine-1:#0f766e; --pine-2:#134e4a;
+    --sky:#0284c7; --sky-1:#0369a1;
+    --paper:#f0fdf4; --paper-1:#dcfce7; --paper-2:#bbf7d0;
+    --ink:#14211a; --grey:#3f4a44; --red:#df0b00; --warn:#ce7f00;
+    --display:"Park Display", ui-sans-serif, system-ui, sans-serif;
+    --body:"Park Body", ui-sans-serif, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, var(--paper-2), transparent 60%),
+      radial-gradient(1000px 500px at -10% 110%, var(--paper-1), transparent 55%),
+      var(--paper);
+    overflow:hidden;
+  }
+  .deck{position:fixed;inset:0}
+  .slide{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:clamp(24px,4.5vw,64px) clamp(24px,6vw,88px);
+    opacity:0;transform:translateY(14px) scale(.99);
+    transition:opacity .45s ease, transform .45s ease;pointer-events:none;
+    overflow-y:auto;
+  }
+  .slide.active{opacity:1;transform:none;pointer-events:auto}
+  .kicker{font-family:var(--display);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    font-size:clamp(11px,1.1vw,13px);color:var(--pine-1);margin-bottom:16px}
+  h1{font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:.95;font-size:clamp(38px,7vw,92px)}
+  h2{font-family:var(--display);font-weight:700;letter-spacing:-.015em;line-height:1.02;font-size:clamp(26px,4.2vw,52px);margin-bottom:10px}
+  h3{font-family:var(--display);font-weight:700;font-size:clamp(16px,1.6vw,21px)}
+  .lede{font-size:clamp(15px,1.7vw,21px);color:var(--grey);max-width:820px;margin:16px auto 0;line-height:1.5}
+  .cols{display:grid;gap:16px;margin-top:26px;width:min(1180px,94vw)}
+  .c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}.c4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){.c2,.c3,.c4{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--paper-2);border-radius:16px;padding:18px 20px;text-align:left;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  .card h3{margin-bottom:8px}
+  .card p, .card li{font-size:clamp(13px,1.25vw,15.5px);color:var(--grey);line-height:1.5}
+  .card ul{padding-left:18px;margin-top:6px}
+  .card .src{display:block;margin-top:10px;font-size:clamp(11px,1vw,12.5px);color:var(--pine-1);font-family:var(--display);font-weight:500}
+  .pill{display:inline-block;border-radius:999px;padding:3px 12px;font-family:var(--display);font-weight:500;font-size:clamp(11px,1.05vw,13px);margin-bottom:8px}
+  .pill.g{background:var(--green-0);color:var(--green-2)} .pill.p{background:var(--pine-0);color:var(--pine-2)}
+  .pill.r{background:#f7cac2;color:var(--red)} .pill.k{background:var(--ink);color:var(--paper)}
+  .pill.s{background:#bae6fd;color:var(--sky-1)} .pill.w{background:#fde9cc;color:var(--warn)}
+  .big{font-family:var(--display);font-weight:700;font-size:clamp(30px,3.6vw,52px);line-height:1}
+  .tag{font-family:var(--display);font-weight:500;font-size:clamp(12px,1.1vw,14px);color:var(--grey)}
+  .quote{font-size:clamp(15px,1.8vw,22px);line-height:1.5;max-width:860px;margin:20px auto 0;color:var(--ink)}
+  .quote em{background:linear-gradient(transparent 60%, var(--green-0) 60%);font-style:normal}
+  .foot{margin-top:18px;font-size:clamp(11px,1vw,13px);color:var(--grey)}
+  table{border-collapse:collapse;width:min(1100px,94vw);margin-top:22px;background:#fff;border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  th{font-family:var(--display);font-weight:500;font-size:clamp(11px,1vw,13px);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--grey);text-align:left;padding:12px 14px;border-bottom:2px solid var(--paper-2);background:var(--paper)}
+  td{padding:11px 14px;border-bottom:1px solid var(--paper-1);font-size:clamp(12.5px,1.2vw,15px);text-align:left;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .lens{display:flex;align-items:center;gap:10px;justify-content:space-between}
+  .dots-scale{font-family:var(--display);letter-spacing:2px;color:var(--pine)}
+  .arrow-flow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:24px;
+    font-family:var(--display);font-weight:500;font-size:clamp(13px,1.4vw,17px)}
+  .arrow-flow .step{background:#fff;border:1px solid var(--paper-2);border-radius:12px;padding:10px 16px;box-shadow:0 10px 24px -18px rgba(20,33,26,.4)}
+  .arrow-flow .a{color:var(--pine);font-size:1.3em}
+  .progress{position:fixed;top:0;left:0;height:4px;background:var(--green);transition:width .35s ease;z-index:20}
+  .dots{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:9px;z-index:20}
+  .dots button{width:9px;height:9px;border-radius:50%;border:0;background:var(--paper-2);cursor:pointer;padding:0;transition:.25s}
+  .dots button.on{background:var(--green);transform:scale(1.35)}
+  .nav{position:fixed;top:50%;transform:translateY(-50%);z-index:20;border:1px solid var(--paper-2);
+    background:rgba(255,255,255,.85);width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:19px;
+    display:flex;align-items:center;justify-content:center}
+  .nav:hover{border-color:var(--green-0)}
+  .nav.prev{left:18px}.nav.next{right:18px}
+  .counter{position:fixed;bottom:18px;right:22px;font-family:var(--display);font-weight:500;font-size:13px;color:var(--grey);z-index:20}
+  .brand{position:fixed;top:16px;left:22px;display:flex;align-items:center;gap:8px;z-index:20;
+    font-family:var(--display);font-weight:700;font-size:15px}
+  .brand img{width:26px;height:26px}
+  @media(max-width:720px){.nav{display:none}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="brand"><img src="assets/img/logomark.png" alt=""/><span>Comm<span style="color:var(--pine-1)">o</span>ns · proposal</span></div>
+<div class="deck" id="deck">
+
+  <!-- 1 · Title -->
+  <section class="slide">
+    <div class="kicker">A proposal · Commons matching</div>
+    <h1>The quiz,<br/>rebuilt on evidence</h1>
+    <p class="lede">The current 12 questions are charming and made up. This is the plan to replace them with
+    an instrument grounded in roommate-conflict research, personality science, commune-longevity data —
+    and the five-lens framework from your own course.</p>
+    <p class="foot">Research swarm: 5 parallel literature reviews · sources on the last slide · ←/→ to move</p>
+  </section>
+
+  <!-- 2 · Where this comes from -->
+  <section class="slide">
+    <div class="kicker">The assignment, completed</div>
+    <h2>Your course already asked for this</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill p">Session 3 · bonus exercise</span>
+        <h3>"Build Commune Tinder"</h3>
+        <p>"A commune matchmaking app is not a joke — it is the <strong>New Harmony problem, productized</strong>."
+        Owen's colony collapsed in two years because it took anyone who showed up. Commons is that homework, shipped.</p></div>
+      <div class="card"><span class="pill p">Session 3 · the framework</span>
+        <h3>Five lenses, 0–3 each</h3>
+        <p><strong>Property · Governance · Labor · Membership · Outside.</strong> Every classical tradition scored on the same
+        axes — "the quiz scores you on them too." The new instrument adopts these as its structural layer.</p></div>
+      <div class="card"><span class="pill p">Session 4 · the evidence</span>
+        <h3>"Design, not luck"</h3>
+        <p>Twin Oaks (59 yrs), Bruderhof (105), Hutterites (498, split-at-~120 protocol). The autopsy of the 60s:
+        income-sharing, <strong>member selection</strong>, real governance, binding culture.</p></div>
+    </div>
+    <p class="quote">"The single most robust pattern in the whole historical record: <em>membership-filter strength predicts longevity</em>."<br/>
+    <span class="tag">— Session 3, on why the matchmaking layer matters at all</span></p>
+  </section>
+
+  <!-- 3 · Autopsy of the current quiz -->
+  <section class="slide">
+    <div class="kicker">Honest autopsy</div>
+    <h2>What's wrong with the current quiz</h2>
+    <div class="cols c2">
+      <div class="card"><span class="pill r">Construct validity</span>
+        <h3>Six invented dimensions</h3>
+        <p>Hearth/Order/Voice/Mission/Porch/Pool are plausible, but nobody has ever validated them. They blur
+        <strong>personality</strong> (stable traits), <strong>lifestyle</strong> (behaviors), and <strong>structural preference</strong>
+        (how a house should run) into one soup — three things the literature says behave very differently.</p></div>
+      <div class="card"><span class="pill r">Reliability</span>
+        <h3>~2 forced-choice items per construct</h3>
+        <p>Single-item measurement of a latent trait is mostly noise; forced-choice options additionally entangle
+        dimensions (one answer moves two dials). Ultra-short scales are defensible — <strong>only</strong> when they're
+        validated short forms (TIPI, BFI-10), which these aren't.</p></div>
+      <div class="card"><span class="pill r">The match %</span>
+        <h3>False precision</h3>
+        <p>"93% match" implies a prediction we cannot make. Similarity on self-reported attitudes predicts
+        <strong>far less</strong> about how two people actually get along than the UI implies — the strongest finding
+        in the matching literature is a ceiling, not a formula.</p></div>
+      <div class="card"><span class="pill g">Worth keeping</span>
+        <h3>Three things it gets right</h3>
+        <p>① <strong>Dealbreakers shown as a count, never which</strong> — negative screening is the most defensible
+        thing a matcher can do. ② It's fun — completion matters more than psychometric purity if nobody finishes.
+        ③ Archetypes as a shareable payoff (kept — relabeled as flavor, not science).</p></div>
+    </div>
+  </section>
+
+  <!-- 4 · Science 1: what predicts roommate conflict -->
+  <section class="slide" id="sci-roommate">
+    <div class="kicker">What the swarm found · 1 of 5</div>
+    <h2>Roommate conflict is concrete, not cosmic</h2>
+    <p class="lede">The college-roommate literature (the only large natural experiment in stranger co-living) is blunt:
+    conflict comes from <strong>behaviors</strong>, not worldviews.</p>
+    <div class="cols c3" id="roommate-cards">
+      <div class="card"><span class="pill s">Top conflict sources</span>
+        <h3>Cleanliness · noise · guests · sleep · money</h3>
+        <p>~50% of college women and 44% of men report roommate conflict; the domains are the same in every study.
+        Roommate difficulties hurt academics more than alcohol does (5.6% vs 4.0%).</p>
+        <span class="src">Erb, Renshaw, Short &amp; Pollard 2014 · Dusselier et al. 2005 · ACHA-NCHA 2012</span></div>
+      <div class="card"><span class="pill s">Behavioral items win</span>
+        <h3>Ask what they do, not who they are</h3>
+        <p>Self-labels don't calibrate: two people can both claim "clean" and hold wildly different standards —
+        itself a documented conflict source. Frequency-anchored items ("dishes within 24h") do calibrate.</p>
+        <span class="src">Niu &amp; Brown 2023, Int. J. Intercultural Relations · Erb et al. 2014</span></div>
+      <div class="card"><span class="pill s">Sleep mismatch</span>
+        <h3>Chronotype is measurable</h3>
+        <p>Morning-person/night-person pairs show worse adjustment, more conflict, and less shared time. Chronotype
+        has a validated 5-item short form (rMEQ) we can adapt.</p>
+        <span class="src">Larson, Crane &amp; Smith 1991, JMFT · Adan &amp; Almirall 1991 (rMEQ)</span></div>
+    </div>
+    <p class="foot" id="roommate-foot">Design implication: the lifestyle section must be behavioral and specific — and it's where similarity genuinely matters.</p>
+  </section>
+
+  <!-- 5 · Science 2: personality -->
+  <section class="slide">
+    <div class="kicker">What the swarm found · 2 of 5</div>
+    <h2>Personality: main effects, not matching</h2>
+    <p class="lede">The Big Five/HEXACO literature's core insight for us: some traits make someone a good housemate
+    <strong>for anyone</strong>. You don't match on them — you measure them.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Main effects</span>
+        <h3>A · C · ES · H</h3>
+        <p>In ~23,000 couples across three national samples, a partner's <strong>agreeableness, conscientiousness and
+        emotional stability</strong> predicted satisfaction — while trait <em>similarity</em> added almost nothing beyond
+        those main effects. HEXACO <strong>honesty-humility</strong> uniquely predicts non-exploitation — the common-purse trait.</p>
+        <span class="src">Dyrenforth et al. 2010, JPSP · Kurtz &amp; Sherker 2003 (roommates) · Zettler et al. 2020, PoPS</span></div>
+      <div class="card"><span class="pill w">Where similarity does matter</span>
+        <h3>Conscientiousness gaps = tidiness wars</h3>
+        <p>The defensible similarity dimensions are concrete: cleanliness standards, sleep schedule, and (per a couples
+        study that surprised us) <em>values</em> — Schwartz-value similarity predicted satisfaction where Big Five similarity did not.</p>
+        <span class="src">Erb et al. 2014 · Larson et al. 1991 · Leikas et al. 2018, J. Research in Personality</span></div>
+      <div class="card"><span class="pill g">Short forms exist</span>
+        <h3>Validated, minutes not hours</h3>
+        <p>TIPI (10 items), BFI-10, BFI-2-XS (15) are published, validated ultra-short Big Five forms with known
+        reliability trade-offs. We borrow their item format without pretending to run a lab.</p>
+        <span class="src">Gosling et al. 2003 (TIPI) · Rammstedt &amp; John 2007 (BFI-10) · Soto &amp; John 2017 (BFI-2-XS)</span></div>
+    </div>
+    <p class="foot">Design implication: a small "housemate index" measured absolutely — reported as self-insight, never as a public score.</p>
+  </section>
+
+  <!-- 6 · Science 3: the prediction ceiling -->
+  <section class="slide">
+    <div class="kicker">What the swarm found · 3 of 5</div>
+    <h2>The ceiling: what no quiz can promise</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill r">Online dating audit</span>
+        <h3>Matching-algorithm claims don't hold</h3>
+        <p>The definitive review found no evidence any questionnaire-matching algorithm beats chance — and OkCupid's own
+        experiment showed the displayed % is <em>self-fulfilling</em>: telling 30%-match pairs they were 90% made them act like it.</p>
+        <span class="src">Finkel et al. 2012, PSPI · Rudder 2014 (OkCupid experiment)</span></div>
+      <div class="card"><span class="pill r">The ML null result</span>
+        <h3>Traits can't predict chemistry</h3>
+        <p>ML on 100+ self-report measures predicted ~0% of which two specific people click. And across 43 longitudinal
+        datasets (11,196 couples), partner traits explain ~5% of relationship quality; in-relationship perceptions explain up to 45%.
+        Compatibility is <em>built</em>, mostly after move-in.</p>
+        <span class="src">Joel, Eastwick &amp; Finkel 2017, Psych Science · Joel et al. 2020, PNAS</span></div>
+      <div class="card"><span class="pill w">Perceived ≠ actual</span>
+        <h3>Similarity that matters is felt</h3>
+        <p>Across 313 studies: actual similarity predicts attraction strongly in no-interaction lab paradigms (r=.47) and
+        barely at all in existing relationships — <em>perceived</em> similarity is what matters, and it's built in person.
+        Institutional data even suggests matched roommates do no better than random ones.</p>
+        <span class="src">Montoya, Horton &amp; Kirchner 2008, JSPR · Eastwick et al. 2014</span></div>
+    </div>
+    <p class="quote">Design implication: the quiz's job is to <em>filter out the impossible and surface the discussable</em> —
+    then push people to a dinner, a mixer, a catalyst weekend. Which is… exactly the product's funnel. The science
+    validates Commons' gatherings pipeline more than it validates any match number.</p>
+  </section>
+
+  <!-- 7 · Science 4: longevity -->
+  <section class="slide">
+    <div class="kicker">What the swarm found · 4 of 5</div>
+    <h2>What makes shared households last</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Costly commitment</span>
+        <h3>Demanding communes outlive lax ones</h3>
+        <p>In 83 nineteenth-century communes, secular ones dissolved ~3× faster, and the <em>number of costly
+        requirements</em> predicted longevity (for ideologically unified groups). Kanter's classic found the same:
+        long-lived utopias used more commitment mechanisms. Practitioner lore says ~90% of forming communities fail.</p>
+        <span class="src">Sosis &amp; Bressler 2003 · Kanter 1972 · Iannaccone 1994 · Christian 2003</span></div>
+      <div class="card"><span class="pill g">Governance clarity</span>
+        <h3>Ostrom's principles fit houses</h3>
+        <p>A review of 91 commons-governance cases supports Ostrom's principles: clear membership boundaries, participatory
+        rule-making, monitoring, graduated sanctions, cheap conflict resolution — which map one-to-one onto house funds,
+        ledgers, and 2/3 votes.</p><span class="src">Cox, Arnold &amp; Villamayor-Tomás 2010, Ecology &amp; Society · Ostrom 1990</span></div>
+      <div class="card"><span class="pill g">Screening in practice</span>
+        <h3>Real communities screen by living</h3>
+        <p>Long-lived communities screen <em>behaviorally</em>, not psychometrically: Twin Oaks runs a three-week visitor
+        period; FIC communities near-universally use visits and provisional membership. The quiz starts the funnel;
+        the weekend finishes it.</p><span class="src">Twin Oaks membership process · ic.org practice · Zablocki 1980</span></div>
+    </div>
+    <p class="foot">Design implication: measure appetite for commitment & structure honestly (the Membership lens) — and treat the retreat, not the quiz, as the real matching event.</p>
+  </section>
+
+  <!-- 7b · Science 5: money & values -->
+  <section class="slide">
+    <div class="kicker">What the swarm found · 5 of 5</div>
+    <h2>Money is the recurring fight; values are the quiet glue</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill r">Money conflict</span>
+        <h3>The most recurrent fight there is</h3>
+        <p>In 4,574 couples, financial disagreements out-predicted every other conflict topic for dissolution; diary
+        studies show money fights are the most pervasive and least resolvable. The ledger isn't a feature — it's prophylaxis.</p>
+        <span class="src">Dew, Britt &amp; Huston 2012, Family Relations · Papp et al. 2009</span></div>
+      <div class="card"><span class="pill g">Cooperation is measurable</span>
+        <h3>SVO predicts real sharing</h3>
+        <p>Social Value Orientation — six quick "how do we split this" allocation choices — predicts actual cooperation
+        in public-goods situations (r ≈ .30 across 82 studies). One of the few prospective measures that earns its items.</p>
+        <span class="src">Balliet, Parks &amp; Joireman 2009, meta-analysis · Murphy et al. 2011 (SVO slider)</span></div>
+      <div class="card"><span class="pill w">Fairness norms differ</span>
+        <h3>Equity vs equality vs need</h3>
+        <p>People carry different default fairness norms — and strict-reciprocity "exchange orientation" predicts <em>worse</em>
+        roommate compatibility. Conveniently, our six money systems are exactly these norms, productized: the quiz should
+        route splitters and poolers to houses that match.</p>
+        <span class="src">Deutsch 1975 · Murstein &amp; Azar 1986 · Leikas et al. 2018 (values &gt; personality similarity)</span></div>
+    </div>
+    <p class="foot">Design implication: two SVO-style allocation items + the Property lens carry the money layer; the ledger and fit report do the rest.</p>
+  </section>
+
+  <!-- 8 · Design principles -->
+  <section class="slide">
+    <div class="kicker">Synthesis</div>
+    <h2>Eight design principles for v2</h2>
+    <div class="cols c2" style="text-align:left">
+      <div class="card"><ul>
+        <li><strong>1 · Separate the three layers.</strong> Hard filters (veto), main-effect traits (measure absolutely), similarity (only where evidence supports it: lifestyle + structure + values).</li>
+        <li><strong>2 · Behavioral &gt; attitudinal.</strong> Items describe concrete situations — dishes, 2am noise, guests, the $340 freezer vote.</li>
+        <li><strong>3 · Borrow validated formats.</strong> Likert-5 statements in TIPI/BFI style; rMEQ-style chronotype; 0–3 lens scales from the course.</li>
+      </ul></div>
+      <div class="card"><ul>
+        <li><strong>4 · Keep dealbreakers count-only.</strong> The privacy mechanic survives — it's the best-supported feature we have (negative information dominates).</li>
+        <li><strong>5 · No oracle percentages.</strong> Report fit as bands + named frictions + conversation starters. The number retreats; the reasons advance.</li>
+        <li><strong>6 · Funnel to real life.</strong> Every result screen routes to a gathering. Questionnaires screen; weekends decide.</li>
+        <li><strong>7 · Stay under 7 minutes.</strong> 30 items, progressive profiling for the rest. A dead-accurate quiz nobody finishes measures nothing.</li>
+        <li><strong>8 · The quiz drafts the house agreement.</strong> Residence-life research's one institutionalized tool is the roommate agreement — so answers auto-draft quiet hours, cleaning cadence, guest norms and cost splits for the house to edit together. <span class="tag">(McCorkle &amp; Mason 2009)</span></li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- 9 · Architecture -->
+  <section class="slide">
+    <div class="kicker">The proposal</div>
+    <h2>The new instrument: four layers, 30 items</h2>
+    <table>
+      <tr><th>Layer</th><th>What it measures</th><th>Items</th><th>How it's used</th></tr>
+      <tr><td><strong>0 · Logistics</strong></td><td>Budget, area, move-in horizon, room needs</td><td>4 (existing)</td><td><span class="pill k">hard filter</span> binary compatibility, shown plainly</td></tr>
+      <tr><td><strong>1 · Hard lines</strong></td><td>Dealbreakers (smoking, pets, guests, 420, kids…)</td><td>pick-list (existing)</td><td><span class="pill k">hard filter</span> count shown, never which — unchanged</td></tr>
+      <tr><td><strong>2 · Rhythms</strong> 🕰️</td><td>Chronotype (rMEQ-style ×2), tidiness behavior ×3, noise & guests ×3, kitchen use ×2</td><td>10 · Likert-5</td><td><span class="pill s">similarity</span> weighted distance — the conflict-prediction core</td></tr>
+      <tr><td><strong>3 · Structure</strong> 📐</td><td>The course's five lenses: Property · Governance · Labor · Membership · Outside</td><td>5 · 0–3 scales</td><td><span class="pill s">similarity</span> structural fit person↔house; replaces Pool/Voice/Porch/Mission</td></tr>
+      <tr><td><strong>4 · Character</strong> 🧭</td><td>Agreeableness ×2, conscientiousness ×2, emotional stability ×2, honesty-humility ×2, SVO allocation ×2, conflict style ×1</td><td>11 · Likert-5 + sliders</td><td><span class="pill g">main effect</span> private "housemate index" — self-insight + house-view aggregate only</td></tr>
+    </table>
+    <p class="foot">≈ 30 scored items · ~6 minutes · archetypes stay, computed from Rhythms+Structure, labeled as flavor.</p>
+  </section>
+
+  <!-- 10 · The five lenses slide -->
+  <section class="slide">
+    <div class="kicker">Layer 3 · straight from Session 3</div>
+    <h2>Structure: the five lenses, productized</h2>
+    <p class="lede">The course scores every classical tradition on these. The quiz scores you; every house sets its own profile
+    at creation. Structural mismatch is discussable <em>before</em> move-in — this is the theory-grounded replacement for four invented dims.</p>
+    <table>
+      <tr><th>Lens</th><th>0</th><th>3</th><th>Replaces</th></tr>
+      <tr><td class="lens"><strong>Property</strong> <span class="dots-scale">●●○○</span></td><td>split every cost, nothing pooled</td><td>full common purse</td><td>Pool</td></tr>
+      <tr><td class="lens"><strong>Governance</strong> <span class="dots-scale">●●●○</span></td><td>whoever cares decides</td><td>consensus + recallable roles</td><td>Voice</td></tr>
+      <tr><td class="lens"><strong>Labor</strong> <span class="dots-scale">●●○○</span></td><td>everyone specializes</td><td>full rotation, all work equal credit</td><td>(new — Twin Oaks' labor-credit insight)</td></tr>
+      <tr><td class="lens"><strong>Membership</strong> <span class="dots-scale">●●●○</span></td><td>open door</td><td>trial period + deposit + vote</td><td>(new — the longevity lens)</td></tr>
+      <tr><td class="lens"><strong>Outside</strong> <span class="dots-scale">●○○○</span></td><td>a home, inward-facing</td><td>a node — hosting, federating, organizing</td><td>Porch + Mission</td></tr>
+    </table>
+    <p class="foot">Bonus: house profiles on these lenses make the browse gallery legible — "this is a Governance-3, Property-1 house" is a real sentence now.</p>
+  </section>
+
+  <!-- 11 · Scoring model -->
+  <section class="slide">
+    <div class="kicker">The math</div>
+    <h2>Scoring: filter → fit → flags</h2>
+    <div class="arrow-flow">
+      <span class="step">Logistics + dealbreakers<br/><span class="tag">pass / fail / count</span></span><span class="a">→</span>
+      <span class="step">Rhythms distance × .55 + Lenses distance × .45<br/><span class="tag">→ fit band, not a percent</span></span><span class="a">→</span>
+      <span class="step">Friction flags<br/><span class="tag">any item-pair gap ≥ 3 → named + a script</span></span>
+    </div>
+    <div class="cols c3">
+      <div class="card"><span class="pill k">Fit bands</span>
+        <h3>Strong · Workable · Stretch</h3>
+        <p>Three bands with reasons, replacing "93%". Bands are honest about the ceiling; reasons make them useful.
+        (Internally the distance is continuous — we can re-calibrate as outcome data arrives.)</p></div>
+      <div class="card"><span class="pill w">Friction flags</span>
+        <h3>Named, with scripts</h3>
+        <p>"You're a 10pm house, they're a 1am house — ask about headphones-after-midnight."
+        Every big gap becomes a conversation starter, because perceived similarity is built in person.</p></div>
+      <div class="card"><span class="pill g">Housemate index</span>
+        <h3>Private, absolute</h3>
+        <p>Character items never enter the match calc between individuals and are never shown to others.
+        Shown to <em>you</em> as self-insight; aggregated house-side only as "this crew skews structured."</p></div>
+    </div>
+  </section>
+
+  <!-- 12 · Sample items -->
+  <section class="slide">
+    <div class="kicker">The feel of it</div>
+    <h2>Sample items (still fun, now defensible)</h2>
+    <div class="cols c2">
+      <div class="card"><span class="pill s">Rhythms · Likert-5</span>
+        <ul>
+          <li>"Dishes I use are washed and away within 24 hours." <span class="tag">(tidiness, behavioral)</span></li>
+          <li>"On a free day I'd naturally wake before 8am." <span class="tag">(rMEQ-style chronotype)</span></li>
+          <li>"A friend crashing on the couch twice a week is completely fine." <span class="tag">(guests)</span></li>
+          <li>"I'd rather absorb a small annoyance than raise it." <span class="tag">(conflict style, reverse-keyed)</span></li>
+        </ul></div>
+      <div class="card"><span class="pill p">Structure · 0–3 sliders</span>
+        <ul>
+          <li><strong>Property:</strong> "Money in this house should be…" split to the cent → one shared pot</li>
+          <li><strong>Membership:</strong> "New housemates should…" just show up → trial stay + deposit + vote</li>
+          <li><strong>Labor:</strong> "Chores should be…" everyone does their thing → full rotation, all work equal</li>
+        </ul>
+        <p style="margin-top:8px">Character items borrow TIPI's format: "I see myself as dependable, self-disciplined." (agree 1–5)</p></div>
+    </div>
+    <p class="foot">Result screen: five-lens profile + rhythm chart + housemate index (private) + archetype (flavor) + <strong>a drafted house agreement</strong> ready to edit at the first dinner + "two houses fit strong — here's the next mixer both attend."</p>
+  </section>
+
+  <!-- 13 · Validation -->
+  <section class="slide">
+    <div class="kicker">Proving it</div>
+    <h2>Validation: earn the weights</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill k">Phase 1 · now</span>
+        <h3>Literature-derived defaults</h3>
+        <p>Ship with weights from the evidence (rhythms heaviest, lenses second, no character matching).
+        Label fit bands as "early calibration" in the UI — honesty is on-brand.</p></div>
+      <div class="card"><span class="pill k">Phase 2 · first houses</span>
+        <h3>Outcome criterion</h3>
+        <p>The check-in system already collects the criterion: conflict frequency, reallocation rate, ledger disputes,
+        member churn at 3/6 months. Correlate intake gaps with outcomes; reweight.</p></div>
+      <div class="card"><span class="pill k">Phase 3 · scale</span>
+        <h3>Item analysis</h3>
+        <p>Drop items that don't discriminate, promote the progressive-profiling bank. The FIC directory
+        fields 500k searches a year — the demand for a matching layer that works is not hypothetical.</p></div>
+    </div>
+    <p class="quote">The pitch in one line: <em>stop predicting chemistry, start preventing New Harmony</em> —
+    screen hard lines, measure what's absolute, match what's behavioral, and get people to a table.</p>
+  </section>
+
+  <!-- 14 · Migration -->
+  <section class="slide">
+    <div class="kicker">Cost & migration</div>
+    <h2>What it takes to ship</h2>
+    <div class="cols c3">
+      <div class="card"><h3>Quiz page</h3><p>30 items across 5 staged sections (same one-question flow, progress bar, keyboard nav).
+        Lens sliders reuse the 0–3 dot idiom from the course decks. ~1 day of build.</p></div>
+      <div class="card"><h3>Data model</h3><p>me.dims (six) → me.rhythms (10) + me.lenses (5) + me.index (private). Houses get a lens
+        profile in the create wizard (3 extra sliders). Old profiles map: Pool→Property, Voice→Governance, Porch/Mission→Outside.</p></div>
+      <div class="card"><h3>Everything downstream</h3><p>Browse cards show fit band + top reason; person pages show lens overlay
+        (the meter UI already exists); dealbreaker counts unchanged; archetypes recomputed, same names.</p></div>
+    </div>
+    <p class="foot">Fully compatible with the funnel: quiz → browse → mixer → catalyst weekend → join. The science says the weekend was always the real test — the quiz just decides who's at the table.</p>
+  </section>
+
+  <!-- 15 · Sources -->
+  <section class="slide">
+    <div class="kicker">Sources</div>
+    <h2>Reading list</h2>
+    <div class="cols c2" style="text-align:left">
+      <div class="card" id="src-lit"><span class="pill g">Literature (verified by the swarm)</span>
+        <ul id="lit-list">
+          <li>Finkel, Eastwick, Karney, Reis & Sprecher (2012), <em>Psychological Science in the Public Interest</em> — online dating & the limits of matching algorithms.</li>
+          <li>Joel, Eastwick & Finkel (2017), <em>Psychological Science</em> — machine learning cannot predict dyadic desire from trait profiles.</li>
+          <li>Montoya, Horton & Kirchner (2008), <em>J. Social & Personal Relationships</em> — actual vs perceived similarity meta-analysis.</li>
+          <li>Sosis & Bressler (2003), <em>Cross-Cultural Research</em> — costly requirements and 19th-century commune longevity.</li>
+          <li>Gosling, Rentfrow & Swann (2003) TIPI · Rammstedt & John (2007) BFI-10 · Soto & John (2017) BFI-2 — validated short Big Five forms.</li>
+          <li>Ashton & Lee — HEXACO honesty-humility and cooperative behavior.</li>
+          <li>Adan & Almirall (1991) — reduced Morningness–Eveningness Questionnaire (rMEQ).</li>
+          <li>Ostrom (1990), <em>Governing the Commons</em> — design principles for common-pool resources.</li>
+          <li>Jonason, Garcia, Webster, Li & Fisher (2015) — relationship dealbreakers; negative information weighs more.</li>
+          <li>Dyrenforth et al. (2010), <em>JPSP</em> — 23k couples: partner main effects, similarity adds ~nothing.</li>
+          <li>Joel et al. (2020), <em>PNAS</em> — 43 datasets: partner traits ≈5% of relationship quality.</li>
+          <li>Kurtz &amp; Sherker (2003) · Erb et al. (2014) · Niu &amp; Brown (2023) — the roommate literature.</li>
+          <li>Larson, Crane &amp; Smith (1991) — chronotype-mismatched couples.</li>
+          <li>Dew, Britt &amp; Huston (2012) · Papp et al. (2009) — money conflict.</li>
+          <li>Balliet et al. (2009) · Murphy et al. (2011) — SVO predicts cooperation.</li>
+          <li>Zettler et al. (2020) — honesty-humility &amp; exploitation. · Zablocki (1980) · Iannaccone (1994) · Christian (2003).</li>
+          <li>McCorkle &amp; Mason (2009) — roommate agreements. Full 54-finding appendix: <code>docs/quiz-research-appendix.md</code></li>
+        </ul></div>
+      <div class="card"><span class="pill p">Course & movement</span>
+        <ul>
+          <li><a href="https://github.com/RonTuretzky/session3-classical-theories">Session 3 — Theories of Communalism I</a>: the five-lens framework; "membership-filter strength predicts longevity"; the Commune Tinder brief.</li>
+          <li><a href="https://github.com/RonTuretzky/communes-that-work">Session 4 — Contemporary Communes That Work</a>: Twin Oaks, Bruderhof, Hutterites; visitor-period screening; FIC directory (500k searches/yr); "design, not luck."</li>
+          <li>Kanter (1972), <em>Commitment and Community</em> — commitment mechanisms in utopian communities.</li>
+          <li>FIC / ic.org — how real communities actually screen members.</li>
+        </ul>
+        <p style="margin-top:10px" class="tag">Research appendix with all swarm findings: <code>docs/quiz-research-appendix.md</code></p></div>
+    </div>
+  </section>
+
+  <!-- 16 · Close -->
+  <section class="slide">
+    <div class="kicker">Decision</div>
+    <h1 style="font-size:clamp(30px,5.5vw,72px)">Screen hard lines.<br/>Measure character.<br/>Match rhythms.<br/>Meet in person.</h1>
+    <p class="lede">Say the word and v2 ships: 30 items, five lenses, fit bands with reasons, and a quiz that
+    finally knows what it can't know.</p>
+  </section>
+
+</div>
+
+<button class="nav prev" onclick="move(-1)">‹</button>
+<button class="nav next" onclick="move(1)">›</button>
+<div class="dots" id="dots"></div>
+<div class="counter" id="counter"></div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  slides.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.onclick = () => show(i);
+    dots.appendChild(b);
+  });
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => s.classList.toggle("active", j === cur));
+    [...dots.children].forEach((d, j) => d.classList.toggle("on", j === cur));
+    document.getElementById("progress").style.width = ((cur + 1) / slides.length * 100) + "%";
+    document.getElementById("counter").textContent = (cur + 1) + " / " + slides.length;
+  }
+  function move(d) { show(cur + d); }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") move(1);
+    if (e.key === "ArrowLeft" || e.key === "PageUp") move(-1);
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+  });
+  show(0);
+</script>
+</body>
+</html>

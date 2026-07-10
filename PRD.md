@@ -147,7 +147,11 @@ People have extremely different chore tastes, and the same person has extremely 
 - **The reallocator**: a preference-weighted load balancer reassigns the current period's open chores — loved kinds pull toward their people, dreaded kinds push away, low-bandwidth weeks shrink your share — and reorders the cook rotation by appetite. Every move comes with a human-readable reason ("Marcus is running on fumes · Zora actually likes this") and a ✦ swap badge on the board.
 - **Steward integration**: saying "I'm slammed this week" in chat sets your bandwidth and reshuffles on the spot — nobody has to ask a housemate to cover, which is the entire point.
 
+**5c-iv. House setup wizard**
+Launching a house chains straight into configuration: create → chore calculator (`?setup=1`, step 1 of 2) → meal calculator (step 2) → dashboard. Houses with missing systems get a "finish setting up" nudge with per-system checkmarks.
+
 **5d. Steward (AI house manager)**
+> **Integration decision:** the steward seat will be filled by [lab0r.fun](https://lab0r.fun/) — no further in-house steward features. The current rule-based chat stays as a placeholder until that integration.
 - Chat interface. It reminds about chores and bill rotations, takes **maintenance requests** ("the sink is leaking" → triage → here's how to fix it yourself → or here are three plumbers near you), tracks follow-ups, answers house-rules questions.
 - Later: connects to the house's vendor accounts via MCP; a human still owns accounts, the steward drafts and coordinates.
 
