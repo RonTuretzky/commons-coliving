@@ -1,8 +1,8 @@
-# Commons — Product Requirements Document
+# colive.fun — Product Requirements Document
 
 **A Decentral Park solidarity app · co-living first, commune underneath**
 
-> Working name: **Commons** (the "coming soon" slot in the Decentral Park solidarity-apps family — pine hue, "Build together."). Everything in this document is branded co-living, not commune. That is deliberate.
+> Brand: **colive.fun** (formerly working name "Commons" — it fills the Decentral Park solidarity-apps "coming soon" slot, pine hue). Everything in this document is branded co-living, not commune. That is deliberate. Where this doc says "Commons," read colive.fun.
 
 ---
 

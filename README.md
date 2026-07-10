@@ -1,6 +1,6 @@
-# Commons — co-living, together
+# colive.fun — find your people, share a home
 
-**A Decentral Park solidarity app** (the pine one). A prototype of the full co-living pipeline: quiz-based matching → mixers & catalyst retreats (escrowed deposits) → house formation → house operations (house fund, rotating bills, 2/3 votes, chores on rails, an AI steward) → **house tools** (economic templates, a chore-schedule calculator with real effort estimates, a meal-prep calculator).
+**A Decentral Park solidarity app** (the pine one), live at [colive.fun](https://colive.fun). Formerly "Commons" — the internal JS namespace is still `window.Commons`. A prototype of the full co-living pipeline: quiz-based matching → mixers & catalyst retreats (escrowed deposits) → house formation → house operations (house fund, rotating bills, 2/3 votes, chores on rails, an AI steward) → **house tools** (economic templates, a chore-schedule calculator with real effort estimates, a meal-prep calculator).
 
 - **[PRD.md](PRD.md)** — the one big PRD: thesis, personas, all user flows, economic templates, MVP sequencing.
 - **[docs/UI-SPEC.md](docs/UI-SPEC.md)** — build conventions and the demo-store API.

@@ -60,7 +60,7 @@
         <a class="brand" href="index.html">
           <img src="assets/img/logomark.png" alt="Decentral Park" />
           <span>
-            <span class="word">Comm<em>o</em>ns</span>
+            <span class="word">colive<em>.fun</em></span>
             <span class="byline">by Decentral Park</span>
           </span>
         </a>
@@ -83,7 +83,7 @@
           <div>
             <a class="brand" href="index.html" style="color:var(--paper-main)">
               <img src="assets/img/logomark.png" alt="" />
-              <span><span class="word" style="color:var(--paper-main)">Comm<em>o</em>ns</span>
+              <span><span class="word" style="color:var(--paper-main)">colive<em>.fun</em></span>
               <span class="byline" style="color:#9db3a6">by Decentral Park</span></span>
             </a>
             <p class="tagline">Imagining a post-capitalist world in the heart of NYC. Find your people. Share a home.</p>
@@ -93,7 +93,7 @@
             <ul>
               <li><a href="${LINKS.website}" target="_blank" rel="noopener">Mutual Aid — give without giving</a></li>
               <li><a href="${LINKS.meetings}" target="_blank" rel="noopener">Meetups — gather in the park</a></li>
-              <li><a href="index.html">Commons — build together</a></li>
+              <li><a href="index.html">colive.fun — find your people</a></li>
             </ul>
           </div>
           <div>
@@ -113,7 +113,7 @@
           </div>
         </div>
         <div class="legal">
-          <span>Commons is in early access — payments are simulated while the rails are finished. Your data lives on your device.</span>
+          <span>colive.fun is in early access — payments are simulated while the rails are finished. Your data lives on your device.</span>
           <span>P2P license · Decentral Park</span>
         </div>
       </div>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Your account — Commons by Decentral Park</title>
+  <title>Your account — colive.fun</title>
   <link rel="icon" href="assets/img/logomark.png" />
   <link rel="stylesheet" href="assets/css/park.css" />
 </head>
@@ -31,7 +31,7 @@
     async function passkeyCreate(name) {
       const cred = await navigator.credentials.create({ publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: "Commons" },
+        rp: { name: "colive.fun" },
         user: { id: crypto.getRandomValues(new Uint8Array(16)), name: name, displayName: name },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
         authenticatorSelection: { userVerification: "preferred", residentKey: "preferred" },
