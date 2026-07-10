@@ -86,13 +86,13 @@
           </div>
           <span class="avatar-stack">${stack}</span>
         </div>
-        <p class="text-caption muted">Money here runs on the <a href="templates.html">economic template</a> the house picked — the ledger does the remembering, so nobody has to nag.</p>
+        <p class="text-caption muted">Money here runs on the <a href="templates.html">money system</a> the house picked — the <a href="ledger.html">ledger</a> does the remembering, so nobody has to nag.</p>
 
         <div class="grid grid-3">
           <div class="card stack">
             <div class="kicker">House fund</div>
             <div><span class="text-h2 amount pos">${U.fmtMoney(t.balance)}</span></div>
-            <p class="small muted">${U.fmtMoney(house.poolMonthly)}/mo each into the pool · <a href="templates.html">${U.esc(Commons.econ.label(house.poolModel))}</a> template.</p>
+            <p class="small muted">${U.fmtMoney(house.poolMonthly)}/mo each into the pool · the <a href="templates.html">${U.esc(Commons.econ.label(house.poolModel))}</a> system.</p>
             <div class="progress green"><i style="width:${Math.round((paidCount / nMembers) * 100)}%"></i></div>
             <p class="text-caption muted">${paidCount} of ${nMembers} contributions in this month. Spending moves only by two-thirds vote.</p>
           </div>
@@ -135,6 +135,17 @@
             <p class="text-caption muted">Rotates automatically — nobody has to remember.</p>
           </div>
         </div>
+
+        ${(() => {
+          const myNet = Commons.ledger.balances()["me"] || 0;
+          const plan = Commons.ledger.simplify();
+          const standing = Math.abs(myNet) < 0.01 ? "You're all square" : (myNet > 0 ? `You're owed <strong class="amount pos">${U.fmtMoney(Math.abs(myNet))}</strong>` : `You owe <strong class="amount neg">${U.fmtMoney(Math.abs(myNet))}</strong>`);
+          return `<a class="card clickable row between wrap" href="ledger.html">
+            <span class="row"><span style="font-size:1.5rem">🧾</span><span><strong class="display-bold">The ledger</strong>
+              <span class="small muted" style="display:block">${standing} across the house's shared expenses · ${plan.length ? plan.length + " payment" + (plan.length > 1 ? "s" : "") + " would square everyone" : "everyone's square"}</span></span></span>
+            <span class="park-btn light sm">Open the ledger →</span>
+          </a>`;
+        })()}
 
         <div class="row between wrap" style="margin-top:12px">
           <div>

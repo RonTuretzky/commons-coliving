@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Templates — Commons by Decentral Park</title>
+  <title>House systems — Commons by Decentral Park</title>
   <link rel="icon" href="assets/img/logomark.png" />
   <link rel="stylesheet" href="assets/css/park.css" />
 </head>
@@ -52,25 +52,25 @@
     <div class="stack-lg">
       <header>
         <div class="kicker">House money</div>
-        <h1 class="text-h2">Pick a template, skip the awkward talks</h1>
+        <h1 class="text-h2">Run the house on a system that works</h1>
         <p class="lede" style="max-width:720px;margin-top:10px">Every house needs a money answer, and most never say it out loud.
         These are the six that actually work — borrowed from real co-living houses and co-ops. Money runs on the
-        template, a ledger, and votes. Never on nagging.</p>
+        system, a ledger, and votes. Never on nagging.</p>
         <p class="text-caption muted" style="margin-top:10px">Every number on this page is an estimate — a place to start
         the conversation, not an invoice. The ledger keeps the real score.</p>
       </header>
 
       <section>
-        <div class="kicker">The six templates</div>
+        <div class="kicker">The six money systems</div>
         <div class="grid grid-3" id="tpl-grid" style="margin-top:14px"></div>
       </section>
 
-      <section class="card stack">
+      <section class="card stack" id="rent-splitter">
         <div>
           <div class="kicker">Calculator</div>
           <h2 class="text-h3">Room-weighted rent splitter</h2>
           <p class="muted" style="margin-top:6px">The parlor floor should not cost the same as the closet room.
-          Weigh each room and the rent follows — this is the math behind the 📐 Room-Weighted Split template.</p>
+          Weigh each room and the rent follows — this is the math behind the 📐 Room-Weighted Split system.</p>
         </div>
         <div class="row wrap between" style="align-items:flex-end">
           <div class="field" style="min-width:220px">
@@ -89,12 +89,12 @@
         </div>
       </section>
 
-      <section class="card stack">
+      <section class="card stack" id="sliding-scale">
         <div>
           <div class="kicker">Calculator</div>
           <h2 class="text-h3">Sliding-scale contributions</h2>
           <p class="muted" style="margin-top:6px">The pool shouldn't price anyone out. Set the target, slide the
-          take-homes, and the split scales itself — the math behind the ⚖️ Sliding Scale template.</p>
+          take-homes, and the split scales itself — the math behind the ⚖️ Sliding Scale system.</p>
         </div>
         <div class="row wrap between" style="align-items:flex-end">
           <div class="field" style="min-width:220px">
@@ -114,7 +114,7 @@
       </section>
 
       <div class="card flat">
-        <p class="small muted">Templates are starting points, not law. A house can switch templates whenever it likes —
+        <p class="small muted">These systems are starting points, not law. A house can switch whenever it likes —
         by a 2/3 vote, the same way it decides everything else. <a href="dashboard.html">See how votes work →</a></p>
       </div>
     </div>`;
@@ -152,7 +152,7 @@
         if (!h) return;
         Commons.econ.apply(h.id, btn.dataset.apply);
         renderTemplates();
-        Shell.toast("Template switched — takes effect next month", "green");
+        Shell.toast("System switched — takes effect next month", "green");
       }));
     }
 

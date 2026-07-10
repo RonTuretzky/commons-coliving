@@ -117,7 +117,7 @@
     function initSteward() {
       /* ---------- constants ---------- */
       const ASK_BREAK = "On it. What broke, and where? One sentence is plenty — I'll open a ticket the whole house can see.";
-      const QUICK = ["What's due this week?", "Who pays Con Ed?", "Something's broken", "House rules?", "Find a plumber"];
+      const QUICK = ["What's due this week?", "Who owes what?", "I'm slammed this week", "Who pays Con Ed?", "Something's broken", "House rules?"];
       const VENDORS = [
         { kind: "vendor", name: "Ridgewood Pipeworks", meta: "⭐ 4.9 · $$", tag: "“the co-op plumber” — three houses in the network swear by him" },
         { kind: "vendor", name: "Sunset Drain Co", meta: "⭐ 4.7 · $", tag: "fast, cash-friendly, zero drama" },
@@ -147,6 +147,8 @@
       /* ---------- the brain ---------- */
       function respond(text) {
         const t = text.toLowerCase();
+        if (/(slammed|overwhelm|busy|no bandwidth|reshuffle|rebalance|swap|can't this week|cover me|fumes)/.test(t)) return rebalanceReply();
+        if (/(owe|owes|ledger|settle|square|split)/.test(t)) return ledgerReply();
         if (/(due|week|chore)/.test(t)) return choresReply();
         if (/(bill|con ed|coned|internet|electric|util|pay)/.test(t)) return billsReply();
         if (/(rule|quiet|polic)/.test(t)) return rulesReply();
@@ -155,6 +157,37 @@
         if (/(treasur|money|balance|fund|pool)/.test(t)) return treasuryReply();
         if (/(event|mixer|retreat|gather|dinner|calendar)/.test(t)) return eventsReply();
         return helpReply();
+      }
+
+      function ledgerReply() {
+        const net = Commons.ledger.balances();
+        const mine = net["me"] || 0;
+        const plan = Commons.ledger.simplify();
+        const standing = Math.abs(mine) < 0.01 ? "You're all square with the house."
+          : mine > 0 ? `The house owes you ${U.fmtMoney(Math.abs(mine))}.` : `You owe the house ${U.fmtMoney(Math.abs(mine))} overall.`;
+        const myMove = plan.find((p) => p.from === "me");
+        const lines = [standing];
+        if (plan.length) {
+          lines.push(`${plan.length} payment${plan.length > 1 ? "s" : ""} would square everyone (netted down from the raw tangle).`);
+          if (myMove) lines.push(`Your move: ${U.fmtMoney(myMove.amount)} to ${firstName(myMove.to)} — settling takes one tap and about two seconds.`);
+        } else {
+          lines.push("Nobody owes anybody. Historic.");
+        }
+        return { text: lines.join("\n"), actions: [{ kind: "link", href: "ledger.html", label: "Open the ledger" }] };
+      }
+
+      function rebalanceReply() {
+        Commons.prefs.setBandwidth("low");
+        const r = Commons.rebalance.week();
+        const lines = ["Got you — I set your week to 🫠 running-on-fumes and reshuffled."];
+        if (r.changes.length) {
+          r.changes.forEach((c) => lines.push(`• ${c.emoji} ${c.name}: ${c.from === "me" ? "you" : firstName(c.from)} → ${c.to === "me" ? "you" : firstName(c.to)} (${c.reason})`));
+        } else {
+          lines.push("Nothing needed to move — your plate was already clear.");
+        }
+        if (r.mealNote) lines.push(`🍲 ${r.mealNote}`);
+        lines.push("It all rebalances back when you check in with more bandwidth. Nobody had to be asked.");
+        return { text: lines.join("\n"), actions: [{ kind: "link", href: "checkin.html", label: "Adjust the check-in" }, { kind: "link", href: "chores.html", label: "See the board" }] };
       }
 
       function choresReply() {
@@ -254,7 +287,11 @@
           ? `Heads up: ${bills.map((b) => `${b.name} (${U.fmtMoney(b.amount)}, due the ${ord(b.dueDay)})`).join(" and ")} — that one's yours this month.`
           : "No bills on you this month — the rotation's covering you.");
         if (next) parts.push(`Next gathering: ${next.title}, ${U.fmtDate(next.when)} (${U.relDate(next.when)}).`);
-        parts.push("Ask me anything, or tap a chip below.");
+        const myNet = Commons.ledger.balances()["me"] || 0;
+        if (Math.abs(myNet) >= 0.01) parts.push(myNet > 0
+          ? `Ledger says the house owes you ${U.fmtMoney(Math.abs(myNet))} — settling is one tap whenever.`
+          : `Ledger says you owe ${U.fmtMoney(Math.abs(myNet))} across the house — one tap squares it.`);
+        parts.push("Ask me anything, or tap a chip below. If you're slammed this week, just say so — I'll reshuffle your chores.");
         Commons.steward.push({ who: "steward", text: parts.join("\n") });
       }
 

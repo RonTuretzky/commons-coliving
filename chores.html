@@ -47,11 +47,15 @@
         const mine = who === "me";
         const done = Commons.chores.done(c.id, period);
         const info = Commons.chores.doneInfo(c.id, period);
+        const swapped = Commons.rebalance.isOverridden(c.id, period);
         return `<div class="card stack" style="${mine && !done ? "border:2px solid var(--pine)" : ""}">
           <div class="row between">
             <span style="font-size:2rem">${c.emoji}</span>
+            <span class="row" style="gap:6px">
+            ${swapped ? `<span class="pill paper" title="The reallocator moved this off the base rotation">✦ swapped</span>` : ""}
             ${mine && !done ? `<span class="pill pine">You're on it</span>` : ""}
             ${done ? `<span class="pill match">Done</span>` : ""}
+            </span>
           </div>
           <h3 class="text-h4">${U.esc(c.name)}</h3>
           <div class="row"><span class="row" style="gap:6px">${Shell.avatarHtml(person(who), "sm")}
@@ -118,6 +122,12 @@
           </div>
           <a class="lifted sm stroke" href="chore-builder.html"><span class="shadow"></span><span class="face">🧮 Design a new rotation</span></a>
         </div>
+
+        <a class="card clickable row between wrap" href="checkin.html">
+          <span class="row"><span style="font-size:1.5rem">😮‍💨</span><span><strong class="display-bold">Weird week?</strong>
+            <span class="small muted" style="display:block">Say what you love, what you dread, and how much bandwidth you've actually got — the house reshuffles itself.${Commons.rebalance.overrideCount() ? ` <strong>${Commons.rebalance.overrideCount()} chores are currently swapped.</strong>` : ""}</span></span></span>
+          <span class="park-btn light sm">Do the check-in →</span>
+        </a>
 
         <div>
           <div class="kicker">Right now</div>

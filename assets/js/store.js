@@ -9,7 +9,7 @@
      - bills: deterministic monthly rotation
    ============================================================ */
 (function () {
-  const KEY = "dp-commons-v2";
+  const KEY = "dp-commons-v4";
   const DAY = 86400000;
   const now = Date.now();
   const days = (n) => new Date(now + n * DAY).toISOString();
@@ -90,37 +90,37 @@
      floors), not deep-clean numbers. */
   const SPACES = [
     { id: "kitchen", label: "Kitchen", emoji: "🍳", countable: false, tasks: [
-      { name: "Kitchen reset", minutes: 15, freqDays: 3, desc: "Counters, dishes away, wipe stove" },
-      { name: "Kitchen deep clean", minutes: 45, freqDays: 7, desc: "Stove, sink scrub, floor" },
-      { name: "Fridge audit", minutes: 15, freqDays: 14, desc: "Toss the science experiments" },
+      { name: "Kitchen reset", minutes: 15, freqDays: 3, kind: "kitchen", desc: "Counters, dishes away, wipe stove" },
+      { name: "Kitchen deep clean", minutes: 45, freqDays: 7, kind: "kitchen", desc: "Stove, sink scrub, floor" },
+      { name: "Fridge audit", minutes: 15, freqDays: 14, kind: "kitchen", desc: "Toss the science experiments" },
     ]},
     { id: "bath", label: "Bathroom", emoji: "🛁", countable: true, max: 4, tasks: [
-      { name: "Bathroom clean", minutes: 30, freqDays: 7, desc: "Toilet, sink, shower, floor" },
-      { name: "Towels & restock", minutes: 10, freqDays: 7, desc: "Fresh towels, TP, soap" },
+      { name: "Bathroom clean", minutes: 30, freqDays: 7, kind: "bathroom", desc: "Toilet, sink, shower, floor" },
+      { name: "Towels & restock", minutes: 10, freqDays: 7, kind: "bathroom", desc: "Fresh towels, TP, soap" },
     ]},
     { id: "common", label: "Common room", emoji: "🛋️", countable: true, max: 4, tasks: [
-      { name: "Sweep & tidy", minutes: 15, freqDays: 7, desc: "Floors, surfaces, cushions" },
-      { name: "Mop & dust", minutes: 20, freqDays: 14, desc: "Wet mop, shelves, sills" },
+      { name: "Sweep & tidy", minutes: 15, freqDays: 7, kind: "floors", desc: "Floors, surfaces, cushions" },
+      { name: "Mop & dust", minutes: 20, freqDays: 14, kind: "floors", desc: "Wet mop, shelves, sills" },
     ]},
     { id: "hall", label: "Hall & stairs", emoji: "🪜", countable: false, tasks: [
-      { name: "Stairs & hallway sweep", minutes: 10, freqDays: 7, desc: "Top to bottom" },
+      { name: "Stairs & hallway sweep", minutes: 10, freqDays: 7, kind: "floors", desc: "Top to bottom" },
     ]},
     { id: "trash", label: "Trash duty", emoji: "🗑️", countable: false, tasks: [
-      { name: "Trash & recycling out", minutes: 10, freqDays: 7, desc: "Curb night — know your pickup day" },
-      { name: "Compost run", minutes: 15, freqDays: 14, desc: "Drop-off or brown bin" },
+      { name: "Trash & recycling out", minutes: 10, freqDays: 7, kind: "trash", desc: "Curb night — know your pickup day" },
+      { name: "Compost run", minutes: 15, freqDays: 14, kind: "trash", desc: "Drop-off or brown bin" },
     ]},
     { id: "stoop", label: "Stoop / yard", emoji: "🪴", countable: false, tasks: [
-      { name: "Stoop sweep & plants", minutes: 15, freqDays: 7, desc: "Sweep, water, say hi to neighbors" },
-      { name: "Yard hour", minutes: 45, freqDays: 30, desc: "Weeds, leaves, the ambitious corner" },
+      { name: "Stoop sweep & plants", minutes: 15, freqDays: 7, kind: "outdoor", desc: "Sweep, water, say hi to neighbors" },
+      { name: "Yard hour", minutes: 45, freqDays: 30, kind: "outdoor", desc: "Weeds, leaves, the ambitious corner" },
     ]},
     { id: "laundry", label: "Laundry room", emoji: "🧺", countable: false, tasks: [
-      { name: "Communal linens", minutes: 20, freqDays: 14, desc: "House towels, rags, lint trap" },
+      { name: "Communal linens", minutes: 20, freqDays: 14, kind: "laundry", desc: "House towels, rags, lint trap" },
     ]},
     { id: "basement", label: "Basement / storage", emoji: "🕸️", countable: false, tasks: [
-      { name: "Storage reset", minutes: 20, freqDays: 30, desc: "Sweep, restack, evict spiders" },
+      { name: "Storage reset", minutes: 20, freqDays: 30, kind: "organizing", desc: "Sweep, restack, evict spiders" },
     ]},
     { id: "pantry", label: "Bulk pantry", emoji: "🌾", countable: false, tasks: [
-      { name: "Bulk restock run", minutes: 45, freqDays: 30, desc: "Costco / co-op run for staples" },
+      { name: "Bulk restock run", minutes: 45, freqDays: 30, kind: "organizing", desc: "Costco / co-op run for staples" },
     ]},
   ];
 
@@ -133,6 +133,31 @@
       spaces: { kitchen: 1, bath: 2, common: 3, trash: 1, laundry: 1, basement: 1 } },
     { id: "land", name: "Land project", emoji: "⛰️", people: 10,
       spaces: { kitchen: 1, bath: 3, common: 2, hall: 1, trash: 1, stoop: 1, laundry: 1, basement: 1, pantry: 1 } },
+  ];
+
+  /* ---------- Chore kinds & preferences ----------
+     People have wildly different chore tastes. Kinds let the rebalancer
+     route bathrooms away from the bathroom-hater and give the garden to
+     whoever finds it restorative. */
+  const CHORE_KINDS = [
+    { id: "kitchen", label: "Kitchen work", emoji: "🍳" },
+    { id: "cooking", label: "Cooking", emoji: "🍲" },
+    { id: "bathroom", label: "Bathrooms", emoji: "🛁" },
+    { id: "floors", label: "Floors & dusting", emoji: "🧹" },
+    { id: "trash", label: "Trash & compost", emoji: "🗑️" },
+    { id: "outdoor", label: "Plants & outdoors", emoji: "🪴" },
+    { id: "laundry", label: "Linens & laundry", emoji: "🧺" },
+    { id: "organizing", label: "Organizing & errands", emoji: "📦" },
+  ];
+  const BANDWIDTH = [
+    { id: "low", label: "Running on fumes", emoji: "🫠", capacity: 0.4, desc: "Big week elsewhere — cover me, I'll make it up." },
+    { id: "normal", label: "Regular week", emoji: "🙂", capacity: 1, desc: "Business as usual." },
+    { id: "high", label: "Got energy to burn", emoji: "⚡", capacity: 1.6, desc: "Therapy-cleaning energy. Load me up." },
+  ];
+  const APPETITE = [
+    { id: "avoid", label: "Don't make me cook", emoji: "🙅", desc: "Feed me, but don't ask anything of me." },
+    { id: "fine", label: "I'll take my turn", emoji: "🙂", desc: "Normal rotation is fine." },
+    { id: "love", label: "Therapy-baking week", emoji: "🧑‍🍳", desc: "I want the kitchen. Give me the kitchen." },
   ];
 
   /* ---------- Meal planning (calculator) ----------
@@ -367,7 +392,7 @@
 
   function seedState() {
     return {
-      version: 2,
+      version: 4,
       seededAt: now,
       me: {
         id: "me", name: "You", age: 30, borough: "Bed-Stuy", budget: 1500,
@@ -417,16 +442,53 @@
           votes: { "p-zora": true, "me": true, "p-eli": true, "p-june": true } },
       ],
       chores: [
-        { id: "c-kitchen", name: "Kitchen reset", emoji: "🍳", freqDays: 7, start: days(-70), rotation: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] },
-        { id: "c-trash", name: "Trash & recycling", emoji: "🗑️", freqDays: 7, start: days(-70), rotation: ["p-june", "me", "p-zora", "p-eli", "p-priya", "p-marcus"] },
-        { id: "c-bath", name: "Bathroom deep clean", emoji: "🛁", freqDays: 14, start: days(-84), rotation: ["p-priya", "p-marcus", "p-june", "me", "p-zora", "p-eli"] },
-        { id: "c-sweep", name: "Sweep common rooms", emoji: "🧹", freqDays: 7, start: days(-70), rotation: ["p-marcus", "p-june", "me", "p-zora", "p-eli", "p-priya"] },
-        { id: "c-plants", name: "Plants & stoop", emoji: "🪴", freqDays: 7, start: days(-70), rotation: ["p-zora", "p-eli", "p-priya", "p-marcus", "p-june", "me"] },
-        { id: "c-compost", name: "Compost run", emoji: "🌰", freqDays: 14, start: days(-84), rotation: ["p-eli", "p-priya", "p-marcus", "p-june", "me", "p-zora"] },
+        { id: "c-kitchen", name: "Kitchen reset", emoji: "🍳", kind: "kitchen", minutes: 20, freqDays: 7, start: days(-70), rotation: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] },
+        { id: "c-trash", name: "Trash & recycling", emoji: "🗑️", kind: "trash", minutes: 10, freqDays: 7, start: days(-70), rotation: ["p-june", "me", "p-zora", "p-eli", "p-priya", "p-marcus"] },
+        { id: "c-bath", name: "Bathroom deep clean", emoji: "🛁", kind: "bathroom", minutes: 30, freqDays: 14, start: days(-84), rotation: ["p-priya", "p-marcus", "p-june", "me", "p-zora", "p-eli"] },
+        { id: "c-sweep", name: "Sweep common rooms", emoji: "🧹", kind: "floors", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-marcus", "p-june", "me", "p-zora", "p-eli", "p-priya"] },
+        { id: "c-plants", name: "Plants & stoop", emoji: "🪴", kind: "outdoor", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-zora", "p-eli", "p-priya", "p-marcus", "p-june", "me"] },
+        { id: "c-compost", name: "Compost run", emoji: "🌰", kind: "trash", minutes: 15, freqDays: 14, start: days(-84), rotation: ["p-eli", "p-priya", "p-marcus", "p-june", "me", "p-zora"] },
       ],
       choreDone: {},          // { choreId: { period: { by, at } } } — seeded below
+      choreOverrides: {},     // { "choreId:period": memberId } — set by the rebalancer
+      chorePrefs: {           // love/hate by CHORE_KINDS id
+        me: { loves: ["kitchen"], hates: ["bathroom"] },
+        "p-zora": { loves: ["cooking", "kitchen"], hates: ["trash"] },
+        "p-eli": { loves: ["organizing", "trash"], hates: ["outdoor"] },
+        "p-priya": { loves: ["floors"], hates: [] },
+        "p-marcus": { loves: ["outdoor"], hates: ["organizing"] },
+        "p-june": { loves: ["outdoor", "cooking"], hates: ["floors"] },
+      },
+      bandwidth: { me: "normal", "p-zora": "normal", "p-eli": "high", "p-priya": "normal", "p-marcus": "low", "p-june": "normal" },
+      mealAppetite: { me: "fine", "p-zora": "love", "p-eli": "fine", "p-priya": "fine", "p-marcus": "avoid", "p-june": "fine" },
       mealPlan: { presetId: "dinner-club", eaters: 6, dinners: 3, vegShare: 0.5, tier: "standard",
         batchDay: "Sunday", rotation: ["p-zora", "me", "p-june", "p-priya", "p-marcus", "p-eli"] },
+      expenses: [
+        { id: "x-costco", desc: "Costco run — dry goods & staples", amount: 187.4, paidBy: "p-june", category: "groceries",
+          at: days(-2), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+        { id: "x-coned", desc: "Con Edison (June)", amount: 214, paidBy: "p-eli", category: "utilities", fromBill: "b-coned",
+          at: days(-4), recurring: "monthly", split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+        { id: "x-keg", desc: "Keg + ice for the stoop party", amount: 96, paidBy: "p-marcus", category: "fun",
+          at: days(-6), split: { mode: "equal", participants: ["me", "p-zora", "p-priya", "p-marcus"] },
+          note: "June & Eli sat this one out — not split to them." },
+        { id: "x-supplies", desc: "Cleaning supplies restock", amount: 43.75, paidBy: "me", category: "supplies",
+          at: days(-8), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+        { id: "x-canning", desc: "Bulk tomatoes for canning day", amount: 62, paidBy: "p-june", category: "groceries",
+          at: days(-10), split: { mode: "shares", participants: ["p-june", "p-zora", "me", "p-priya"],
+            values: { "p-june": 2, "p-zora": 2, "me": 1, "p-priya": 1 } },
+          note: "Canning crew took double shares — they keep double jars." },
+        { id: "x-ubers", desc: "Cars back from Vibe Camp", amount: 75, paidBy: "me", category: "transport",
+          at: days(-12), split: { mode: "exact", participants: ["p-zora", "p-marcus", "me"],
+            values: { "p-zora": 30, "p-marcus": 30, "me": 15 } } },
+        { id: "x-bath", desc: "Shower curtain + bathmat", amount: 38, paidBy: "p-priya", category: "supplies",
+          at: days(-15), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+        { id: "x-pizza", desc: "Pizza for stoop-repair day", amount: 54, paidBy: "p-marcus", category: "fun",
+          at: days(-18), split: { mode: "equal", participants: ["me", "p-eli", "p-marcus", "p-june"] } },
+      ],
+      settlements: [
+        { id: "s-1", from: "p-priya", to: "me", amount: 40, at: days(-5), rail: { fee: 0.02, seconds: 1.8, ref: "rail-8f3a21" } },
+        { id: "s-2", from: "me", to: "p-eli", amount: 62, at: days(-12), rail: { fee: 0.03, seconds: 2.4, ref: "rail-c07d55" } },
+      ],
       stewardChat: [],        // {who:'me'|'steward', text, at, actions?}
       maintenance: [
         { id: "m-sink", title: "Kitchen sink slow drain", status: "open", openedBy: "p-zora", at: days(-2), notes: "Steward suggested enzyme treatment before calling anyone." },
@@ -457,8 +519,15 @@
   }
   function choreAssignee(chore, period) {
     const p = period == null ? currentPeriod(chore) : period;
+    const override = state && state.choreOverrides && state.choreOverrides[chore.id + ":" + p];
+    return override || chore.rotation[p % chore.rotation.length];
+  }
+  function rotationAssignee(chore, period) {
+    const p = period == null ? currentPeriod(chore) : period;
     return chore.rotation[p % chore.rotation.length];
   }
+  function firstName(id) { const per = personOrMe(id, state); return per ? per.name.split(/\s+/)[0] : id; }
+  function kindLabel(kind) { const k = CHORE_KINDS.find((x) => x.id === kind); return k ? k.label : kind; }
 
   function monthKey(d) { const x = d ? new Date(d) : new Date(); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"); }
   function monthIndex(d) { const x = d ? new Date(d) : new Date(); return x.getFullYear() * 12 + x.getMonth(); }
@@ -514,7 +583,7 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 2) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 4) return; }
     } catch (e) { /* reseed */ }
     state = seedState();
     seedChoreHistory(state);
@@ -573,7 +642,7 @@
               chores.push({
                 id: "c-" + sp.id + (n > 1 ? "-" + (i + 1) : "") + "-" + ti,
                 name: t.name + (n > 1 ? " · " + sp.label + " " + (i + 1) : ""),
-                emoji: sp.emoji, freqDays: t.freqDays, minutes: t.minutes, desc: t.desc,
+                emoji: sp.emoji, kind: t.kind, freqDays: t.freqDays, minutes: t.minutes, desc: t.desc,
               });
             });
           }
@@ -591,7 +660,7 @@
         const h = state.houses.find((x) => x.id === state.myHouseId);
         const members = h ? h.members.slice() : ["me"];
         state.chores = chores.map((c, i) => ({
-          id: c.id, name: c.name, emoji: c.emoji, freqDays: c.freqDays, minutes: c.minutes,
+          id: c.id, name: c.name, emoji: c.emoji, kind: c.kind, freqDays: c.freqDays, minutes: c.minutes,
           start: new Date().toISOString(),
           // stagger rotation starts so the same person doesn't open every chore
           rotation: members.slice(i % members.length).concat(members.slice(0, i % members.length)),
@@ -731,6 +800,213 @@
         if (yes >= t) { p.status = "passed"; p.resolvedAt = new Date().toISOString(); if (p.kind === "spend" && p.amount) { state.treasury.balance -= p.amount; p.executed = true; } }
         else if (no >= t) { p.status = "rejected"; p.resolvedAt = new Date().toISOString(); }
         save(); return p;
+      },
+    },
+
+    CHORE_KINDS, BANDWIDTH, APPETITE,
+
+    prefs: {
+      kinds: () => CHORE_KINDS.slice(),
+      get: (memberId) => state.chorePrefs[memberId] || { loves: [], hates: [] },
+      setMine(p) { state.chorePrefs.me = { loves: p.loves || [], hates: p.hates || [] }; save(); },
+      bandwidth: (memberId) => state.bandwidth[memberId || "me"] || "normal",
+      setBandwidth(id, memberId) { state.bandwidth[memberId || "me"] = id; save(); },
+      appetite: (memberId) => state.mealAppetite[memberId || "me"] || "fine",
+      setAppetite(id, memberId) { state.mealAppetite[memberId || "me"] = id; save(); },
+    },
+
+    // The reallocator: reassigns THIS period's not-yet-done chores so minutes
+    // land where the bandwidth is, loved kinds go to their people, and hated
+    // kinds go anywhere else. Greedy: biggest chores placed first, each to the
+    // member with the lowest preference-adjusted load.
+    rebalance: {
+      week() {
+        const h = state.houses.find((x) => x.id === state.myHouseId);
+        if (!h) return { changes: [], mealNote: null };
+        const members = h.members.slice();
+        const cap = {}, load = {};
+        members.forEach((m) => {
+          const bw = BANDWIDTH.find((b) => b.id === (state.bandwidth[m] || "normal")) || BANDWIDTH[1];
+          cap[m] = bw.capacity; load[m] = 0;
+        });
+        const open = state.chores
+          .map((c) => ({ c, period: currentPeriod(c) }))
+          .filter(({ c, period }) => !(state.choreDone[c.id] || {})[period])
+          .sort((a, b) => (b.c.minutes || 20) - (a.c.minutes || 20));
+        const changes = [];
+        open.forEach(({ c, period }) => {
+          const before = choreAssignee(c, period);
+          let best = null, bestScore = Infinity;
+          members.forEach((m) => {
+            const prefs = state.chorePrefs[m] || { loves: [], hates: [] };
+            let score = (load[m] + (c.minutes || 20)) / cap[m];
+            if (c.kind && prefs.loves.includes(c.kind)) score -= 22;
+            if (c.kind && prefs.hates.includes(c.kind)) score += 30;
+            if (m === before) score -= 4; // mild stickiness — don't churn for churn's sake
+            if (score < bestScore) { bestScore = score; best = m; }
+          });
+          load[best] += (c.minutes || 20);
+          const key = c.id + ":" + period;
+          if (best !== rotationAssignee(c, period)) state.choreOverrides[key] = best;
+          else delete state.choreOverrides[key];
+          if (best !== before) {
+            const prefs = state.chorePrefs[best] || { loves: [], hates: [] };
+            const beforePrefs = state.chorePrefs[before] || { loves: [], hates: [] };
+            let reason = "evening out the minutes";
+            if ((state.bandwidth[before] || "normal") === "low") reason = (before === "me" ? "you're running on fumes" : firstName(before) + " is running on fumes");
+            else if (c.kind && beforePrefs.hates.includes(c.kind)) reason = (before === "me" ? "you hate " : firstName(before) + " hates ") + kindLabel(c.kind).toLowerCase();
+            if (c.kind && prefs.loves.includes(c.kind)) reason += " · " + (best === "me" ? "you actually like this" : firstName(best) + " actually likes this");
+            changes.push({ choreId: c.id, name: c.name, emoji: c.emoji, period, from: before, to: best, reason });
+          }
+        });
+        // meals: reorder the cook rotation by appetite (therapy-bakers first, avoiders last)
+        let mealNote = null;
+        if (state.mealPlan && state.mealPlan.rotation) {
+          const rank = { love: 0, fine: 1, avoid: 2 };
+          state.mealPlan.rotation.sort((a, b) => (rank[state.mealAppetite[a] || "fine"] || 1) - (rank[state.mealAppetite[b] || "fine"] || 1));
+          const avoiders = members.filter((m) => (state.mealAppetite[m] || "fine") === "avoid");
+          const bakers = members.filter((m) => (state.mealAppetite[m] || "fine") === "love");
+          if (avoiders.length || bakers.length) {
+            mealNote = (bakers.length ? firstName(bakers[0]) + " wants the kitchen this week" : "") +
+              (bakers.length && avoiders.length ? "; " : "") +
+              (avoiders.length ? avoiders.map(firstName).join(" & ") + (avoiders.length > 1 ? " are" : " is") + " off cook duty" : "") + ".";
+          }
+        }
+        save();
+        return { changes, mealNote };
+      },
+      clear() { state.choreOverrides = {}; save(); },
+      overrideCount: () => Object.keys(state.choreOverrides).length,
+      isOverridden: (choreId, period) => !!state.choreOverrides[choreId + ":" + period],
+    },
+
+    ledger: {
+      CATEGORIES: [
+        { id: "groceries", label: "Groceries", emoji: "🛒" },
+        { id: "utilities", label: "Utilities", emoji: "💡" },
+        { id: "supplies", label: "Supplies", emoji: "🧴" },
+        { id: "repairs", label: "Repairs", emoji: "🔧" },
+        { id: "fun", label: "Fun", emoji: "🎉" },
+        { id: "transport", label: "Transport", emoji: "🚕" },
+        { id: "other", label: "Other", emoji: "🧷" },
+      ],
+      all: () => state.expenses.slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      settlements: () => state.settlements.slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      add(x) {
+        const e = Object.assign({ id: "x-" + Math.random().toString(36).slice(2, 8), at: new Date().toISOString(), category: "other" }, x);
+        state.expenses.unshift(e); save(); return e;
+      },
+      // per-member share of one expense, exact to the cent (remainder to the payer)
+      shares(x) {
+        const out = {};
+        const parts = x.split.participants;
+        const cents = Math.round(x.amount * 100);
+        if (x.split.mode === "exact") {
+          parts.forEach((p) => { out[p] = Math.round((x.split.values?.[p] || 0) * 100) / 100; });
+          return out;
+        }
+        let weights;
+        if (x.split.mode === "shares") weights = parts.map((p) => x.split.values?.[p] || 1);
+        else if (x.split.mode === "percent") weights = parts.map((p) => x.split.values?.[p] || 0);
+        else weights = parts.map(() => 1);
+        const total = weights.reduce((s, w) => s + w, 0) || 1;
+        let assigned = 0;
+        parts.forEach((p, i) => {
+          const c = Math.floor((cents * weights[i]) / total);
+          out[p] = c / 100; assigned += c;
+        });
+        const payer = parts.includes(x.paidBy) ? x.paidBy : parts[0];
+        out[payer] = Math.round((out[payer] * 100 + (cents - assigned))) / 100;
+        return out;
+      },
+      // net balance per member: + means the house owes them
+      balances() {
+        const net = {};
+        const bump = (id, v) => { net[id] = Math.round(((net[id] || 0) + v) * 100) / 100; };
+        state.expenses.forEach((x) => {
+          if (x.paidByFund) return; // fund-paid: no interpersonal debt
+          bump(x.paidBy, x.amount);
+          const sh = this.shares(x);
+          Object.entries(sh).forEach(([p, v]) => bump(p, -v));
+        });
+        state.settlements.forEach((s) => { bump(s.from, s.amount); bump(s.to, -s.amount); });
+        return net;
+      },
+      // Splitwise-style simplify: greedy netting of givers vs receivers.
+      // Optimal payment-count is NP-hard; greedy is what Splitwise ships too.
+      simplify() {
+        const net = this.balances();
+        const owed = [], owes = [];
+        Object.entries(net).forEach(([id, v]) => {
+          if (v > 0.009) owed.push({ id, v });
+          else if (v < -0.009) owes.push({ id, v: -v });
+        });
+        owed.sort((a, b) => b.v - a.v); owes.sort((a, b) => b.v - a.v);
+        const plan = [];
+        let i = 0, j = 0;
+        while (i < owes.length && j < owed.length) {
+          const amt = Math.min(owes[i].v, owed[j].v);
+          plan.push({ from: owes[i].id, to: owed[j].id, amount: Math.round(amt * 100) / 100 });
+          owes[i].v -= amt; owed[j].v -= amt;
+          if (owes[i].v < 0.009) i++;
+          if (owed[j].v < 0.009) j++;
+        }
+        return plan;
+      },
+      // raw pairwise debts (pre-simplify) so the UI can show the reduction
+      pairwiseCount() {
+        const pair = {};
+        state.expenses.forEach((x) => {
+          if (x.paidByFund) return;
+          const sh = this.shares(x);
+          Object.entries(sh).forEach(([p, v]) => {
+            if (p !== x.paidBy && v > 0.009) pair[p + ">" + x.paidBy] = (pair[p + ">" + x.paidBy] || 0) + v;
+          });
+        });
+        // net opposing directions
+        const seen = new Set(); let n = 0;
+        Object.keys(pair).forEach((k) => {
+          const [a, b] = k.split(">");
+          const rk = b + ">" + a;
+          if (seen.has(rk) || seen.has(k)) return;
+          seen.add(k);
+          const diff = (pair[k] || 0) - (pair[rk] || 0);
+          if (Math.abs(diff) > 0.009) n++;
+        });
+        return n;
+      },
+      // settle on rails: instant, sub-cent-ish fee, receipt recorded
+      settle(from, to, amount) {
+        const fee = Math.max(0.01, Math.round(amount * 0.02) / 100);
+        const s = {
+          id: "s-" + Math.random().toString(36).slice(2, 8), from, to,
+          amount: Math.round(amount * 100) / 100, at: new Date().toISOString(),
+          rail: { fee, seconds: Math.round((1 + Math.random() * 2.2) * 10) / 10, ref: "rail-" + Math.random().toString(36).slice(2, 8) },
+        };
+        state.settlements.unshift(s); save(); return s;
+      },
+      payFromFund(x) {
+        const e = this.add(Object.assign({}, x, { paidByFund: true, paidBy: x.paidBy || "me" }));
+        state.treasury.balance = Math.round((state.treasury.balance - x.amount) * 100) / 100;
+        save(); return e;
+      },
+      byCategory(sinceDays) {
+        const cutoff = Date.now() - (sinceDays || 30) * DAY;
+        const out = {};
+        state.expenses.forEach((x) => {
+          if (new Date(x.at).getTime() < cutoff) return;
+          out[x.category || "other"] = Math.round(((out[x.category || "other"] || 0) + x.amount) * 100) / 100;
+        });
+        return out;
+      },
+      // template-aware default for a new expense in this house
+      defaultSplit() {
+        const h = state.houses.find((x) => x.id === state.myHouseId);
+        const members = h ? h.members.slice() : ["me"];
+        const t = h ? h.poolModel : "split";
+        if (t === "sliding") return { mode: "percent", participants: members, hint: "Sliding-scale house — tune the percentages to your bands." };
+        if (t === "fund" || t === "commons" || t === "labor") return { mode: "equal", participants: members, fundOption: true, hint: "House-fund template — shared staples can come straight out of the fund." };
+        return { mode: "equal", participants: members };
       },
     },
 

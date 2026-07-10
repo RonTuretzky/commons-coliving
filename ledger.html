@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Ledger — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local styles only — shared files untouched */
+    .plan-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--paper-1); flex-wrap: wrap; }
+    .plan-arrow { font-family: var(--display); font-weight: 700; color: var(--grey-soft); }
+    .feed-row { display: flex; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--paper-1); align-items: flex-start; }
+    .feed-row .emoji { font-size: 1.3rem; line-height: 1.4; flex: none; }
+    .feed-row.settlement { background: var(--paper-main); border: 0; border-left: 3px solid var(--pine); border-radius: 8px; padding: 10px 14px; margin-block: 8px; }
+    .meter.cat { grid-template-columns: minmax(110px, 150px) 1fr 56px; }
+    .split-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .split-grid .input { width: 92px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("ledger");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const AUTO_KEY = "dp-ledger-autosettle";
+
+    const money = (n) => {
+      const v = Number(n) || 0;
+      const s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (v < 0 ? "-$" : "$") + s;
+    };
+    const MODE_LABELS = { equal: "equally", exact: "by exact amounts", shares: "by shares", percent: "by percentage" };
+    const catOf = (id) => Commons.ledger.CATEGORIES.find((c) => c.id === id) || Commons.ledger.CATEGORIES[Commons.ledger.CATEGORIES.length - 1];
+
+    function member(id) { return Commons.people.get(id); }
+    function first(id) { const p = member(id); return p ? p.name.split(" ")[0] : id; }
+
+    /* ---------- expense draft (survives re-renders) ---------- */
+    function newDraft() {
+      const ds = Commons.ledger.defaultSplit();
+      return {
+        desc: "", amount: "", paidBy: "me", category: "groceries",
+        mode: ds.mode, participants: ds.participants.slice(), values: {},
+        fund: false, fundOption: !!ds.fundOption, hint: ds.hint || "",
+      };
+    }
+    let draft = newDraft();
+
+    function draftExpense() {
+      return {
+        amount: Number(draft.amount) || 0, paidBy: draft.paidBy,
+        split: { mode: draft.mode, participants: draft.participants.slice(), values: Object.assign({}, draft.values) },
+      };
+    }
+
+    /* ---------- render ---------- */
+    function render() {
+      const house = Commons.houses.mine();
+      if (!house) {
+        page.innerHTML = `<div class="empty stack">
+          <h2 class="text-h3">You're not in a house yet</h2>
+          <p>The ledger needs a crew to keep score for. Start one, or find yours.</p>
+          <div class="row center wrap">
+            <a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+            <a class="park-btn light" href="browse.html">Browse homes</a>
+          </div></div>`;
+        return;
+      }
+
+      const L = Commons.ledger;
+      const balances = L.balances();
+      const myNet = Math.round(((balances["me"] || 0)) * 100) / 100;
+      const square = Math.abs(myNet) < 0.01;
+      const plan = L.simplify();
+      const pairwise = L.pairwiseCount();
+      const byCat = L.byCategory(30);
+      const auto = localStorage.getItem(AUTO_KEY) === "1";
+
+      const memberRows = house.members
+        .map((id) => ({ id, v: Math.round((balances[id] || 0) * 100) / 100 }))
+        .sort((a, b) => b.v - a.v)
+        .map((m) => `<div class="row between">
+          <span class="row" style="gap:8px">${Shell.avatarHtml(member(m.id), "sm")}<span class="small">${U.esc(first(m.id))}</span></span>
+          ${Math.abs(m.v) < 0.01
+            ? `<span class="amount muted small">$0.00</span>`
+            : `<span class="amount ${m.v > 0 ? "pos" : "neg"}">${m.v > 0 ? "+" : ""}${money(m.v)}</span>`}
+        </div>`).join("");
+
+      const catRows = L.CATEGORIES.filter((c) => byCat[c.id] > 0);
+      const catMax = Math.max(1, ...catRows.map((c) => byCat[c.id]));
+      const catTotal = catRows.reduce((s, c) => s + byCat[c.id], 0);
+      const catHtml = catRows.length ? catRows
+        .sort((a, b) => byCat[b.id] - byCat[a.id])
+        .map((c) => `<div class="meter cat">
+          <span>${c.emoji} ${U.esc(c.label)}</span>
+          <div class="bar"><i style="width:${Math.round((byCat[c.id] / catMax) * 100)}%"></i></div>
+          <span class="amount" style="font-size:.8rem">$${Math.round(byCat[c.id]).toLocaleString("en-US")}</span>
+        </div>`).join("") : `<p class="small muted">Nothing spent in the last 30 days. Impressive, or worrying.</p>`;
+
+      const planRows = plan.map((p) => {
+        const mine = p.from === "me";
+        const incoming = p.to === "me";
+        const verb = mine ? "pay" : "pays";
+        const toName = incoming ? "you" : first(p.to);
+        return `<div class="plan-row">
+          <span class="row" style="gap:4px">${Shell.avatarHtml(member(p.from), "sm")}<span class="plan-arrow">→</span>${Shell.avatarHtml(member(p.to), "sm")}</span>
+          <span class="small"><strong>${U.esc(first(p.from))}</strong> ${verb} <strong>${U.esc(toName)}</strong></span>
+          <span class="spacer"></span>
+          <span class="amount">${money(p.amount)}</span>
+          ${mine
+            ? `<button class="lifted xs" data-act="settle" data-to="${p.to}" data-amount="${p.amount}"><span class="shadow"></span><span class="face">Settle now</span></button>`
+            : incoming
+              ? `<span class="pill match">incoming</span>`
+              : `<span class="pill paper">their move</span>`}
+        </div>`;
+      }).join("");
+
+      /* activity feed: expenses + settlements interleaved */
+      const items = L.all().map((x) => ({ at: x.at, kind: "x", x }))
+        .concat(L.settlements().map((s) => ({ at: s.at, kind: "s", s })))
+        .sort((a, b) => new Date(b.at) - new Date(a.at));
+      const shown = items.slice(0, 14);
+      const older = items.length - shown.length;
+
+      const feedHtml = shown.map((it) => {
+        if (it.kind === "s") {
+          const s = it.s;
+          return `<div class="feed-row settlement">
+            <span class="emoji">🤝</span>
+            <div style="flex:1">
+              <div class="small"><strong>${U.esc(first(s.from))} settled ${money(s.amount)} to ${s.to === "me" ? "You" : U.esc(first(s.to))}</strong></div>
+              <div class="text-caption muted">${s.rail.seconds}s · $${s.rail.fee.toFixed(2)} fee · ${U.esc(s.rail.ref)}</div>
+            </div>
+            <span class="text-caption muted" style="white-space:nowrap">${U.relDate(s.at)}</span>
+          </div>`;
+        }
+        const x = it.x;
+        const cat = catOf(x.category);
+        const n = x.split && x.split.participants ? x.split.participants.length : 0;
+        const modeLabel = MODE_LABELS[x.split && x.split.mode] || "equally";
+        const caption = x.paidByFund
+          ? `${money(x.amount)} from the house fund — nobody owes anyone`
+          : `${U.esc(first(x.paidBy))} paid ${money(x.amount)} · split ${modeLabel} between ${n}${x.fromBill ? " · from bill rotation" : ""}`;
+        return `<div class="feed-row">
+          <span class="emoji">${cat.emoji}</span>
+          <div style="flex:1">
+            <div class="row wrap" style="gap:8px">
+              <span class="small"><strong>${U.esc(x.desc)}</strong></span>
+              ${x.recurring ? `<span class="pill paper">recurring · ${U.esc(x.recurring)}</span>` : ""}
+              ${x.paidByFund ? `<span class="pill pine">from the house fund</span>` : ""}
+            </div>
+            <div class="text-caption muted">${caption}</div>
+            ${x.note ? `<div class="text-caption muted" style="font-style:italic">${U.esc(x.note)}</div>` : ""}
+          </div>
+          <span class="text-caption muted" style="white-space:nowrap">${U.relDate(x.at)}</span>
+        </div>`;
+      }).join("");
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="stack">
+          <div class="kicker">The ledger</div>
+          <h1 class="text-h2">Every dollar, no drama</h1>
+          <p class="lede" style="max-width:62ch">One shared ledger for everything the house spends on itself — split it fairly, watch balances net out, settle in one tap. No monthly cap, no upsell, no tab that rots for six months.</p>
+        </div>
+
+        <div class="grid grid-3">
+          <div class="card stack">
+            <div class="kicker">Where you stand</div>
+            ${square
+              ? `<div><span class="text-h2 amount">All square</span></div>
+                 <p class="small muted">You owe nothing, nobody owes you. Savor it.</p>`
+              : `<div><span class="text-h2 amount ${myNet > 0 ? "pos" : "neg"}">${myNet > 0 ? "+" : ""}${money(myNet)}</span></div>`}
+            <p class="text-caption muted">Positive means the house owes you.</p>
+          </div>
+
+          <div class="card stack">
+            <div class="kicker">House balances</div>
+            ${memberRows}
+            <p class="text-caption muted">Balances always sum to zero — it's a closed loop.</p>
+          </div>
+
+          <div class="card stack">
+            <div class="kicker">This month by category</div>
+            ${catHtml}
+            ${catRows.length ? `<div class="row between" style="border-top:1px solid var(--paper-1);padding-top:8px">
+              <span class="text-caption muted">Last 30 days</span>
+              <span class="amount">${money(catTotal)}</span>
+            </div>` : ""}
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="row between wrap">
+            <div>
+              <div class="kicker">Settle up</div>
+              <h2 class="text-h3">${plan.length ? `${plan.length} payment${plan.length === 1 ? "" : "s"} instead of ${pairwise}` : "Nothing to settle"}</h2>
+            </div>
+          </div>
+          ${pairwise > plan.length && plan.length ? `<p class="small muted" style="max-width:64ch">We net the loops out — Splitwise calls this simplifying debts; here it's just how the ledger thinks.</p>` : ""}
+          ${plan.length
+            ? `<div class="card">${planRows}</div>`
+            : `<div class="empty stack"><h3 class="text-h4">Everyone's square. Historic.</h3><p class="small">Add an expense below and ruin it.</p></div>`}
+          <div class="card flat">
+            <div class="row wrap">
+              <button class="chip ${auto ? "on" : ""}" data-act="autosettle">🔁 Auto-settle${auto ? " · on" : ""}</button>
+              <span class="small muted" style="flex:1;min-width:240px">Auto-settle any balance over $50 at month's end. Possible because settlement is instant and costs pennies — the tab never rots.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div>
+            <div class="kicker">New expense</div>
+            <h2 class="text-h3">Put it on the ledger</h2>
+          </div>
+          <div class="card stack" id="form-card"></div>
+        </div>
+
+        <div class="stack">
+          <div>
+            <div class="kicker">Activity</div>
+            <h2 class="text-h3">The paper trail</h2>
+          </div>
+          <div class="card">
+            ${feedHtml || `<div class="empty">Nothing yet — the first expense is the hardest.</div>`}
+            ${older > 0 ? `<p class="text-caption muted" style="padding-top:10px">+${older} older</p>` : ""}
+          </div>
+        </div>
+
+        <div class="card ink stack">
+          <div class="kicker" style="color:var(--green-0)">Why settling actually happens here</div>
+          <p class="small">Settle-ups ride <strong>stablecoin rails</strong>: the money moves in seconds, lands final, and the fee is about a penny. It works at 2am on a Sunday, there's no bank in the loop, and nothing sits in "pending" — the ledger and the money finally live in the same place.</p>
+          <p class="small muted">The honest part: apps like Splitwise stop at the IOU and hand you off to a payments app, and that handoff is exactly where tabs go to rot. Here, settling is cheaper than remembering — so nobody has to remember.</p>
+        </div>
+      </div>`;
+
+      renderForm();
+      wire();
+    }
+
+    /* ---------- add-expense form ---------- */
+    function formHtml() {
+      const house = Commons.houses.mine();
+      const members = house.members;
+      const catChips = Commons.ledger.CATEGORIES.map((c) =>
+        `<button type="button" class="chip ${draft.category === c.id ? "on" : ""}" data-act="cat" data-id="${c.id}">${c.emoji} ${U.esc(c.label)}</button>`).join("");
+      const partChips = members.map((id) =>
+        `<button type="button" class="chip ${draft.participants.includes(id) ? "on" : ""}" data-act="part" data-id="${id}">${U.esc(first(id))}</button>`).join("");
+      const modeChoices = [["equal", "Equally"], ["exact", "Exact amounts"], ["shares", "Shares"], ["percent", "Percentages"]].map(([id, label]) =>
+        `<button type="button" class="choice ${draft.mode === id ? "on" : ""}" data-act="mode" data-id="${id}">${label}</button>`).join("");
+      const needsValues = draft.mode !== "equal";
+      const valueInputs = draft.participants.map((id) => {
+        const v = draft.values[id];
+        const attrs = draft.mode === "exact" ? `step="0.01" min="0" placeholder="0.00"`
+          : draft.mode === "percent" ? `step="1" min="0" max="100" placeholder="0"`
+          : `step="1" min="0" placeholder="1"`;
+        return `<div class="row" style="gap:8px">${Shell.avatarHtml(member(id), "sm")}
+          <span class="small" style="flex:1">${U.esc(first(id))}${draft.mode === "percent" ? " %" : draft.mode === "exact" ? " $" : ""}</span>
+          <input class="input" type="number" ${attrs} data-val="${id}" value="${v ?? ""}" /></div>`;
+      }).join("");
+
+      const fundChip = draft.fundOption
+        ? `<button type="button" class="chip ${draft.fund ? "pine" : ""}" data-act="fund">🫕 Pay from the house fund instead</button>`
+        : "";
+
+      return `
+        <div class="grid" style="grid-template-columns:2fr 1fr 1fr;gap:14px">
+          <div class="field"><label for="x-desc">What was it?</label>
+            <input class="input" id="x-desc" placeholder="Costco run, the plumber, the good olive oil" value="${U.esc(draft.desc)}" /></div>
+          <div class="field"><label for="x-amount">Amount ($)</label>
+            <input class="input" id="x-amount" type="number" min="0" step="0.01" placeholder="0.00" value="${U.esc(draft.amount)}" /></div>
+          <div class="field"><label for="x-payer">Paid by</label>
+            <select class="input" id="x-payer">${Commons.houses.mine().members.map((id) =>
+              `<option value="${id}" ${draft.paidBy === id ? "selected" : ""}>${U.esc(first(id))}</option>`).join("")}</select></div>
+        </div>
+        <div class="field"><label>Category</label><div class="row wrap" style="gap:8px">${catChips}</div></div>
+        ${fundChip ? `<div class="row wrap">${fundChip}</div>` : ""}
+        ${draft.fund
+          ? `<p class="small" style="background:var(--paper-1);border-radius:8px;padding:10px 14px">Comes out of the shared fund (<strong class="amount">${money(Commons.money.treasury().balance)}</strong>) — no one owes anyone.</p>`
+          : `
+        <div class="field"><label>Who's in on it?</label><div class="row wrap" style="gap:8px">${partChips}</div></div>
+        <div class="field"><label>Split it</label>
+          <div class="choice-row">${modeChoices}</div>
+          ${draft.hint ? `<span class="help">${U.esc(draft.hint)}</span>` : ""}
+        </div>
+        ${needsValues ? `<div class="split-grid">${valueInputs}</div>` : ""}
+        <p class="small" id="split-check"></p>
+        <p class="small muted" id="live-preview"></p>`}
+        <div class="row wrap">
+          <button class="lifted" id="x-submit"><span class="shadow"></span><span class="face">Add to the ledger</span></button>
+        </div>`;
+    }
+
+    function renderForm() {
+      const card = document.getElementById("form-card");
+      if (!card) return;
+      card.innerHTML = formHtml();
+      wireForm(card);
+      updateLive();
+    }
+
+    function splitCheck() {
+      const amount = Number(draft.amount) || 0;
+      const parts = draft.participants;
+      const sum = parts.reduce((s, id) => s + (Number(draft.values[id]) || 0), 0);
+      if (draft.mode === "exact") {
+        const diff = Math.round((sum - amount) * 100) / 100;
+        if (amount > 0 && Math.abs(diff) < 0.005) return { ok: true, html: `adds to ${money(amount)} ✓` };
+        return { ok: false, html: `off by ${money(Math.abs(diff))} — ${diff < 0 ? "short" : "over"}` };
+      }
+      if (draft.mode === "percent") {
+        const diff = Math.round(sum - 100);
+        if (diff === 0) return { ok: true, html: `adds to 100% ✓` };
+        return { ok: false, html: `off by ${Math.abs(diff)}%` };
+      }
+      if (draft.mode === "shares") {
+        const total = parts.reduce((s, id) => s + (draft.values[id] === undefined || draft.values[id] === "" ? 1 : Number(draft.values[id]) || 0), 0);
+        return { ok: true, muted: true, html: `${total} share${total === 1 ? "" : "s"} total — blanks count as 1` };
+      }
+      return { ok: true, muted: true, html: `splits ${parts.length} way${parts.length === 1 ? "" : "s"}` };
+    }
+
+    function updateLive() {
+      const check = document.getElementById("split-check");
+      const prev = document.getElementById("live-preview");
+      if (!check || !prev || draft.fund) return;
+      const c = splitCheck();
+      check.innerHTML = c.html;
+      check.style.color = c.muted ? "var(--grey-soft)" : c.ok ? "var(--green-1)" : "var(--red)";
+      const amount = Number(draft.amount) || 0;
+      if (!draft.participants.length) { prev.textContent = "Pick at least one person to split with."; return; }
+      if (amount <= 0) { prev.textContent = "Add an amount to preview the split."; return; }
+      const sh = Commons.ledger.shares(draftExpense());
+      prev.textContent = draft.participants
+        .map((id) => `${first(id)} ${id === "me" ? "pay" : "pays"} ${money(sh[id] || 0)}`)
+        .join(" · ");
+    }
+
+    /* ---------- wiring ---------- */
+    function wire() {
+      page.querySelectorAll("[data-act='settle']").forEach((el) => {
+        el.addEventListener("click", () => {
+          const s = Commons.ledger.settle("me", el.dataset.to, Number(el.dataset.amount));
+          render();
+          Shell.toast(`Settled ${money(s.amount)} — ${s.rail.seconds}s, $${s.rail.fee.toFixed(2)} fee`, "green");
+        });
+      });
+      const auto = page.querySelector("[data-act='autosettle']");
+      if (auto) auto.addEventListener("click", () => {
+        const on = localStorage.getItem(AUTO_KEY) === "1";
+        localStorage.setItem(AUTO_KEY, on ? "0" : "1");
+        render();
+        Shell.toast(on ? "Auto-settle off — back to tapping" : "Auto-settle on — balances over $50 clear themselves at month's end", on ? undefined : "green");
+      });
+    }
+
+    function wireForm(card) {
+      card.querySelector("#x-desc").addEventListener("input", (e) => { draft.desc = e.target.value; });
+      card.querySelector("#x-amount").addEventListener("input", (e) => { draft.amount = e.target.value; updateLive(); });
+      card.querySelector("#x-payer").addEventListener("change", (e) => { draft.paidBy = e.target.value; updateLive(); });
+      card.querySelectorAll("[data-act='cat']").forEach((el) => el.addEventListener("click", () => { draft.category = el.dataset.id; renderForm(); }));
+      card.querySelectorAll("[data-act='part']").forEach((el) => el.addEventListener("click", () => {
+        const id = el.dataset.id;
+        draft.participants = draft.participants.includes(id)
+          ? draft.participants.filter((p) => p !== id)
+          : draft.participants.concat(id);
+        renderForm();
+      }));
+      card.querySelectorAll("[data-act='mode']").forEach((el) => el.addEventListener("click", () => { draft.mode = el.dataset.id; draft.values = {}; renderForm(); }));
+      const fund = card.querySelector("[data-act='fund']");
+      if (fund) fund.addEventListener("click", () => { draft.fund = !draft.fund; renderForm(); });
+      card.querySelectorAll("[data-val]").forEach((el) => el.addEventListener("input", () => {
+        draft.values[el.dataset.val] = el.value === "" ? undefined : Number(el.value);
+        updateLive();
+      }));
+      card.querySelector("#x-submit").addEventListener("click", submit);
+    }
+
+    function submit() {
+      const desc = draft.desc.trim();
+      const amount = Math.round((Number(draft.amount) || 0) * 100) / 100;
+      if (!desc) { Shell.toast("Give it a description"); return; }
+      if (amount <= 0) { Shell.toast("Amount has to be more than zero"); return; }
+
+      if (draft.fund) {
+        const members = Commons.houses.mine().members.slice();
+        Commons.ledger.payFromFund({ desc, amount, paidBy: draft.paidBy, category: draft.category,
+          split: { mode: "equal", participants: members } });
+        draft = newDraft();
+        render();
+        Shell.toast(`Paid ${money(amount)} from the house fund — nobody owes anyone`, "green");
+        return;
+      }
+
+      if (!draft.participants.length) { Shell.toast("Pick at least one person to split with"); return; }
+      draft.amount = amount; // so the check validates against the rounded figure
+      const c = splitCheck();
+      if ((draft.mode === "exact" || draft.mode === "percent") && !c.ok) { Shell.toast(`Split doesn't add up — ${c.html}`); return; }
+
+      const values = {};
+      draft.participants.forEach((id) => {
+        if (draft.values[id] !== undefined && draft.values[id] !== "") values[id] = Number(draft.values[id]);
+      });
+      const x = { desc, amount, paidBy: draft.paidBy, category: draft.category,
+        split: { mode: draft.mode, participants: draft.participants.slice() } };
+      if (draft.mode !== "equal") x.split.values = values;
+      Commons.ledger.add(x);
+      const n = x.split.participants.length;
+      draft = newDraft();
+      render();
+      Shell.toast(`Added ${money(amount)} — split ${MODE_LABELS[x.split.mode]} between ${n}`, "green");
+    }
+
+    render();
+  </script>
+</body>
+</html>

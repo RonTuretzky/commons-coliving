@@ -48,7 +48,19 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 - `Commons.econ.all()/get(id)/label(id)/apply(houseId, id)` — economic templates (`split|weighted|fund|sliding|commons|labor`, each `{id,name,emoji,tagline,how,bestFor,knobs[],pool}`); houses store the id in `house.poolModel`
 - `Commons.chorePlanner.spaces()/presets()/estimate(selection, nMembers)/apply(chores)` — `selection` is `{spaceId: count}`; estimate returns `{chores[], weeklyMinutes, perPersonWeekly, perPersonDaily}` with per-task minutes/freq from the SPACES effort catalog; `apply` replaces the house rotation (confirm with the user first — it wipes completion history)
 - `Commons.meals.presets()/staples()/plan()/setPlan(cfg)/clearPlan()/estimate(cfg)` — `cfg = {presetId, eaters, dinners, vegShare 0..1, tier thrifty|standard|generous, batchDay?, rotation[]}`; estimate returns `{servings, weeklyCost, perServing, perPersonWeekly, list[] (staples w/ qty+cost), nights[] (cook shifts), batchMinutes, takeoutComparison}`
+- `Commons.ledger` — the Splitwise-style house ledger:
+  - `CATEGORIES` `[{id,label,emoji}]` · `all()` expenses newest-first · `settlements()`
+  - expense shape: `{id, desc, amount, paidBy, category, at, note?, recurring?, fromBill?, paidByFund?, split:{mode:'equal'|'exact'|'shares'|'percent', participants:[ids], values?:{id:num}}}`
+  - `add(x)` · `payFromFund(x)` (no interpersonal debt; deducts treasury) · `shares(x)` → `{memberId: $}` cent-exact
+  - `balances()` → net per member (+ = is owed) · `pairwiseCount()` raw debt count · `simplify()` → `[{from,to,amount}]` greedy netting (show the reduction: "N payments instead of M")
+  - `settle(from,to,amount)` → records settlement with a rail receipt `{fee, seconds, ref}` (instant stablecoin rails — keep the framing quiet/pragmatic)
+  - `byCategory(sinceDays)` → `{catId: $}` · `defaultSplit()` → template-aware default `{mode, participants, fundOption?, hint?}`
+- `Commons.CHORE_KINDS` `[{id,label,emoji}]` · `Commons.BANDWIDTH` `[{id,label,emoji,capacity,desc}]` (low/normal/high) · `Commons.APPETITE` `[{id,label,emoji,desc}]` (avoid/fine/love)
+- `Commons.prefs.kinds()/get(memberId)/setMine({loves,hates})/bandwidth(memberId?)/setBandwidth(id)/appetite(memberId?)/setAppetite(id)` — chore-taste profiles + weekly bandwidth & cooking appetite
+- `Commons.rebalance.week()` → `{changes:[{choreId,name,emoji,period,from,to,reason}], mealNote}` — reallocates this period's open chores by preference + bandwidth (writes overrides; `chores.assignee()` is automatically override-aware) and reorders the meal-plan cook rotation by appetite. `clear()` drops overrides · `overrideCount()` · `isOverridden(choreId, period)`
 - `Commons.util`: `fmtMoney, fmtDate, fmtDateLong, relDate, initials, hue, esc, qp(name), clamp`
+
+**Copy rule ("systems, not templates"):** the product story is *"run the house on a system that works"* — the word "template" undersells and should be avoided in headings/CTAs (fine in passing). The calculators are first-class features: label them CALCULATOR and cross-link them prominently.
 - `Shell.toast(msg, 'green'?)` · `Shell.avatarHtml(profile, 'sm'|'lg'?)` · `Shell.matchPill(matchResult)`
 
 ## Brand rules
@@ -77,5 +89,6 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 | templates.html | `templates` | Economic templates gallery + interactive calculators (room-weighted rent splitter, sliding-scale contributions) |
 | meals.html | `meals` | Meal plan presets + interactive cost/quantity calculator, cook rotation, shopping list, batch timeline |
 | chore-builder.html | `chores` | Space-by-space chore schedule calculator with effort estimates; applies a generated rotation to the house |
+| ledger.html | `ledger` | Splitwise-style house ledger: expenses w/ 4 split modes, template-aware defaults, net balances, simplify-debts, one-tap rail settlement, category chart, activity feed |
 
 Note: the app is deliberately web2 — no wallets, tokens, or on-chain anything in UI copy. Money mechanics are "templates + a ledger + votes". Words like *stake*, *on-chain*, *crypto*, *contract* must not appear in visible copy (use *deposit*, *ledger*, *template*).

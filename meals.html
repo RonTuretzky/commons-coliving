@@ -229,6 +229,15 @@
             <div class="kicker" style="margin-bottom:8px">Cook rotation</div>
             <div class="row wrap" id="rotation-chips" style="gap:8px"></div>
             <p class="text-caption muted" style="margin-top:8px">Cooking counts as your chore that day — dinner shift, no dish duty.${house ? "" : " No house yet, so the roster runs on stand-ins."}</p>
+            ${house ? (() => {
+              const loves = house.members.filter((m) => Commons.prefs.appetite(m) === "love");
+              const avoids = house.members.filter((m) => Commons.prefs.appetite(m) === "avoid");
+              if (!loves.length && !avoids.length) return "";
+              const bits = [];
+              if (loves.length) bits.push(`${loves.map((m) => U.esc(firstName(m))).join(" & ")} asked for extra kitchen time`);
+              if (avoids.length) bits.push(`${avoids.map((m) => U.esc(firstName(m))).join(" & ")} ${avoids.length > 1 ? "are" : "is"} off cook duty`);
+              return `<p class="text-caption" style="margin-top:4px">✦ This week's <a href="checkin.html">check-in</a>: ${bits.join("; ")} — the roster order reflects it.</p>`;
+            })() : ""}
           </div>
 
           <div id="batch-wrap" class="hidden">

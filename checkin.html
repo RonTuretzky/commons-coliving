@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Weekly check-in — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .taste-row { display: flex; justify-content: space-between; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--paper-1); }
+    .taste-row .chip { padding: 4px 12px; font-size: .82rem; }
+    .pick-card { text-align: left; width: 100%; border: 2px solid var(--paper-2); }
+    .pick-card.picked { border-color: var(--pine); }
+    .move-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-top: 1px solid var(--paper-1); }
+    .move-row .pill.paper { white-space: normal; line-height: 1.4; padding: 6px 14px; text-align: left; }
+    .week-strip { display: flex; flex-wrap: wrap; gap: 10px; }
+    .week-strip .chip { padding: 8px 14px; gap: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("chores");
+    const U = Commons.util, esc = U.esc;
+    const page = document.getElementById("page");
+    const KINDS = Commons.CHORE_KINDS, BANDWIDTH = Commons.BANDWIDTH, APPETITE = Commons.APPETITE;
+
+    const person = (id) => Commons.people.get(id);
+    const firstName = (id) => { if (id === "me") return "You"; const p = person(id); return p ? p.name.split(" ")[0] : id; };
+
+    const TASTE = [["love", "Love it"], ["fine", "Fine"], ["nope", "Nope"]];
+    let tasteToastShown = false;   // save every change, toast only the first
+    let lastResult = null;         // {changes, mealNote} from the last reshuffle
+
+    function myTastes() {
+      const p = Commons.prefs.get("me");
+      const t = {};
+      KINDS.forEach((k) => { t[k.id] = p.loves.includes(k.id) ? "love" : p.hates.includes(k.id) ? "nope" : "fine"; });
+      return t;
+    }
+
+    function setTaste(kindId, v) {
+      const t = myTastes();
+      t[kindId] = v;
+      Commons.prefs.setMine({
+        loves: KINDS.filter((k) => t[k.id] === "love").map((k) => k.id),
+        hates: KINDS.filter((k) => t[k.id] === "nope").map((k) => k.id),
+      });
+      render();
+      if (!tasteToastShown) { Shell.toast("Saved — say it once, the house remembers"); tasteToastShown = true; }
+    }
+
+    function render() {
+      const house = Commons.houses.mine();
+      if (!house) {
+        page.innerHTML = `<div class="empty stack">
+          <h2 class="text-h3">No house, no check-in</h2>
+          <p>The weekly check-in needs a crew to reshuffle around. Go find yours.</p>
+          <div class="row center wrap">
+            <a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+            <a class="park-btn light" href="browse.html">Browse homes</a>
+          </div></div>`;
+        return;
+      }
+
+      /* ----- Section 1: chore tastes ----- */
+      const t = myTastes();
+      const tasteRows = KINDS.map((k) => `
+        <div class="taste-row">
+          <span class="row" style="gap:10px"><span style="font-size:1.5rem">${k.emoji}</span><strong class="small">${esc(k.label)}</strong></span>
+          <span class="row" style="gap:6px">
+            ${TASTE.map(([v, label]) => `<button class="chip ${t[k.id] === v ? "on" : ""}" data-kind="${esc(k.id)}" data-taste="${v}">${label}</button>`).join("")}
+          </span>
+        </div>`).join("");
+
+      /* ----- Section 2: this week ----- */
+      const bwNow = Commons.prefs.bandwidth();
+      const bwCards = BANDWIDTH.map((b) => `
+        <button class="card clickable stack pick-card ${bwNow === b.id ? "picked" : ""}" data-bw="${esc(b.id)}">
+          <div class="row between"><span style="font-size:2rem">${b.emoji}</span>${bwNow === b.id ? `<span class="pill pine">This week</span>` : ""}</div>
+          <h4 class="text-h4">${esc(b.label)}</h4>
+          <p class="small muted">${esc(b.desc)}</p>
+        </button>`).join("");
+
+      const apNow = Commons.prefs.appetite();
+      const apCards = APPETITE.map((a) => `
+        <button class="card clickable stack pick-card ${apNow === a.id ? "picked" : ""}" data-ap="${esc(a.id)}">
+          <div class="row between"><span style="font-size:2rem">${a.emoji}</span>${apNow === a.id ? `<span class="pill pine">This week</span>` : ""}</div>
+          <h4 class="text-h4">${esc(a.label)}</h4>
+          <p class="small muted">${esc(a.desc)}</p>
+        </button>`).join("");
+
+      const strip = house.members.filter((id) => id !== "me").map((id) => {
+        const bw = BANDWIDTH.find((b) => b.id === Commons.prefs.bandwidth(id)) || BANDWIDTH[1];
+        const ap = APPETITE.find((a) => a.id === Commons.prefs.appetite(id)) || APPETITE[1];
+        return `<span class="chip soft">${Shell.avatarHtml(person(id), "sm")}<span class="small">${esc(firstName(id))}</span>
+          <span title="${esc(bw.label)}">${bw.emoji}</span><span title="${esc(ap.label)}">${ap.emoji}</span></span>`;
+      }).join("");
+
+      /* ----- Results panel (hidden until a reshuffle runs) ----- */
+      let resultsHtml = "";
+      if (lastResult) {
+        const { changes, mealNote } = lastResult;
+        const moves = changes.map((ch) => `
+          <div class="move-row">
+            <span class="row" style="gap:8px"><span style="font-size:1.3rem">${ch.emoji}</span><strong class="small">${esc(ch.name)}</strong></span>
+            <span class="row" style="gap:6px">
+              ${Shell.avatarHtml(person(ch.from), "sm")}<span class="small">${esc(firstName(ch.from))}</span>
+              <span class="muted">→</span>
+              ${Shell.avatarHtml(person(ch.to), "sm")}<span class="small">${esc(firstName(ch.to))}</span>
+            </span>
+            <span class="pill paper">${esc(ch.reason)}</span>
+          </div>`).join("");
+        resultsHtml = `
+        <div class="card stack" id="results">
+          <div class="kicker">What moved</div>
+          ${changes.length ? moves : `<p class="small muted" style="border-top:1px solid var(--paper-1);padding-top:12px">Nothing needed to move — the rotation already fits everyone's week.</p>`}
+          ${mealNote ? `
+          <div class="move-row">
+            <span style="font-size:1.3rem">🍲</span>
+            <span class="small">${esc(mealNote)}</span>
+          </div>` : ""}
+          <div class="row wrap" style="margin-top:4px">
+            <a class="park-btn light" href="chores.html">See the chore board</a>
+            <a class="park-btn light" href="meals.html">See the meal plan</a>
+            <button class="park-btn ghost" id="undo">Undo the reshuffle</button>
+          </div>
+        </div>`;
+      }
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div>
+          <div class="kicker">Weekly check-in</div>
+          <h2 class="text-h2">Tell the house what kind of week it is</h2>
+          <p class="lede" style="max-width:680px;margin-top:10px">Two minutes, once a week (or whenever life happens). Say what you love doing,
+          what you're dreading, and how much you've actually got — the house reshuffles itself so nobody has to ask twice.</p>
+        </div>
+
+        <div class="card stack">
+          <div>
+            <div class="kicker">Once, then whenever it changes</div>
+            <h3 class="text-h3" style="margin-top:6px">Your chore tastes</h3>
+          </div>
+          <div class="grid grid-2" style="gap:0 28px">${tasteRows}</div>
+          <p class="text-caption muted">Nope doesn't mean never — it means the reallocator routes it elsewhere when it can.</p>
+        </div>
+
+        <div class="stack-lg">
+          <div>
+            <div class="kicker">The weekly part</div>
+            <h3 class="text-h3" style="margin-top:6px">This week</h3>
+          </div>
+          <div>
+            <h4 class="text-h4">How much have you actually got?</h4>
+            <div class="grid grid-3" style="margin-top:12px">${bwCards}</div>
+          </div>
+          <div>
+            <h4 class="text-h4">And how do you feel about cooking?</h4>
+            <div class="grid grid-3" style="margin-top:12px">${apCards}</div>
+          </div>
+          <div class="card stack">
+            <div class="week-strip">${strip}</div>
+            <p class="text-caption muted">what the rest of the house said</p>
+          </div>
+        </div>
+
+        <div class="card center-text" style="padding:clamp(28px,5vw,46px)">
+          <div class="kicker">Put it all together</div>
+          <h3 class="text-h3" style="margin-top:6px">Let the house adjust</h3>
+          <p class="muted" style="max-width:540px;margin:10px auto 0">Everything above is already saved. This hands it to the reallocator —
+          loved chores drift toward their people, dreaded ones drift away, and heavy weeks get lighter.</p>
+          <div style="margin-top:22px">
+            <button class="lifted green" id="reshuffle"><span class="shadow"></span><span class="face">Reshuffle the week around all this</span></button>
+          </div>
+        </div>
+
+        ${resultsHtml}
+
+        <div class="card flat">
+          <p class="text-caption muted">Under the hood: your answers weight a load balancer — loved chores pull toward you, dreaded ones push away,
+          low-bandwidth weeks shrink your share. The chore board shows a ✦ swap badge wherever the reallocator overrode the rotation.
+          The steward runs this same reshuffle when you tell it you're slammed.</p>
+        </div>
+      </div>`;
+
+      /* ----- events ----- */
+      page.querySelectorAll("[data-kind]").forEach((btn) => {
+        btn.addEventListener("click", () => setTaste(btn.dataset.kind, btn.dataset.taste));
+      });
+      page.querySelectorAll("[data-bw]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const b = BANDWIDTH.find((x) => x.id === btn.dataset.bw);
+          Commons.prefs.setBandwidth(b.id);
+          render();
+          Shell.toast("This week: " + b.label);
+        });
+      });
+      page.querySelectorAll("[data-ap]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const a = APPETITE.find((x) => x.id === btn.dataset.ap);
+          Commons.prefs.setAppetite(a.id);
+          render();
+          Shell.toast("Cooking: " + a.label);
+        });
+      });
+      page.querySelector("#reshuffle").addEventListener("click", () => {
+        lastResult = Commons.rebalance.week();
+        render();
+        Shell.toast("Week reshuffled", "green");
+        const res = document.getElementById("results");
+        if (res) res.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      const undo = page.querySelector("#undo");
+      if (undo) undo.addEventListener("click", () => {
+        Commons.rebalance.clear();
+        lastResult = null;
+        render();
+        Shell.toast("Reshuffle undone — back to the plain rotation");
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -106,6 +106,24 @@ The daily-driver surface once you're in a house. Four areas:
 - Reimbursements & assigned expenses with due dates.
 - Escrows (retreat deposits, security deposits) visible with state.
 
+**5a-ii. The House Ledger (Splitwise, house-native, settlement built in)**
+
+The single most-proven shared-money UX is Splitwise's; we take its core and fix its structural flaw. Feature mapping from the full Splitwise set:
+
+| Splitwise | Commons Ledger | Notes |
+|---|---|---|
+| Groups | The house *is* the group | no setup |
+| Equal / exact / shares / percent splits | ✅ all four | cent-exact, remainder to payer |
+| Group default splits (Pro) | **Automatic from the money system** | sliding-scale house defaults to percent, fund house gets "pay from the house fund" (no interpersonal debt) |
+| Simplify debts | ✅ greedy giver/receiver netting | "5 payments instead of 15"; optimal is NP-hard, greedy is what Splitwise ships |
+| Recurring expenses | ✅ + bill-rotation expenses flow in | |
+| Settle up → Venmo/PayPal handoff | **One-tap settlement on stablecoin rails** | instant, ~penny fees, receipts recorded; **auto-settle thresholds** ("any balance over $50 at month end") — impossible on card rails |
+| Activity feed, comments, categories, charts (Pro) | ✅ feed, notes, categories, monthly category meters | |
+| Free-tier daily expense cap, ads | none — it's your house | |
+| Receipt scanning/itemization (Pro), FX (Pro) | deferred | needs camera/backend; stablecoins make FX native later |
+
+The honest dig that motivates this: expense apps stop at the IOU and hand you to a payments app, so tabs rot for months (unsettled balances are their engagement model). When the ledger and the money live in the same place, settling is cheaper than remembering. Rails framing stays quiet and pragmatic — "instant, final, pennies" — never ideological; under the hood it's embedded wallets (the DP ui-kit already ships Privy/wagmi peers) moving stablecoins on an L2, gas sponsored.
+
 **5b. Decisions**
 - Proposals: spend from the fund, change a rule, resolve a dispute.
 - **2/3 majority auto-resolution** — when a proposal crosses ⅔ of members, it executes (demo: state change; later: contract call). No admin, no landlord energy.
@@ -119,6 +137,15 @@ The daily-driver surface once you're in a house. Four areas:
 **5c-ii. Calculators (chores & meals)**
 - **Chore schedule calculator:** map the actual spaces (kitchen, N bathrooms, common rooms, stoop…), get effort estimates per task (maintenance-clean minutes from cleaning-industry timing guides), a fairness readout (minutes/week/person), and a generated rotation you can apply to the house in one click. Preset house shapes: apartment 4, brownstone 6, warehouse loft 8, land project 10.
 - **Meal prep calculator:** eaters × shared dinners × diet mix × budget tier → cost per serving (batch cooking runs ~$2.50–4.50/serving vs ~$16 ordering in), a scaled bulk shopping list (1 lb dry rice ≈ 6 servings, ~100g pasta/plate, 4–6oz protein), cook rotation, and a batch-day timeline. Presets: Dinner Club (3×/wk), Sunday Big Batch, Full Board.
+
+**5c-iii. Weekly check-ins & the reallocator (chores/meals that bend with real life)**
+
+People have extremely different chore tastes, and the same person has extremely different weeks. A fixed rotation ignores both. So:
+
+- **Chore-taste profile** (set once, edit whenever): Love it / Fine / Nope across eight chore kinds (kitchen, cooking, bathrooms, floors, trash, outdoors, laundry, organizing).
+- **Weekly check-in** (~2 minutes): bandwidth (🫠 *running on fumes* / 🙂 regular / ⚡ *energy to burn*) and cooking appetite (🙅 *don't make me cook* / 🙂 my turn is fine / 🧑‍🍳 *therapy-baking week — give me the kitchen*).
+- **The reallocator**: a preference-weighted load balancer reassigns the current period's open chores — loved kinds pull toward their people, dreaded kinds push away, low-bandwidth weeks shrink your share — and reorders the cook rotation by appetite. Every move comes with a human-readable reason ("Marcus is running on fumes · Zora actually likes this") and a ✦ swap badge on the board.
+- **Steward integration**: saying "I'm slammed this week" in chat sets your bandwidth and reshuffles on the spot — nobody has to ask a housemate to cover, which is the entire point.
 
 **5d. Steward (AI house manager)**
 - Chat interface. It reminds about chores and bill rotations, takes **maintenance requests** ("the sink is leaking" → triage → here's how to fix it yourself → or here are three plumbers near you), tracks follow-ups, answers house-rules questions.
@@ -161,9 +188,13 @@ Static, no build step, deployable to GitHub Pages. All state in `localStorage` (
 | `chores.html` | Flow 5c (period-calculated rotation, week grid, completions) |
 | `gatherings.html` | Flow 3 (mixers, retreats, escrow states, attendee overlap) |
 | `steward.html` | Flow 5d (scripted steward chat, maintenance triage, vendor cards) |
-| `templates.html` | Flow 4b (six economic templates + rent-splitter & sliding-scale calculators) |
+| `templates.html` | Flow 4b (six money systems + rent-splitter & sliding-scale calculators) |
 | `meals.html` | Flow 5c-ii (meal presets, cost/quantity calculator, cook rotation, batch timeline) |
 | `chore-builder.html` | Flow 5c-ii (space-by-space chore calculator with effort estimates → applied rotation) |
+| `ledger.html` | Flow 5a-ii (expenses w/ four split modes, simplify-debts, one-tap rail settlement, category meters, activity feed) |
+| `checkin.html` | Flow 5c-iii (chore tastes, weekly bandwidth & appetite, the reallocator + "what moved") |
+
+**Copy rule:** the product says *system*, not *template* ("run the house on a system that works"); calculators are first-class, labeled CALCULATOR, and showcased on the landing page.
 
 ---
 

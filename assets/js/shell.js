@@ -21,9 +21,10 @@
     { id: "browse", href: "browse.html", label: "Browse" },
     { id: "gatherings", href: "gatherings.html", label: "Gatherings" },
     { id: "dashboard", href: "dashboard.html", label: "My House" },
+    { id: "ledger", href: "ledger.html", label: "Ledger" },
     { id: "chores", href: "chores.html", label: "Chores" },
     { id: "meals", href: "meals.html", label: "Meals" },
-    { id: "templates", href: "templates.html", label: "Templates" },
+    { id: "templates", href: "templates.html", label: "Systems" },
     { id: "steward", href: "steward.html", label: "Steward" },
   ];
 
