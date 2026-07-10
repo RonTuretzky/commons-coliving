@@ -76,6 +76,7 @@
           <div class="field">
             <label>Target house size</label>
             <div class="choice-row" id="size-row"></div>
+              <div class="help" id="size-hint"></div>
             <div class="help">Counting everyone — current crew and future housemates.</div>
           </div>
           <div class="row between" style="margin-top:8px">
@@ -208,7 +209,7 @@
 
       /* ---------- constants ---------- */
       const BOROUGHS = ["Bed-Stuy", "Bushwick", "Crown Heights", "Greenpoint", "Gowanus", "Red Hook", "Ridgewood", "Sunset Park", "Bay Ridge", "Hudson Valley"];
-      const SIZES = [3, 4, 5, 6, 8];
+      const SIZES = [3, 4, 5, 6, 8, 12, 20, 40];  // quick picks — any size 2–120 via the input
       const SUGGESTED = [
         "Quiet hours 11pm weeknights",
         "Guests welcome with a heads-up",
@@ -289,7 +290,22 @@
       }
       function renderSizeChips() {
         qs("#size-row").innerHTML = SIZES.map((s) =>
-          `<button type="button" class="choice ${draft.size === s ? "on" : ""}" data-size="${s}">${s} people</button>`).join("");
+          `<button type="button" class="choice ${draft.size === s ? "on" : ""}" data-size="${s}">${s} people</button>`).join("")
+          + `<span class="row" style="gap:6px;margin-left:4px"><span class="small muted">or exactly</span>
+             <input class="input" id="size-exact" type="number" min="2" max="120" value="${draft.size}" style="width:84px;padding:8px 10px" /></span>`;
+        const hint = draft.size >= 100
+          ? "Hutterite colonies deliberately split at about this size — plan the split protocol before you need it."
+          : draft.size >= 20
+            ? "Big-house territory — at this scale the Governance and Labor lenses do the heavy lifting, not vibes."
+            : draft.size >= 10
+              ? "Double digits: real rotations and a real fund stop being optional around here."
+              : "";
+        qs("#size-hint").textContent = hint;
+        const exact = qs("#size-exact");
+        exact.addEventListener("change", () => {
+          draft.size = Math.min(120, Math.max(2, Number(exact.value) || draft.size));
+          renderSizeChips();
+        });
       }
       function bindStep1() {
         const sel = qs("#f-borough");

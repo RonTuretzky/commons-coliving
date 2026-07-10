@@ -43,7 +43,7 @@
     const saved = Commons.meals.plan();
     const cfg = {
       presetId: (saved && saved.presetId) || PRESETS[0].id,
-      eaters: U.clamp((saved && saved.eaters) || (house ? houseMembers.length : 5), 2, 12),
+      eaters: U.clamp((saved && saved.eaters) || (house ? houseMembers.length : 5), 2, 60),
       dinners: (saved && saved.dinners) || PRESETS[0].dinners,
       veg: saved ? Math.round((saved.vegShare ?? 0.5) * 100) : 50,
       tier: (saved && saved.tier) || "standard",
@@ -180,7 +180,7 @@
           <div class="grid grid-4">
             <div class="field">
               <label>Eaters · <span id="val-eaters">${cfg.eaters}</span></label>
-              <input type="range" class="slider" id="in-eaters" min="2" max="12" step="1" value="${cfg.eaters}" />
+              <input type="range" class="slider" id="in-eaters" min="2" max="60" step="1" value="${cfg.eaters}" />
               <div class="range-labels"><span>2</span><span>12</span></div>
             </div>
             <div class="field">
