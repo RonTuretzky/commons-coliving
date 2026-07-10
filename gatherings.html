@@ -84,7 +84,7 @@
             <div class="kicker" style="color: var(--pine-0)">Host your own</div>
             <p style="margin-top: 8px">Want to host a mixer? The Switchboard (Ridgewood) runs them monthly and will co-host your first — they bring the name tags, you bring the living room.</p>
           </div>
-          <button class="lifted sm stroke" data-action="raise-hand"><span class="shadow"></span><span class="face">Raise your hand</span></button>
+          <span id="raise-hand-slot"></span>
         </div>
       </div>
     </section>
@@ -303,13 +303,24 @@
           break;
         }
         case "raise-hand": {
+          Commons.connects.add("host", "switchboard-cohost");
+          renderRaiseHand();
           Shell.toast("Passed to the Switchboard — they'll be in touch", "green");
           break;
         }
       }
     });
 
+    function renderRaiseHand() {
+      const slot = document.getElementById("raise-hand-slot");
+      if (!slot) return;
+      slot.innerHTML = Commons.connects.has("host", "switchboard-cohost")
+        ? `<span class="pill match">✓ You're on the Switchboard's list — they'll be in touch</span>`
+        : `<button class="lifted sm stroke" data-action="raise-hand"><span class="shadow"></span><span class="face">Raise your hand</span></button>`;
+    }
+
     render();
+    renderRaiseHand();
   </script>
 </body>
 </html>

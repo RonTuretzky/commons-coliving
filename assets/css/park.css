@@ -290,7 +290,7 @@ input[type="range"].slider { width: 100%; accent-color: var(--app); height: 32px
 
 /* ---------- Demo banner ---------- */
 .demo-banner { background: var(--ink); color: var(--paper-1); font-size: .8rem; text-align: center; padding: 7px 16px; }
-.demo-banner button { color: var(--green-0); text-decoration: underline; font-size: .8rem; }
+.demo-banner button, .demo-banner a { color: var(--green-0); text-decoration: underline; font-size: .8rem; }
 
 /* ---------- Footer ---------- */
 .footer { background: var(--ink); color: var(--paper-main); margin-top: clamp(48px, 8vw, 96px); }

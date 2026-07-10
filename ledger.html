@@ -30,6 +30,7 @@
     const U = Commons.util;
     const page = document.getElementById("page");
     const AUTO_KEY = "dp-ledger-autosettle";
+    const AUTO_THRESHOLD = 50;
 
     const money = (n) => {
       const v = Number(n) || 0;
@@ -75,13 +76,28 @@
       }
 
       const L = Commons.ledger;
+      const auto = localStorage.getItem(AUTO_KEY) === "1";
+      // Auto-settle is real: while it's on, any of MY debts at or over the
+      // threshold clear themselves the moment they exist (the demo compresses
+      // "month's end" to "now" — rails make the timing a policy choice).
+      if (auto) {
+        let guard = 0;
+        let due = L.simplify().filter((p) => p.from === "me" && p.amount >= AUTO_THRESHOLD);
+        while (due.length && guard < 10) {
+          due.forEach((p) => {
+            const s = L.settle(p.from, p.to, p.amount);
+            Shell.toast(`Auto-settled ${money(s.amount)} to ${first(p.to)} — ${s.rail.seconds}s, $${s.rail.fee.toFixed(2)} fee`, "green");
+          });
+          due = L.simplify().filter((p) => p.from === "me" && p.amount >= AUTO_THRESHOLD);
+          guard++;
+        }
+      }
       const balances = L.balances();
       const myNet = Math.round(((balances["me"] || 0)) * 100) / 100;
       const square = Math.abs(myNet) < 0.01;
       const plan = L.simplify();
       const pairwise = L.pairwiseCount();
       const byCat = L.byCategory(30);
-      const auto = localStorage.getItem(AUTO_KEY) === "1";
 
       const memberRows = house.members
         .map((id) => ({ id, v: Math.round((balances[id] || 0) * 100) / 100 }))
@@ -211,7 +227,7 @@
           <div class="card flat">
             <div class="row wrap">
               <button class="chip ${auto ? "on" : ""}" data-act="autosettle">🔁 Auto-settle${auto ? " · on" : ""}</button>
-              <span class="small muted" style="flex:1;min-width:240px">Auto-settle any balance over $50 at month's end. Possible because settlement is instant and costs pennies — the tab never rots.</span>
+              <span class="small muted" style="flex:1;min-width:240px">While it's on, any debt of yours clears itself the moment it crosses $${"50"} — instantly, for pennies. The tab never rots because the tab never exists.</span>
             </div>
           </div>
         </div>
@@ -358,7 +374,7 @@
         const on = localStorage.getItem(AUTO_KEY) === "1";
         localStorage.setItem(AUTO_KEY, on ? "0" : "1");
         render();
-        Shell.toast(on ? "Auto-settle off — back to tapping" : "Auto-settle on — balances over $50 clear themselves at month's end", on ? undefined : "green");
+        Shell.toast(on ? "Auto-settle off — back to tapping" : "Auto-settle on — your debts over $50 now clear themselves", on ? undefined : "green");
       });
     }
 

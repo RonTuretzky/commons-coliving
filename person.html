@@ -117,6 +117,7 @@
         <div class="row wrap">
           ${isMe
             ? `<a class="lifted stroke" href="quiz.html"><span class="shadow"></span><span class="face">Retake the quiz</span></a>
+               <a class="park-btn light" href="account.html">${Commons.account.exists() ? "Account settings" : "Create your account"}</a>
                <a class="park-btn light" href="browse.html">Browse homes & people</a>`
             : `<span id="connect-slot">${Commons.connects.has("person", p.id)
                 ? `<button class="park-btn light" disabled>Request sent ✓</button>`

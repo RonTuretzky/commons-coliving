@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your account — Commons by Decentral Park</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const HUES = ["#0d9488", "#16a34a", "#0284c7", "#166534", "#075985", "#513c35"];
+    const BOROUGHS = ["Bed-Stuy", "Bushwick", "Crown Heights", "Greenpoint", "Gowanus", "Red Hook", "Ridgewood", "Sunset Park", "Bay Ridge", "Beacon, NY"];
+
+    let draft = null;
+
+    function startDraft() {
+      const a = Commons.account.get();
+      const me = Commons.me();
+      draft = a
+        ? { name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "" }
+        : { name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "" };
+    }
+
+    function formHtml(isNew) {
+      const hueSwatches = HUES.map((h) =>
+        `<button type="button" class="avatar ${draft.hue === h ? "" : "sm"}" data-hue="${h}" style="background:${h};cursor:pointer;border:${draft.hue === h ? "3px solid var(--ink)" : "2px solid var(--paper-0)"}" title="${h}">${U.esc(U.initials(draft.name || "You"))}</button>`
+      ).join("");
+      return `
+      <div class="card stack">
+        <div class="field">
+          <label for="a-name">Name</label>
+          <input class="input" id="a-name" value="${U.esc(draft.name)}" placeholder="The name housemates will see" />
+          <div class="help">Shows on your profile, the chore board, the ledger — everywhere your avatar goes.</div>
+        </div>
+        <div class="field">
+          <label>Avatar color</label>
+          <div class="row wrap" style="gap:10px">${hueSwatches}</div>
+        </div>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="a-borough">Home base</label>
+            <select class="input" id="a-borough">${BOROUGHS.map((b) => `<option ${b === draft.borough ? "selected" : ""}>${b}</option>`).join("")}</select>
+          </div>
+          <div class="field">
+            <label for="a-budget">Monthly budget · <span class="tnum" id="a-budget-val">${U.fmtMoney(draft.budget)}</span></label>
+            <input type="range" class="slider" id="a-budget" min="800" max="2500" step="50" value="${draft.budget}" />
+            <div class="range-labels"><span>$800</span><span>$2,500</span></div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="a-bio">One-liner (optional)</label>
+          <input class="input" id="a-bio" value="${U.esc(draft.bio)}" placeholder="e.g. Big-dinner person, early riser, has strong compost opinions." />
+        </div>
+        <div class="field">
+          <label for="a-email">Email (optional)</label>
+          <input class="input" id="a-email" type="email" value="${U.esc(draft.email)}" placeholder="you@example.com" />
+          <div class="help">Stays on this device — there's no server to send it to. A real deployment would verify it and add a passkey here.</div>
+        </div>
+        <div class="row wrap">
+          <button class="lifted" id="a-save"><span class="shadow"></span><span class="face">${isNew ? "Create my account" : "Save changes"}</span></button>
+          ${isNew ? "" : `<button class="park-btn ghost" id="a-signout">Sign out</button>`}
+        </div>
+      </div>`;
+    }
+
+    function render() {
+      const a = Commons.account.get();
+      startDraft();
+      if (!a) {
+        page.innerHTML = `
+        <div class="stack-lg">
+          <div>
+            <div class="kicker">Your account</div>
+            <h1 class="text-h2">Make it yours</h1>
+            <p class="lede">Right now you're exploring as the demo persona. An account puts your name on the
+            door — your profile, your quiz results, your chores, your side of the ledger.</p>
+            <p class="text-caption muted">Local-first: your account lives in this browser. No password, no server,
+            nothing leaves the device. Reset the demo and it's gone; that's the deal.</p>
+          </div>
+          ${formHtml(true)}
+        </div>`;
+      } else {
+        const me = Commons.me();
+        const house = Commons.houses.mine();
+        page.innerHTML = `
+        <div class="stack-lg">
+          <div class="row between wrap">
+            <div>
+              <div class="kicker">Your account</div>
+              <h1 class="text-h2">${U.esc(a.name)}</h1>
+              <p class="small muted">Member since ${U.fmtDate(a.createdAt)} · ${U.esc(a.borough)}${house ? ` · lives at <a href="house.html?id=${house.id}">${U.esc(house.name)}</a>` : ""}</p>
+            </div>
+            ${Shell.avatarHtml(me, "lg")}
+          </div>
+          <div class="row wrap">
+            <a class="park-btn light sm" href="person.html?id=me">View your public profile</a>
+            <a class="park-btn light sm" href="quiz.html">Retake the quiz</a>
+            <a class="park-btn light sm" href="checkin.html">Weekly check-in</a>
+          </div>
+          ${formHtml(false)}
+        </div>`;
+      }
+      wire(!a);
+    }
+
+    function wire(isNew) {
+      page.querySelector("#a-name").addEventListener("input", (e) => { draft.name = e.target.value; });
+      page.querySelector("#a-bio").addEventListener("input", (e) => { draft.bio = e.target.value; });
+      page.querySelector("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
+      page.querySelector("#a-borough").addEventListener("change", (e) => { draft.borough = e.target.value; });
+      page.querySelector("#a-budget").addEventListener("input", (e) => {
+        draft.budget = Number(e.target.value);
+        page.querySelector("#a-budget-val").textContent = U.fmtMoney(draft.budget);
+      });
+      page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => {
+        draft.hue = b.dataset.hue;
+        // re-render just the swatch row states
+        page.querySelectorAll("[data-hue]").forEach((x) => {
+          const on = x.dataset.hue === draft.hue;
+          x.classList.toggle("sm", !on);
+          x.style.border = on ? "3px solid var(--ink)" : "2px solid var(--paper-0)";
+        });
+      }));
+      page.querySelector("#a-save").addEventListener("click", () => {
+        const name = draft.name.trim();
+        if (!name) { Shell.toast("A name is the whole point"); return; }
+        if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) { Shell.toast("That email doesn't look right"); return; }
+        const fields = { name, email: draft.email.trim() || null, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: draft.bio.trim() };
+        if (isNew) {
+          Commons.account.create(fields);
+          Shell.toast(`Welcome, ${name.split(/\s+/)[0]} — the house knows your name now`, "green");
+        } else {
+          Commons.account.update(fields);
+          Shell.toast("Saved", "green");
+        }
+        // rebuild navbar so the avatar/name updates immediately
+        location.reload();
+      });
+      const out = page.querySelector("#a-signout");
+      if (out) out.addEventListener("click", () => {
+        Commons.account.signOut();
+        Shell.toast("Signed out — back to the demo persona");
+        setTimeout(() => location.reload(), 500);
+      });
+    }
+
+    render();
+  </script>
+</body>
+</html>

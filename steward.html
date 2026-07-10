@@ -60,10 +60,11 @@
 
               <div class="row wrap" id="quick" style="margin-top: 14px; gap: 8px;">
                 <button type="button" class="chip" data-say="What's due this week?">What's due this week?</button>
+                <button type="button" class="chip" data-say="Who owes what?">Who owes what?</button>
+                <button type="button" class="chip" data-say="I'm slammed this week">I'm slammed this week</button>
                 <button type="button" class="chip" data-say="Who pays Con Ed?">Who pays Con Ed?</button>
                 <button type="button" class="chip" data-say="Something's broken">Something's broken</button>
                 <button type="button" class="chip" data-say="House rules?">House rules?</button>
-                <button type="button" class="chip" data-say="Find a plumber">Find a plumber</button>
               </div>
 
               <form id="ask" class="row wrap" style="margin-top: 12px; gap: 10px;">
@@ -337,9 +338,15 @@
         }
         maintEl.innerHTML = rows.map((m) => {
           const opener = m.openedBy === "me" ? "you" : firstName(m.openedBy);
-          const pill = m.status === "open"
-            ? `<span class="pill warn">open</span>`
-            : `<span class="pill match">resolved</span>`;
+          const pill = m.status === "resolved" ? `<span class="pill match">resolved</span>`
+            : m.status === "scheduled" ? `<span class="pill open">scheduled</span>`
+            : `<span class="pill warn">open</span>`;
+          const draftRow = m.draft && m.status === "open"
+            ? `<div class="row between wrap" style="gap:6px;margin-top:6px;background:var(--paper-1);border-radius:8px;padding:6px 10px">
+                 <span class="text-caption">📨 Request drafted to <strong>${U.esc(m.draft.vendor)}</strong> — needs a human yes</span>
+                 <button type="button" class="park-btn sm green" data-approve="${U.esc(m.id)}">Approve &amp; send</button>
+               </div>`
+            : "";
           return `<div class="maint-row">
             <div class="row between wrap" style="gap:6px">
               <strong class="small">${U.esc(m.title)}</strong>
@@ -347,7 +354,8 @@
             </div>
             <div class="text-caption muted">opened by ${U.esc(opener)} · ${U.esc(U.relDate(m.at))}</div>
             ${m.notes ? `<div class="text-caption muted">${U.esc(m.notes)}</div>` : ""}
-            ${m.status === "open" ? `<button type="button" class="park-btn sm light" data-resolve="${U.esc(m.id)}" style="margin-top:6px">Mark resolved</button>` : ""}
+            ${draftRow}
+            ${m.status !== "resolved" ? `<button type="button" class="park-btn sm light" data-resolve="${U.esc(m.id)}" style="margin-top:6px">Mark resolved</button>` : ""}
           </div>`;
         }).join("");
       }
@@ -416,7 +424,29 @@
 
       chatEl.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-draft]");
-        if (btn) Shell.toast("Drafted — waiting on a human to approve ✋", "green");
+        if (btn) {
+          const vendor = btn.getAttribute("data-draft");
+          let ticket = Commons.steward.maintenance().find((m) => m.status === "open");
+          if (!ticket) ticket = Commons.steward.addMaintenance({ title: "Service visit — " + vendor });
+          ticket.draft = { vendor, at: new Date().toISOString() };
+          Commons.save();
+          renderMaint();
+          Shell.toast(`Drafted to ${vendor} — approve it in the maintenance log ✋`, "green");
+        }
+      });
+
+      maintEl.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-approve]");
+        if (!btn) return;
+        const item = Commons.steward.maintenance().find((m) => m.id === btn.getAttribute("data-approve"));
+        if (item && item.draft) {
+          item.status = "scheduled";
+          item.notes = `Request sent to ${item.draft.vendor} — they'll reach out to schedule. (You approved; I just typed.)`;
+          delete item.draft;
+          Commons.save();
+          renderMaint();
+          Shell.toast("Sent — a human said yes, so I hit send", "green");
+        }
       });
 
       maintEl.addEventListener("click", (e) => {

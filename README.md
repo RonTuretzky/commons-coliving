@@ -28,3 +28,12 @@ Faithful vanilla-CSS port of [decentralpark-ui-kit](https://github.com/decentral
 ## Mechanics
 
 Deliberately web2: templates + a ledger + votes. Deterministic bill rotation, period-calculated chores (`period = floor((now−start)/freq)`, no stored instances), 2/3-majority proposals with auto-resolution, platform-held event deposits. A trustless enforcement layer is explicitly parked (see PRD §8).
+
+## E2E tests
+
+37 headless Playwright tests drive every feature against real store state — account creation/sign-out, the full quiz, ledger splits/settle/auto-settle, 2/3 votes executing from the fund, the check-in reallocator, escrow reserve/refund, the steward's draft→approve flow, the wizard, and both calculators.
+
+```bash
+python3 -m http.server 8091 &
+npm i playwright --no-save && node tests/e2e.mjs   # BASE_URL to point elsewhere
+```

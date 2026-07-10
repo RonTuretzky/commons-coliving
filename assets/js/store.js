@@ -9,7 +9,7 @@
      - bills: deterministic monthly rotation
    ============================================================ */
 (function () {
-  const KEY = "dp-commons-v4";
+  const KEY = "dp-commons-v5";
   const DAY = 86400000;
   const now = Date.now();
   const days = (n) => new Date(now + n * DAY).toISOString();
@@ -392,8 +392,9 @@
 
   function seedState() {
     return {
-      version: 4,
+      version: 5,
       seededAt: now,
+      account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
       me: {
         id: "me", name: "You", age: 30, borough: "Bed-Stuy", budget: 1500,
         quizDone: true, // demo persona; quiz.html overwrites
@@ -583,7 +584,7 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 4) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 5) return; }
     } catch (e) { /* reseed */ }
     state = seedState();
     seedChoreHistory(state);
@@ -713,7 +714,50 @@
     },
 
     me: () => state.me,
-    setMe(patch) { Object.assign(state.me, patch); save(); },
+    setMe(patch) {
+      Object.assign(state.me, patch);
+      // account is the source of truth for identity fields — keep it in sync
+      if (state.account) {
+        ["name", "borough", "budget"].forEach((k) => { if (k in patch) state.account[k] = patch[k]; });
+      }
+      save();
+    },
+
+    account: {
+      get: () => state.account,
+      exists: () => !!state.account,
+      create(fields) {
+        state.account = {
+          name: fields.name, email: fields.email || null, borough: fields.borough,
+          budget: fields.budget, hue: fields.hue || "#0d9488", bio: fields.bio || "",
+          createdAt: new Date().toISOString(),
+        };
+        Object.assign(state.me, {
+          name: fields.name, borough: fields.borough, budget: fields.budget,
+          hue: fields.hue || "#0d9488",
+          blurb: fields.bio || "New around here — say hi at a mixer.",
+        });
+        save(); return state.account;
+      },
+      update(patch) {
+        if (!state.account) return null;
+        Object.assign(state.account, patch);
+        const mirror = {};
+        ["name", "borough", "budget", "hue"].forEach((k) => { if (k in patch) mirror[k] = patch[k]; });
+        if ("bio" in patch) mirror.blurb = patch.bio || state.me.blurb;
+        Object.assign(state.me, mirror);
+        save(); return state.account;
+      },
+      signOut() {
+        state.account = null;
+        Object.assign(state.me, {
+          name: "You", borough: "Bed-Stuy", budget: 1500,
+          blurb: "Demo persona — create an account or retake the quiz to make this yours.",
+        });
+        delete state.me.hue;
+        save();
+      },
+    },
 
     people: {
       all: () => state.people.slice(),

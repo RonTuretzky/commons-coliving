@@ -29,13 +29,21 @@
   ];
 
   function navbar(active) {
+    const C = window.Commons;
+    const U = C.util;
+    const account = C.account.get();
     const links = NAV.map((n) =>
       `<a href="${n.href}" class="${n.id === active ? "on" : ""}">${n.label}</a>`
     ).join("");
+    const accountEl = account
+      ? `<a href="account.html" class="row" style="gap:8px;text-decoration:none;color:var(--ink);margin-left:6px" title="Your account">
+           ${avatarHtml(C.me(), "sm")}<span class="display" style="font-size:.9rem">${U.esc(account.name.split(/\s+/)[0])}</span></a>`
+      : `<a class="park-btn sm light" href="account.html" style="margin-left:6px">Create account</a>`;
+    const banner = account
+      ? `Demo world — everything lives in your browser. <button type="button" id="demo-reset">Reset the demo</button>`
+      : `Demo world — you're exploring as the demo persona. <a href="account.html">Create your account</a> · <button type="button" id="demo-reset">Reset the demo</button>`;
     return `
-    <div class="demo-banner">Demo world — everything lives in your browser.
-      <button type="button" id="demo-reset">Reset the demo</button>
-    </div>
+    <div class="demo-banner">${banner}</div>
     <header class="navbar">
       <div class="container nav-inner">
         <a class="brand" href="index.html">
@@ -49,6 +57,7 @@
         <nav class="nav-links" id="nav-links">${links}
           <a href="quiz.html" class="${active === "quiz" ? "on" : ""}">Quiz</a>
         </nav>
+        ${accountEl}
         <a class="lifted xs ${active === "create" ? "green" : ""}" href="create.html" style="margin-left:6px"><span class="shadow"></span><span class="face">Start a house</span></a>
         <button class="nav-burger" id="nav-burger" aria-label="Menu">☰</button>
       </div>
@@ -116,7 +125,8 @@
   function avatarHtml(profile, size) {
     const U = window.Commons.util;
     if (!profile) return "";
-    return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background:${U.hue(profile.id)}">${U.esc(U.initials(profile.name))}</span>`;
+    const bg = profile.hue || U.hue(profile.id);
+    return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background:${bg}">${U.esc(U.initials(profile.name))}</span>`;
   }
   function matchPill(m) {
     const conf = m.conflicts > 0
