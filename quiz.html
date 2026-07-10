@@ -48,8 +48,12 @@
 
     /* ---------- flow: intro → rhythms(10) → lenses(5) → character(8+2+1, private)
        → hard lines → basics → results. Evidence-based v2 — see quiz-v2-proposal.html ---------- */
-    const answers = { rhythms: {}, lenses: {}, character: {}, svo: {}, voice: null, hard: [], hardNone: false, basics: {} };
-    const totalSteps = Q.RHYTHM_ITEMS.length + Q.LENSES.length + Q.CHARACTER_ITEMS.length + Q.SVO_ITEMS.length + 1 + 2;
+    let mode = "advanced"; // 'simple' (the quick 12) or 'advanced' (the full 30)
+    const answers = { rhythms: {}, lenses: {}, character: {}, svo: {}, voice: null, hard: [], hardNone: false, basics: {}, simple: [] };
+    const stepsFor = () => mode === "simple"
+      ? Commons.QUIZ.length + 2
+      : Q.RHYTHM_ITEMS.length + Q.LENSES.length + Q.CHARACTER_ITEMS.length + Q.SVO_ITEMS.length + 1 + 2;
+    let totalSteps = stepsFor();
     let stepsDone = 0;
 
     function progressHtml(section) {
@@ -103,6 +107,7 @@
     function render() {
       const k = current.kind;
       if (k === "intro") return renderIntro();
+      if (k === "simple") return renderSimple(current.i);
       if (k === "rhythm") return renderRhythm(current.i);
       if (k === "lensIntro") return renderLensIntro();
       if (k === "lens") return renderLens(current.i);
@@ -117,28 +122,57 @@
 
     function renderIntro() {
       page.innerHTML = `
-      <div class="card stack-lg" style="padding:clamp(24px,5vw,44px)">
+      <div class="stack-lg">
         <div>
-          <div class="kicker">The questionnaire · v2</div>
-          <h1 class="text-h2">Thirty questions.<br/>Zero horoscope.</h1>
-          <p class="lede" style="margin-top:12px">Built from the research on what actually predicts living well together:
-          your <strong>rhythms</strong> (sleep, mess, noise, guests), how you want the house <strong>structured</strong>
-          (five lenses), and a private <strong>character check</strong> only you ever see. About six minutes.</p>
+          <div class="kicker">The questionnaire</div>
+          <h1 class="text-h2">Two ways in.</h1>
+          <p class="lede" style="margin-top:12px">Both end with fit bands, your hard lines kept private, and a drafted
+          house agreement. One is a coffee break; the other is the real instrument.</p>
         </div>
-        <div class="row wrap" style="gap:8px">
-          <span class="chip soft">🕰️ Rhythms · 10</span>
-          <span class="chip soft">📐 Structure · 5</span>
-          <span class="chip soft">🧭 Character · 11 · private</span>
-          <span class="chip soft">🚫 Hard lines</span>
-          <span class="chip soft">📋 The practical stuff</span>
+        <div class="grid grid-2">
+          <div class="card stack" style="border:2px solid var(--paper-2)">
+            <div class="row between"><span style="font-size:2rem">⚡</span><span class="pill paper">~3 minutes</span></div>
+            <h2 class="text-h4">The quick quiz</h2>
+            <p class="small muted">Twelve either/ors, the fun ones — mystery fridge containers, couch philosophy.
+            Your rhythm and structure profiles get <em>estimated</em> from it.</p>
+            <button class="lifted sm stroke" id="start-simple"><span class="shadow"></span><span class="face">Start the quick one</span></button>
+          </div>
+          <div class="card stack" style="border:2px solid var(--pine)">
+            <div class="row between"><span style="font-size:2rem">🔬</span><span class="row" style="gap:6px"><span class="pill pine">~6 minutes</span><span class="pill match">recommended</span></span></div>
+            <h2 class="text-h4">The full quiz</h2>
+            <p class="small muted">Thirty evidence-based items: your <strong>rhythms</strong> (sleep, mess, noise, guests),
+            the <strong>five lenses</strong> of house structure, and a private <strong>character check</strong> only you ever see.</p>
+            <button class="lifted sm"  id="start-adv"><span class="shadow"></span><span class="face">Start the full one</span></button>
+          </div>
         </div>
-        <div class="row wrap">
-          <button class="lifted" id="start"><span class="shadow"></span><span class="face">Start</span></button>
-          <span class="small muted">No match percentages at the end — fit bands with reasons. The science made us do it.</span>
-        </div>
+        <p class="text-caption muted center-text">No match percentages at the end — fit bands with reasons. The science made us do it.</p>
       </div>`;
-      document.getElementById("start").addEventListener("click", () => go({ kind: "rhythm", i: 0 }));
+      document.getElementById("start-adv").addEventListener("click", () => { mode = "advanced"; totalSteps = stepsFor(); go({ kind: "rhythm", i: 0 }); });
+      document.getElementById("start-simple").addEventListener("click", () => { mode = "simple"; totalSteps = stepsFor(); answers.simple = []; go({ kind: "simple", i: 0 }); });
       keyHandler = null;
+    }
+
+    /* ---------- the quick quiz (v1, restored) ---------- */
+    function renderSimple(i) {
+      const q = Commons.QUIZ[i];
+      page.innerHTML = `
+      <div class="card" style="padding:clamp(24px,5vw,44px)">
+        ${progressHtml(`Quick quiz · ${i + 1} / ${Commons.QUIZ.length}`)}
+        <h2 class="text-h3" style="margin-top:18px">${U.esc(q.q)}</h2>
+        <div class="lens-opts">
+          ${q.a.map((o, n) => `<button data-v="${n}"><span class="dots">${n + 1}</span><span>${U.esc(o.t)}</span></button>`).join("")}
+        </div>
+        <p class="text-caption muted" style="margin-top:14px">Pick the closest truth — or press <strong>1–${q.a.length}</strong>.</p>
+      </div>`;
+      page.querySelectorAll("[data-v]").forEach((b) => b.addEventListener("click", () => pickSimple(i, Number(b.dataset.v))));
+      keyHandler = (n) => { if (n >= 1 && n <= q.a.length) pickSimple(i, n - 1); };
+      wireBack();
+    }
+    function pickSimple(i, n) {
+      answers.simple[i] = Commons.QUIZ[i].a[n].d;
+      stepsDone++;
+      if (i + 1 < Commons.QUIZ.length) go({ kind: "simple", i: i + 1 });
+      else go({ kind: "hard" });
     }
 
     function likertStage(opts) {
@@ -363,6 +397,25 @@
 
     function finish() {
       stepsDone = totalSteps;
+      if (mode === "simple") {
+        // v1 scoring: average every nudge per dim, default 50
+        const buckets = {};
+        answers.simple.forEach((d) => Object.entries(d || {}).forEach(([k, v]) => (buckets[k] = buckets[k] || []).push(v)));
+        const dims = {};
+        Commons.DIMS.forEach((d) => {
+          const arr = buckets[d.id] || [];
+          dims[d.id] = arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 50;
+        });
+        Commons.setMe({
+          dims, rhythms: null, lenses: null, index: null, quizMode: "simple",
+          hard: answers.hard, quizDone: true,
+          name: answers.basics.name.trim() || Commons.me().name,
+          borough: answers.basics.borough, budget: answers.basics.budget, seeking: answers.basics.seeking,
+          values: [],
+        });
+        go({ kind: "results" });
+        return;
+      }
       const rh = answers.rhythms, ln = answers.lenses;
       const svoTotal = Object.values(answers.svo).reduce((s, v) => s + v, 0); // 0–4
       const index = {
@@ -373,7 +426,7 @@
       };
       const dims = Commons.dimsFromV2(rh, ln);
       Commons.setMe({
-        rhythms: rh, lenses: ln, index, dims,
+        rhythms: rh, lenses: ln, index, dims, quizMode: "advanced",
         hard: answers.hard, quizDone: true,
         name: answers.basics.name.trim() || Commons.me().name,
         borough: answers.basics.borough, budget: answers.basics.budget, seeking: answers.basics.seeking,
@@ -386,7 +439,10 @@
     function renderResults() {
       const me = Commons.me();
       const arch = Commons.archetype(me.dims);
-      const rh = me.rhythms, ln = me.lenses, ix = me.index;
+      const quick = !me.rhythms; // quick quiz → profiles are estimated from the twelve
+      const rh = me.rhythms || Commons.rhythmsOf(me);
+      const ln = me.lenses || Commons.lensesOf(me);
+      const ix = me.index;
       const dots = (n) => "●".repeat(n + 1) + "○".repeat(3 - n);
 
       const fits = Commons.houses.all()
@@ -416,7 +472,7 @@
           <div class="bar"><i style="width:${pct}%"></i></div><span class="small tnum">${Math.round(avg * 10) / 10}</span></div>`;
       }).join("");
 
-      const traitRows = Object.entries(Q.TRAIT_LABELS).map(([id, t]) => `
+      const traitRows = !ix ? "" : Object.entries(Q.TRAIT_LABELS).map(([id, t]) => `
         <div class="meter"><span class="small">${U.esc(t.label)}</span>
           <div class="bar"><i style="width:${ix[id]}%;background:var(--sky)"></i></div><span class="small tnum">${ix[id]}</span></div>
         <p class="text-caption muted" style="margin:-2px 0 6px">${U.esc(t.desc)}</p>`).join("");
@@ -448,18 +504,18 @@
 
         <div class="grid grid-2">
           <div class="card stack">
-            <div class="kicker">Your structure profile</div>
-            <p class="text-caption muted">The five lenses — every house carries this same profile. Big gaps are conversations, not verdicts.</p>
+            <div class="kicker">Your structure profile${quick ? " · estimated" : ""}</div>
+            <p class="text-caption muted">${quick ? "Estimated from the quick quiz — the full quiz measures these directly. " : ""}The five lenses — every house carries this same profile. Big gaps are conversations, not verdicts.</p>
             ${lensRows}
           </div>
           <div class="card stack">
-            <div class="kicker">Your rhythms</div>
-            <p class="text-caption muted">The five domains roommate conflict actually comes from.</p>
+            <div class="kicker">Your rhythms${quick ? " · estimated" : ""}</div>
+            <p class="text-caption muted">${quick ? "Estimated from the quick quiz. " : ""}The five domains roommate conflict actually comes from.</p>
             ${rhythmRows}
           </div>
         </div>
 
-        <div class="card stack" style="border-color:var(--ink)">
+        ${ix ? `<div class="card stack" style="border-color:var(--ink)">
           <div class="row between wrap">
             <div class="kicker">Housemate index</div>
             <span class="private-note">🔒 Only you ever see this</span>
@@ -467,7 +523,13 @@
           ${traitRows}
           <p class="small">Shared-money instinct: <strong>${U.esc(ix.svo)}</strong> · Raising issues: <strong>${ix.voice >= 4 ? "early and plainly" : ix.voice >= 3 ? "eventually" : "you tend to sit on it"}</strong></p>
           <p class="text-caption muted">These are the traits that matter for anyone you live with — measured absolutely, never matched, never shown to others. Just self-knowledge.</p>
-        </div>
+        </div>` : `<div class="card row between wrap" style="border-color:var(--pine);gap:12px">
+          <span class="row" style="gap:10px"><span style="font-size:1.5rem">🔬</span><span>
+            <strong class="display-bold">Want the real instrument?</strong>
+            <span class="small muted" style="display:block">The full quiz measures your rhythms directly and adds the private housemate index — six more minutes, much sharper matches.</span>
+          </span></span>
+          <button class="lifted xs" id="go-advanced"><span class="shadow"></span><span class="face">Take the full quiz</span></button>
+        </div>`}
 
         <div class="card stack">
           <div class="row between wrap">
@@ -486,6 +548,11 @@
         </div>
       </div>`;
       document.getElementById("retake").addEventListener("click", () => location.reload());
+      const adv = document.getElementById("go-advanced");
+      if (adv) adv.addEventListener("click", () => {
+        mode = "advanced"; totalSteps = stepsFor(); stepsDone = 0;
+        go({ kind: "rhythm", i: 0 });
+      });
       document.getElementById("copy-agreement").addEventListener("click", () => {
         const text = "Our house agreement (draft)\n" + agreement.map((l) => "• " + l).join("\n");
         (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(

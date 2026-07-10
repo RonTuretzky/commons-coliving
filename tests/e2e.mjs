@@ -81,6 +81,29 @@ for (const p of GATED) {
   });
 }
 
+/* ---------- 1b. quick quiz (v1 restored) ---------- */
+await fresh('quiz.html');
+await test('quick quiz: 12 questions → estimated profiles + upsell', async () => {
+  await page.locator('#start-simple').click();
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(150);
+    await page.locator('main [data-v]').first().click();
+  }
+  await page.waitForTimeout(300);
+  assert((await ev(() => document.getElementById('page').textContent.includes('Hard lines'))), 'quick quiz never reached hard lines');
+  await page.locator('main button', { hasText: /^Continue$/ }).click();
+  await page.waitForTimeout(300);
+  await page.locator('main button', { hasText: /See your results/ }).click();
+  await page.waitForTimeout(500);
+  const me = await ev(() => window.Commons.me());
+  assert(me.quizDone && me.quizMode === 'simple', 'quick quiz not saved');
+  assert(!me.rhythms, 'quick quiz should not fabricate direct rhythms');
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(body.includes('estimated'), 'no estimated labels');
+  assert(body.includes('Want the real instrument'), 'no full-quiz upsell');
+  assert(body.includes('house agreement'), 'no drafted agreement in quick mode');
+});
+
 /* ---------- 2. THE JOURNEY (one continuous context, like a real user) ---------- */
 await fresh('account.html');
 const cdp = await addVirtualAuthenticator();
@@ -101,8 +124,8 @@ await test('signup: account + passkey + photo → onboards to quiz', async () =>
   assert((await ev(() => window.Commons.me().photo && true)), 'photo not mirrored to profile');
 });
 
-await test('quiz v2: rhythms → lenses → character → hard lines → results', async () => {
-  await page.locator('main button', { hasText: /^Start/ }).first().click();
+await test('quiz v2 (full): rhythms → lenses → character → hard lines → results', async () => {
+  await page.locator('#start-adv').click();
   // drive the staged flow: answer any [data-v] question, click Continue on interstitials
   for (let i = 0; i < 45; i++) {
     await page.waitForTimeout(180);
@@ -226,7 +249,7 @@ await test('meals: save plan includes me in rotation', async () => {
   assert(plan.presetId === 'sunday-batch' && plan.rotation.includes('me'), 'plan wrong: ' + JSON.stringify(plan));
 });
 
-await test('gatherings: rsvp, escrow reserve → refund, raise-hand persists', async () => {
+await test('gatherings: rsvp, escrow reserve → refund', async () => {
   await go('gatherings.html');
   await page.locator("[data-action='rsvp']").first().click();
   await page.waitForTimeout(300);
@@ -237,10 +260,29 @@ await test('gatherings: rsvp, escrow reserve → refund, raise-hand persists', a
   await page.locator('button', { hasText: /refunds/ }).click();
   await page.waitForTimeout(300);
   assert((await ev(() => window.Commons.events.escrowPaid('e-retreat-catskills'))) === 0, 'escrow not refunded');
-  await page.locator("[data-action='raise-hand']").click();
-  await page.waitForTimeout(300);
+});
+
+await test('gatherings: host a gathering end-to-end, then cancel it', async () => {
   await go('gatherings.html');
-  assert((await ev(() => (document.getElementById('raise-hand-slot')?.textContent || '').includes("Switchboard's list"))), 'raise-hand not persisted');
+  await page.locator('#host-toggle').click();
+  await page.waitForTimeout(300);
+  const d = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  await page.fill('#g-title', 'E2E Stoop Mixer');
+  await page.fill('#g-when', d);
+  await page.fill('#g-where', 'The Stoop, Bed-Stuy');
+  await page.fill('#g-price', '15');
+  await page.locator('#g-submit').click();
+  await page.waitForTimeout(400);
+  const ev1 = await ev(() => window.Commons.events.all().find((x) => x.title === 'E2E Stoop Mixer'));
+  assert(ev1 && ev1.hostedByMe && ev1.escrow && ev1.price === 15, 'hosted event not stored: ' + JSON.stringify(ev1 || null).slice(0,120));
+  assert((await ev(() => document.body.innerText.includes('E2E Stoop Mixer'))), 'hosted event not rendered');
+  assert((await ev(() => document.getElementById('my-gatherings').textContent.includes('E2E Stoop Mixer'))), 'not in Your gatherings');
+  // cancel (two-tap confirm)
+  await page.locator("[data-action='cancel-gathering']").first().click();
+  await page.waitForTimeout(200);
+  await page.locator("[data-action='cancel-gathering']").first().click();
+  await page.waitForTimeout(400);
+  assert(!(await ev(() => window.Commons.events.all().some((x) => x.title === 'E2E Stoop Mixer'))), 'cancel did not remove event');
 });
 
 await test('steward: personalized greeting + ledger + slammed + draft→approve', async () => {

@@ -1074,6 +1074,25 @@
       unrsvp(id) { state.rsvps = state.rsvps.filter((x) => x !== id); const e = state.events.find((x) => x.id === id); if (e) e.attendees = e.attendees.filter((a) => a !== "me"); save(); },
       escrowPaid: (id) => state.escrowPaid[id] || 0,
       payEscrow(id, amount) { state.escrowPaid[id] = amount; const e = state.events.find((x) => x.id === id); if (e && e.escrow) e.escrow.total += amount; this.rsvp(id); save(); },
+      // host a gathering: real events, created by you (or your house)
+      add(ev) {
+        const e = Object.assign({
+          id: "e-" + Math.random().toString(36).slice(2, 8),
+          attendees: ["me"], hostedByMe: true,
+          host: state.myHouseId || null,
+          escrow: Number(ev.price) > 0 ? { state: "held", total: 0, note: "deposits held until it happens — refunded if it doesn't" } : null,
+        }, ev);
+        state.events.push(e); save(); return e;
+      },
+      // cancel something you host: any escrow you paid comes straight back
+      cancel(id) {
+        const e = state.events.find((x) => x.id === id);
+        if (!e || !e.hostedByMe) return false;
+        if (state.escrowPaid[id]) delete state.escrowPaid[id];
+        state.rsvps = state.rsvps.filter((x) => x !== id);
+        state.events = state.events.filter((x) => x.id !== id);
+        save(); return true;
+      },
       // people I share past events with, ranked by overlap
       overlap(profile) {
         const mine = new Set((profile.events || []).concat(state.rsvps));

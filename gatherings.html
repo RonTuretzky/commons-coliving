@@ -78,13 +78,49 @@
 
     <!-- ============ Host your own ============ -->
     <section class="section" style="padding-top: 0">
-      <div class="container">
+      <div class="container stack-lg">
+        <div id="my-gatherings"></div>
         <div class="card ink host-cta">
           <div>
             <div class="kicker" style="color: var(--pine-0)">Host your own</div>
-            <p style="margin-top: 8px">Want to host a mixer? The Switchboard (Ridgewood) runs them monthly and will co-host your first — they bring the name tags, you bring the living room.</p>
+            <p style="margin-top: 8px">A mixer on your stoop, an open dinner, a catalyst weekend — houses are catalyzed by whoever puts the date on the calendar. Free events go straight up; priced ones hold deposits until the day happens.</p>
           </div>
-          <span id="raise-hand-slot"></span>
+          <span><button class="lifted sm stroke" id="host-toggle"><span class="shadow"></span><span class="face">Host a gathering</span></button></span>
+        </div>
+        <div class="card stack hidden" id="host-form">
+          <div class="kicker">New gathering</div>
+          <div class="grid grid-2">
+            <div class="field"><label for="g-title">What is it?</label>
+              <input class="input" id="g-title" maxlength="60" placeholder="e.g. Stoop Fireside Mixer" /></div>
+            <div class="field"><label>Kind</label>
+              <div class="choice-row" id="g-type">
+                <button type="button" class="choice on" data-v="mixer">Mixer</button>
+                <button type="button" class="choice" data-v="dinner">Dinner</button>
+                <button type="button" class="choice" data-v="retreat">Retreat</button>
+                <button type="button" class="choice" data-v="workday">Work day</button>
+              </div></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label for="g-when">When</label>
+              <input class="input" id="g-when" type="date" /></div>
+            <div class="field"><label for="g-where">Where</label>
+              <input class="input" id="g-where" maxlength="60" placeholder="e.g. McCarren Park, Greenpoint" /></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label for="g-cap">Capacity · <strong class="tnum" id="g-cap-val">20</strong></label>
+              <input type="range" class="slider" id="g-cap" min="4" max="120" step="2" value="20" />
+              <div class="range-labels"><span>4</span><span>120</span></div></div>
+            <div class="field"><label for="g-price">Deposit per person (0 = free)</label>
+              <div style="position:relative"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--grey-soft)">$</span>
+              <input class="input" id="g-price" type="number" min="0" step="5" value="0" style="padding-left:30px" /></div>
+              <div class="help">Deposits sit with the platform — released to you when it happens, refunded if it doesn't.</div></div>
+          </div>
+          <div class="field"><label for="g-desc">Pitch it</label>
+            <textarea class="input" id="g-desc" maxlength="240" placeholder="One or two sentences — why should a stranger show up?"></textarea></div>
+          <div class="row wrap">
+            <button class="lifted green" id="g-submit"><span class="shadow"></span><span class="face">Put it on the calendar</span></button>
+            <button class="park-btn ghost" id="g-cancel">Never mind</button>
+          </div>
         </div>
       </div>
     </section>
@@ -302,25 +338,84 @@
           render();
           break;
         }
-        case "raise-hand": {
-          Commons.connects.add("host", "switchboard-cohost");
-          renderRaiseHand();
-          Shell.toast("Passed to the Switchboard — they'll be in touch", "green");
+        case "cancel-gathering": {
+          const ev = Commons.events.get(id);
+          if (btn.dataset.armed) {
+            Commons.events.cancel(id);
+            Shell.toast("Cancelled — deposits refunded on the spot", "green");
+            render(); renderMine();
+          } else {
+            btn.dataset.armed = "1";
+            btn.textContent = "Really cancel " + (ev ? ev.title : "it") + "?";
+            Shell.toast("Tap again to confirm");
+          }
           break;
         }
       }
     });
 
-    function renderRaiseHand() {
-      const slot = document.getElementById("raise-hand-slot");
-      if (!slot) return;
-      slot.innerHTML = Commons.connects.has("host", "switchboard-cohost")
-        ? `<span class="pill match">✓ You're on the Switchboard's list — they'll be in touch</span>`
-        : `<button class="lifted sm stroke" data-action="raise-hand"><span class="shadow"></span><span class="face">Raise your hand</span></button>`;
+    /* ---------- hosting: your gatherings + the form ---------- */
+    function renderMine() {
+      const wrap = document.getElementById("my-gatherings");
+      const mine = Commons.events.all().filter((e) => e.hostedByMe);
+      if (!mine.length) { wrap.innerHTML = ""; return; }
+      wrap.innerHTML = `<div class="card stack">
+        <div class="kicker">Your gatherings</div>
+        ${mine.map((e) => `
+          <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-block:10px">
+            <span class="small"><strong>${esc(e.title)}</strong> · ${esc(U.fmtDateLong(e.when))} · ${esc(e.where)}
+              <span class="muted">— ${(e.attendees || []).length} going of ${e.capacity}${e.price ? " · " + U.fmtMoney(e.price) + " deposit" : ""}</span>
+              ${e.escrow ? `<span class="muted">· ${U.fmtMoney(e.escrow.total)} held</span>` : ""}</span>
+            <button class="park-btn light sm" data-action="cancel-gathering" data-id="${esc(e.id)}">Cancel it</button>
+          </div>`).join("")}
+        <p class="text-caption muted">Cancelling refunds every deposit instantly — that's the deal that makes strangers trust the calendar.</p>
+      </div>`;
     }
 
+    (function wireHostForm() {
+      const form = document.getElementById("host-form");
+      let gtype = "mixer";
+      document.getElementById("host-toggle").addEventListener("click", () => {
+        if (!Commons.account.active()) {
+          Shell.toast("Hosting starts with an account");
+          setTimeout(() => { location.href = "account.html"; }, 700);
+          return;
+        }
+        form.classList.toggle("hidden");
+        if (!form.classList.contains("hidden")) form.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      document.getElementById("g-cancel").addEventListener("click", () => form.classList.add("hidden"));
+      document.getElementById("g-type").addEventListener("click", (e) => {
+        const b = e.target.closest(".choice"); if (!b) return;
+        gtype = b.dataset.v;
+        document.querySelectorAll("#g-type .choice").forEach((x) => x.classList.toggle("on", x === b));
+      });
+      document.getElementById("g-cap").addEventListener("input", (e) => {
+        document.getElementById("g-cap-val").textContent = e.target.value;
+      });
+      document.getElementById("g-submit").addEventListener("click", () => {
+        const title = document.getElementById("g-title").value.trim();
+        const when = document.getElementById("g-when").value;
+        const where = document.getElementById("g-where").value.trim();
+        if (!title) { Shell.toast("Give it a name people will say out loud"); return; }
+        if (!when || new Date(when + "T12:00:00") < new Date()) { Shell.toast("Pick a date that hasn't happened yet"); return; }
+        if (!where) { Shell.toast("People need somewhere to show up"); return; }
+        Commons.events.add({
+          title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
+          capacity: Number(document.getElementById("g-cap").value) || 20,
+          price: Number(document.getElementById("g-price").value) || 0,
+          desc: document.getElementById("g-desc").value.trim() || "Come through — details in the group chat.",
+        });
+        form.classList.add("hidden");
+        document.getElementById("g-title").value = ""; document.getElementById("g-desc").value = "";
+        Shell.toast("It's on the calendar — see you there", "green");
+        render(); renderMine();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    })();
+
     render();
-    renderRaiseHand();
+    renderMine();
   </script>
 </body>
 </html>
