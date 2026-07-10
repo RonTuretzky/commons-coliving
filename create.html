@@ -464,6 +464,19 @@
           rules: draft.rules.slice(),
           hue: hueFor(draft.name),
           blurb: draft.blurb || "Brand new and full of intent — looking for the first few people who mean it.",
+          // structural profile on the five lenses (quiz v2 matches against this);
+          // founder's own quiz answers win where they exist
+          lenses: (() => {
+            const mine = Commons.me().lenses;
+            const econLens = { split: 0, weighted: 0, fund: 2, sliding: 2, commons: 3, labor: 2 };
+            return {
+              property: econLens[draft.poolModel] ?? 2,
+              governance: mine ? mine.governance : 2,
+              labor: mine ? mine.labor : 2,
+              membership: draft.poolModel === "commons" ? 3 : 2,
+              outside: Math.min(3, Math.max(0, Math.round(3 * (draft.networked / 100)))),
+            };
+          })(),
         };
       }
       function launch() {

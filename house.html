@@ -163,9 +163,12 @@
       return `
         <div class="card flat side-card">
           <div class="kicker">Compatibility</div>
-          <div class="text-h2 tnum" style="margin-top:6px">${m.score}%</div>
-          <div class="text-caption muted">match with your profile</div>
+          <div class="text-h2" style="margin-top:6px;font-size:clamp(1.5rem,2.4vw,2.1rem)">${U.esc(m.bandLabel || "")}</div>
+          <div class="text-caption muted">bands, not oracles — meeting them is the real test</div>
           <div class="row wrap" style="margin-top:10px">${Shell.matchPill(m)}</div>
+          ${m.frictions && m.frictions.length ? `<div style="margin-top:12px">
+            ${m.frictions.map((f) => `<p class="text-caption" style="margin-top:6px">⚡ ${U.esc(f.script)}</p>`).join("")}
+          </div>` : `<p class="text-caption muted" style="margin-top:10px">No obvious frictions — ask about the ones that don't fit a questionnaire.</p>`}
           <p class="small" style="margin-top:12px">${conflictLine}</p>
           <p class="text-caption muted" style="margin-top:4px">We only ever show the count, never which ones — enough signal to pass, and nobody has to over-share.</p>
           <div class="fit-line">

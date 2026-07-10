@@ -58,6 +58,9 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 - `Commons.CHORE_KINDS` `[{id,label,emoji}]` · `Commons.BANDWIDTH` `[{id,label,emoji,capacity,desc}]` (low/normal/high) · `Commons.APPETITE` `[{id,label,emoji,desc}]` (avoid/fine/love)
 - `Commons.prefs.kinds()/get(memberId)/setMine({loves,hates})/bandwidth(memberId?)/setBandwidth(id)/appetite(memberId?)/setAppetite(id)` — chore-taste profiles + weekly bandwidth & cooking appetite
 - `Commons.rebalance.week()` → `{changes:[{choreId,name,emoji,period,from,to,reason}], mealNote}` — reallocates this period's open chores by preference + bandwidth (writes overrides; `chores.assignee()` is automatically override-aware) and reorders the meal-plan cook rotation by appetite. `clear()` drops overrides · `overrideCount()` · `isOverridden(choreId, period)`
+- `Commons.quizV2` — `{RHYTHM_ITEMS, LENSES, CHARACTER_ITEMS, SVO_ITEMS, CONFLICT_ITEM, TRAIT_LABELS, BAND_LABELS}` — the v2 item banks
+- `Commons.match(a,b)` / `Commons.matchHouse(me,h)` now return `{score, band: 'strong'|'workable'|'stretch', bandLabel, frictions:[{title,script,gap}], conflicts, …}` — **display bands, never raw %** (Shell.matchPill does this)
+- `Commons.rhythmsOf(p)/lensesOf(p)/houseLensesOf(h)` — v2 profiles with deterministic derivation for legacy seeds · `Commons.dimsFromV2(rhythms, lenses)` legacy-dims bridge · `Commons.agreement(profile, house?)` → drafted house-agreement lines
 - `Commons.util`: `fmtMoney, fmtDate, fmtDateLong, relDate, initials, hue, esc, qp(name), clamp`
 
 **Copy rule ("systems, not templates"):** the product story is *"run the house on a system that works"* — the word "template" undersells and should be avoided in headings/CTAs (fine in passing). The calculators are first-class features: label them CALCULATOR and cross-link them prominently.
@@ -77,7 +80,7 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 | file | nav id | job |
 |---|---|---|
 | index.html | `''` | Landing: hero, the pipeline (Match→Meet→Gather→Form→Run), feature sections per flow, CTAs to quiz/browse, solidarity-apps positioning |
-| quiz.html | `quiz` | 12-question quiz (one at a time, progress bar) → dealbreakers picker → budget/borough/intent → archetype reveal → save via `setMe`, CTA to browse |
+| quiz.html | `quiz` | v2: rhythms(10) → five lenses(5) → private character(11) → dealbreakers → basics → results (bands, frictions, private index, drafted agreement) |
 | browse.html | `browse` | Homes/People tabs, filter chips (borough, budget, rooms open, mission, seeking-type), cards with match pill; links to house.html?id= / person.html?id= |
 | house.html | `''` | House profile from `?id=`: band header, mission, values, rules, members w/ avatars, rooms-open panel, match breakdown vs me, connect CTA |
 | person.html | `''` | Person profile from `?id=`: archetype, blurb, values, six-dim meter comparison vs me, shared events, conflict count, connect CTA |

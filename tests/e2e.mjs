@@ -50,7 +50,7 @@ function assert(cond, msg) { if (!cond) throw new Error(msg); }
 browser = await chromium.launch();
 
 /* ---------- 0. public pages load clean ---------- */
-const PUBLIC = ['index.html', 'browse.html', 'house.html?id=h-redhook', 'person.html?id=p-maya', 'gatherings.html', 'templates.html', 'quiz.html', 'account.html'];
+const PUBLIC = ['index.html', 'browse.html', 'house.html?id=h-redhook', 'person.html?id=p-maya', 'gatherings.html', 'templates.html', 'quiz.html', 'account.html', 'chore-builder.html', 'meals.html'];
 await fresh('index.html');
 for (const p of PUBLIC) {
   await test('public page loads clean: ' + p, async () => {
@@ -58,6 +58,13 @@ for (const p of PUBLIC) {
     assert((await ev(() => document.body.innerHTML.length)) > 3000, 'page too empty');
   });
 }
+await test('nav: visitor sees discovery, no app pages', async () => {
+  await go('index.html');
+  const nav = await ev(() => document.getElementById('nav-links')?.textContent || '');
+  assert(nav.includes('Calculators') && nav.includes('Browse'), 'visitor nav wrong: ' + nav);
+  assert(!nav.includes('My House') && !nav.includes('Ledger') && !nav.includes('Steward'), 'visitor nav leaks app pages: ' + nav);
+});
+
 await test('landing: signed-out hero funnels to signup', async () => {
   await go('index.html');
   const cta = await ev(() => document.getElementById('hero-cta')?.textContent || '');
@@ -65,7 +72,7 @@ await test('landing: signed-out hero funnels to signup', async () => {
 });
 
 /* ---------- 1. auth gates redirect ---------- */
-const GATED = ['dashboard.html', 'ledger.html', 'chores.html', 'chore-builder.html', 'meals.html', 'checkin.html', 'steward.html', 'create.html'];
+const GATED = ['dashboard.html', 'ledger.html', 'chores.html', 'checkin.html', 'steward.html', 'create.html'];
 for (const p of GATED) {
   await test('gate redirects when signed out: ' + p, async () => {
     await go(p);
@@ -94,19 +101,44 @@ await test('signup: account + passkey + photo → onboards to quiz', async () =>
   assert((await ev(() => window.Commons.me().photo && true)), 'photo not mirrored to profile');
 });
 
-await test('quiz: full run saves profile', async () => {
+await test('quiz v2: rhythms → lenses → character → hard lines → results', async () => {
   await page.locator('main button', { hasText: /^Start/ }).first().click();
-  for (let i = 0; i < 12; i++) {
-    await page.waitForTimeout(450);
-    await page.locator('main .choice').first().click();
+  // drive the staged flow: answer any [data-v] question, click Continue on interstitials
+  for (let i = 0; i < 45; i++) {
+    await page.waitForTimeout(180);
+    const body = await ev(() => document.getElementById('page').textContent);
+    if (body.includes('Hard lines')) break;
+    const opt = page.locator('main [data-v]');
+    if (await opt.count()) { await opt.last().click(); continue; }
+    const cont = page.locator('main button', { hasText: /^Continue$/ });
+    if (await cont.count()) { await cont.click(); continue; }
   }
-  await page.waitForTimeout(600);
+  assert((await ev(() => document.getElementById('page').textContent.includes('Hard lines'))), 'never reached hard lines');
   await page.locator('main button', { hasText: 'Smoking indoors' }).click();
-  await page.locator('main button', { hasText: /Continue/ }).click();
-  await page.waitForTimeout(400);
-  await page.locator('main button', { hasText: /reveal|See|Continue|Finish/i }).last().click();
-  await page.waitForTimeout(1600);
-  assert((await ev(() => window.Commons.me().quizDone)) === true, 'quiz not saved');
+  await page.locator('main button', { hasText: /^Continue$/ }).click();
+  await page.waitForTimeout(300);
+  await page.locator('main button', { hasText: /See your results/ }).click();
+  await page.waitForTimeout(600);
+  const me = await ev(() => window.Commons.me());
+  assert(me.quizDone === true, 'quiz not saved');
+  assert(me.rhythms && Object.keys(me.rhythms).length === 10, 'rhythms not saved');
+  assert(me.lenses && Object.keys(me.lenses).length === 5, 'lenses not saved');
+  assert(me.index && typeof me.index.agree === 'number' && me.index.svo, 'index not saved');
+  assert(me.hard.includes('smoke'), 'dealbreaker not saved');
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(/You’re|You're/.test(body), 'no archetype reveal');
+  assert(body.includes('house agreement'), 'no drafted agreement');
+  assert(body.includes('Only you ever see this'), 'no private index card');
+});
+
+await test('quiz v2: fit bands (not %) flow through browse and house pages', async () => {
+  await go('browse.html');
+  const body = await ev(() => document.getElementById('page') ? document.getElementById('page').textContent : document.body.innerText);
+  assert(/fit|stretch/i.test(body), 'no fit bands on browse');
+  assert(!/\d+% match/.test(body), 'stale % match still on browse');
+  await go('house.html?id=h-redhook');
+  const hb = await ev(() => document.body.innerText);
+  assert(/Strong fit|Workable fit|A stretch/.test(hb), 'no band on house page');
 });
 
 await test('houseless: dashboard shows find-a-house state, not Cypress', async () => {
@@ -131,6 +163,8 @@ await test('join: request → accepted → member of Cypress with systems', asyn
   assert((await ev(() => window.Commons.money.contributions().some((c) => c.member === 'me'))), 'no contribution row');
   const body = await ev(() => document.body.textContent);
   assert(body.includes('Cypress Yard'), 'dashboard not showing the house');
+  const nav = await ev(() => document.getElementById('nav-links')?.textContent || '');
+  assert(nav.includes('My House') && nav.includes('Ledger') && nav.includes('Meals'), 'member nav missing app pages: ' + nav);
 });
 
 await test('dashboard: contribution + vote mechanics at 7 members', async () => {

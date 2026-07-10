@@ -17,25 +17,37 @@
     linkedin: "https://www.linkedin.com/company/decentral-park",
   };
 
-  const NAV = [
-    { id: "browse", href: "browse.html", label: "Browse" },
-    { id: "gatherings", href: "gatherings.html", label: "Gatherings" },
-    { id: "dashboard", href: "dashboard.html", label: "My House" },
-    { id: "ledger", href: "ledger.html", label: "Ledger" },
-    { id: "chores", href: "chores.html", label: "Chores" },
-    { id: "meals", href: "meals.html", label: "Meals" },
-    { id: "templates", href: "templates.html", label: "Systems" },
-    { id: "steward", href: "steward.html", label: "Steward" },
-  ];
+  // Nav adapts to where you are: visitors get discovery + tools, house
+  // members get the app. No dead links, no gated teases.
+  function navFor() {
+    const C = window.Commons;
+    const hasHouse = C.account.active() && !!C.houses.mine();
+    if (hasHouse) return [
+      { id: "dashboard", href: "dashboard.html", label: "My House" },
+      { id: "ledger", href: "ledger.html", label: "Ledger" },
+      { id: "chores", href: "chores.html", label: "Chores" },
+      { id: "meals", href: "meals.html", label: "Meals" },
+      { id: "templates", href: "templates.html", label: "Systems" },
+      { id: "browse", href: "browse.html", label: "Browse" },
+      { id: "gatherings", href: "gatherings.html", label: "Gatherings" },
+    ];
+    return [
+      { id: "browse", href: "browse.html", label: "Browse" },
+      { id: "gatherings", href: "gatherings.html", label: "Gatherings" },
+      { id: "templates", href: "templates.html", label: "Calculators" },
+    ];
+  }
 
   function navbar(active) {
     const C = window.Commons;
     const U = C.util;
     const account = C.account.get();
     const activeAcct = C.account.active();
-    const links = NAV.map((n) =>
+    const hasHouse = activeAcct && !!C.houses.mine();
+    const links = navFor().map((n) =>
       `<a href="${n.href}" class="${n.id === active ? "on" : ""}">${n.label}</a>`
-    ).join("");
+    ).join("") + (!hasHouse
+      ? `<a href="quiz.html" class="${active === "quiz" ? "on" : ""}">Quiz</a>` : "");
     const accountEl = activeAcct
       ? `<a href="account.html" class="row" style="gap:8px;text-decoration:none;color:var(--ink);margin-left:6px" title="Your account">
            ${avatarHtml(C.me(), "sm")}<span class="display" style="font-size:.9rem">${U.esc(account.name.split(/\s+/)[0])}</span></a>`
@@ -53,11 +65,11 @@
           </span>
         </a>
         <div class="spacer"></div>
-        <nav class="nav-links" id="nav-links">${links}
-          <a href="quiz.html" class="${active === "quiz" ? "on" : ""}">Quiz</a>
-        </nav>
+        <nav class="nav-links" id="nav-links">${links}</nav>
         ${accountEl}
-        <a class="lifted xs ${active === "create" ? "green" : ""}" href="create.html" style="margin-left:6px"><span class="shadow"></span><span class="face">Start a house</span></a>
+        ${hasHouse
+          ? `<a class="lifted xs" href="checkin.html" style="margin-left:6px"><span class="shadow"></span><span class="face">Check-in</span></a>`
+          : `<a class="lifted xs ${active === "create" ? "green" : ""}" href="create.html" style="margin-left:6px"><span class="shadow"></span><span class="face">Start a house</span></a>`}
         <button class="nav-burger" id="nav-burger" aria-label="Menu">☰</button>
       </div>
     </header>`;
@@ -134,7 +146,10 @@
     const conf = m.conflicts > 0
       ? `<span class="pill conflict">⚠ ${m.conflicts} dealbreaker${m.conflicts > 1 ? "s" : ""}</span>`
       : `<span class="pill zero">0 dealbreakers</span>`;
-    return `<span class="pill match">${m.score}% match</span> ${conf}`;
+    // Bands, not percentages — the % implied a prediction nobody can make
+    const cls = m.band === "strong" ? "match" : m.band === "workable" ? "paper" : "warn";
+    const label = m.bandLabel || (m.band ? m.band : m.score + "%");
+    return `<span class="pill ${cls}">${label}</span> ${conf}`;
   }
 
   function render(active) {

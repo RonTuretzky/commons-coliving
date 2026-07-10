@@ -38,20 +38,18 @@ QUIZ ──▶ MATCH ──▶ MEET ──▶ GATHER ──▶ FORM ──▶ OP
 
 ## 3. Product pillars & user flows
 
-### Flow 1 — Onboarding quiz ("the Buzzfeed thing")
+### Flow 1 — Onboarding quiz (v2 · evidence-based)
 
-OkCupid-style questionnaire, fun on purpose. Output is a **profile vector**, an **archetype** (shareable payoff), and a private **dealbreaker set**.
+Thirty items, ~6 minutes, four layers (research basis: `docs/quiz-research-appendix.md` + the proposal deck `quiz-v2-proposal.html`):
 
-1. 12 lightweight either/or & slider questions across six dimensions:
-   - **Hearth** — quiet sanctuary ↔ open-door social house
-   - **Order** — go-with-the-flow ↔ systems & labels
-   - **Voice** — do-ocracy ↔ everything by consensus
-   - **Mission** — just good living ↔ shared purpose/project
-   - **Porch** — inward-facing ↔ networked (guests, events, other houses)
-   - **Pool** — split every bill ↔ one shared treasury
-2. **Dealbreakers section** — hard filters chosen privately (smoking indoors, pets, overnight-guest frequency, quiet hours, 420, meat in the kitchen, kids, etc.). Never displayed on profiles.
-3. **Financial reality section** — monthly budget range, move-in horizon, appetite for pooling. ("You should have financial, really.")
-4. Result: archetype card ("The Hearthkeeper," "The Quartermaster," …) → CTA into Browse.
+1. **Rhythms (10 · Likert-5, behavioral)** — the five domains roommate conflict actually comes from: sleep schedule, cleanliness standards, noise, guests/hosting, kitchen use. *The similarity-matching core* (Erb 2014; Larson 1991; Niu & Brown 2023).
+2. **Structure (5 · 0–3 scales)** — the course's five lenses: **Property · Governance · Labor · Membership · Outside**. Every house carries the same profile; person↔house structural fit is computed on it.
+3. **Character (11 · private)** — warmth, reliability, steadiness, fair-dealing (TIPI-style pairs incl. reverse-keyed), two SVO allocation scenarios, one conflict-voice item. **Main-effect housemate index: measured absolutely, never matched, never shown to others** (Dyrenforth 2010; Zettler 2020).
+4. **Hard lines + logistics** — dealbreakers (count-only privacy) and budget/borough/intent.
+
+**Output:** archetype (flavor, clearly labeled) · five-lens profile · rhythm chart · private housemate index · **fit bands (Strong/Workable/Stretch) with named friction scripts** instead of a match % (Finkel 2012; Joel 2017/2020; OkCupid's self-fulfilling-% experiment) · **an auto-drafted house agreement** (McCorkle & Mason 2009) → CTA into Browse & Gatherings.
+
+The legacy six dims are derived from v2 answers for backward compatibility (meters, archetypes).
 
 **Dealbreaker mechanic (key trust feature):** when viewing a person or house, you see *how many* dealbreaker conflicts exist — **never which ones**. "2 dealbreaker conflicts" is enough signal to pass without forcing anyone to disclose.
 

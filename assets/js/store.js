@@ -9,7 +9,7 @@
      - bills: deterministic monthly rotation
    ============================================================ */
 (function () {
-  const KEY = "dp-commons-v7";
+  const KEY = "dp-commons-v8";
   const DAY = 86400000;
   const now = Date.now();
   const days = (n) => new Date(now + n * DAY).toISOString();
@@ -37,6 +37,93 @@
     { id: "shift", label: "Overnight shift schedules", flag: "Works overnight shifts" },
     { id: "sublet", label: "Frequent subletting / Airbnb", flag: "Sublets their room" },
   ];
+
+
+  /* ---------- Quiz v2 item banks (evidence-based; see docs/quiz-research-appendix.md) ----------
+     Layer 2 · Rhythms: behavioral, frequency-anchored items in the five domains that
+     actually predict roommate conflict (cleanliness, noise, sleep, guests, kitchen).
+     Similarity on these IS defensible (Erb 2014; Larson 1991; Niu & Brown 2023). */
+  const RHYTHM_ITEMS = [
+    { id: "wake", text: "On a day with nothing scheduled, I'm naturally up before 8am.", domain: "sleep", w: 1.3,
+      low: "never", high: "always" },
+    { id: "night", text: "I'm often still up and active past midnight.", domain: "sleep", w: 1.3,
+      low: "never", high: "most nights" },
+    { id: "dishes", text: "Dishes I use are washed and put away within 24 hours.", domain: "clean", w: 1.5,
+      low: "lol", high: "always" },
+    { id: "tidy", text: "Mess in common spaces genuinely stresses me.", domain: "clean", w: 1.5,
+      low: "not really", high: "deeply" },
+    { id: "routine", text: "I want the house to have a regular cleaning rhythm we all keep.", domain: "clean", w: 1.2,
+      low: "flow is fine", high: "strongly" },
+    { id: "noise", text: "Music or a movie out loud in the common room is part of a living home.", domain: "noise", w: 1.2,
+      low: "headphones exist", high: "absolutely" },
+    { id: "quiet", text: "After about 10pm on weeknights, I need the house quiet.", domain: "noise", w: 1.2,
+      low: "don't care", high: "very much" },
+    { id: "guests", text: "A friend crashing on the couch a couple nights a week is fine by me.", domain: "guests", w: 1.1,
+      low: "not fine", high: "totally fine" },
+    { id: "host", text: "I want us to host dinners or gatherings at least monthly.", domain: "guests", w: 1.0,
+      low: "rather not", high: "yes please" },
+    { id: "kitchen", text: "I cook real meals at home most days.", domain: "kitchen", w: 0.9,
+      low: "rarely", high: "daily" },
+  ];
+  const FRICTION_SCRIPTS = {
+    sleep: "Your sleep schedules differ — settle headphones-after-midnight and morning-noise rules before the first 2am door slam.",
+    clean: "Your cleanliness standards differ — agree on the sink rule and a reset day now, while it's still funny.",
+    noise: "One of you needs quiet the other doesn't — write actual quiet hours into the house agreement.",
+    guests: "Your guest expectations differ — set a heads-up norm and a couch ceiling (nights per week).",
+    kitchen: "Kitchen rhythms differ — talk fridge territory and the dish flow at peak hours.",
+  };
+
+  /* Layer 3 · Structure: the five lenses from the commune course (Session 3),
+     adapted to houses. 0–3 each; person↔house structural fit. */
+  const LENSES = [
+    { id: "property", label: "Property", emoji: "🫕", question: "How much money should become ours?",
+      levels: ["Split every cost — nothing pooled", "Shared staples & supplies", "A real house fund", "Pool most costs — one household budget"] },
+    { id: "governance", label: "Governance", emoji: "🗳️", question: "How should the house decide things?",
+      levels: ["Whoever cares most just does it", "Informal check-ins over dinner", "House votes on anything big", "Consensus culture + rotating roles"] },
+    { id: "labor", label: "Labor", emoji: "🧹", question: "How should the work of the house be organized?",
+      levels: ["Everyone handles their own mess", "Loose expectations, no system", "A rotation for the big stuff", "Full rotation — all work counts equal"] },
+    { id: "membership", label: "Membership", emoji: "🚪", question: "How should new people join?",
+      levels: ["Open door — vibes decide", "A chat and references", "A trial stay before anyone commits", "Trial + deposit + a house vote"] },
+    { id: "outside", label: "Outside", emoji: "📡", question: "What is the house to the wider world?",
+      levels: ["A home for us, full stop", "Occasional guests & dinners", "We host things regularly", "A node — events, organizing, other houses"] },
+  ];
+
+  /* Layer 4 · Character: private housemate index. Main-effect traits (Dyrenforth 2010;
+     Kurtz & Sherker 2003; Zettler 2020) — measured absolutely, never matched, never shown. */
+  const CHARACTER_ITEMS = [
+    { id: "agree1", trait: "agree", text: "I'm quick to assume a housemate meant well." },
+    { id: "agree2", trait: "agree", rev: true, text: "I can be blunt to the point of friction." },
+    { id: "consc1", trait: "consc", text: "I handle my share before anyone has to ask." },
+    { id: "consc2", trait: "consc", rev: true, text: "I tend to leave tasks until the last minute." },
+    { id: "stab1", trait: "stab", text: "I stay level when house stuff goes sideways." },
+    { id: "stab2", trait: "stab", rev: true, text: "Small frictions at home can ruin my whole day." },
+    { id: "honest1", trait: "honest", text: "I'd correct a ledger error in my own favor even if nobody would ever notice." },
+    { id: "honest2", trait: "honest", rev: true, text: "House rules feel more like suggestions when nobody's checking." },
+  ];
+  const SVO_ITEMS = [
+    { id: "svo1", text: "A $60 deposit refund arrives addressed to the whole house. You'd…",
+      options: [
+        { t: "Split it evenly, obviously", pts: 2 },
+        { t: "Drop it in the house fund for repairs", pts: 2 },
+        { t: "Route more to whoever's been covering extra lately", pts: 1 },
+        { t: "Finders keepers is a real principle", pts: 0 },
+      ]},
+    { id: "svo2", text: "You organized the bulk grocery run. Splitting what's left over, you'd…",
+      options: [
+        { t: "Even shares, effort was the point", pts: 2 },
+        { t: "Offer everyone else first", pts: 2 },
+        { t: "Keep a little extra for doing the schlep", pts: 1 },
+        { t: "Organizer's cut is 20%, industry standard", pts: 0 },
+      ]},
+  ];
+  const CONFLICT_ITEM = { id: "voice1", text: "When something at home bothers me, I say it early and plainly." };
+
+  const TRAIT_LABELS = {
+    agree: { label: "Warmth", desc: "assuming good faith, absorbing small frictions" },
+    consc: { label: "Reliability", desc: "chores before reminders, deadlines met" },
+    stab: { label: "Steadiness", desc: "level through house chaos" },
+    honest: { label: "Fair dealing", desc: "straight with shared money & rules" },
+  };
 
   const ARCHETYPES = {
     hearth: { name: "The Hearthkeeper", emoji: "🔥", desc: "You make a kitchen feel like a village square. People orbit you at 11pm with tea." },
@@ -396,7 +483,7 @@
 
   function seedState() {
     return {
-      version: 7,
+      version: 8,
       seededAt: now,
       account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
       me: {
@@ -582,13 +669,156 @@
     return state.people.find((p) => p.id === id) || null;
   }
 
+
+  /* ---------- Quiz v2 fit engine ----------
+     Fit = weighted rhythm similarity (.55) + lens similarity (.45), reported as
+     BANDS with named frictions — never an oracle percentage (Finkel 2012; Joel
+     2017/2020; the OkCupid self-fulfilling-% experiment). Character is a private
+     main-effect index and never enters matching. */
+  function hashN(str, mod) { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % mod; }
+  const clamp15 = (n) => Math.min(5, Math.max(1, Math.round(n)));
+
+  // derive rhythms/lenses for seeded profiles that predate quiz v2 (deterministic)
+  function rhythmsOf(p) {
+    if (p.rhythms) return p.rhythms;
+    const d = p.dims || {}; const v = (x) => 1 + 4 * ((x ?? 50) / 100);
+    const j = (k) => hashN(p.id + k, 3) - 1;
+    return {
+      wake: clamp15(v(d.order) + j("w")), night: clamp15(6 - v(d.order) + j("n")),
+      dishes: clamp15(v(d.order) + j("d")), tidy: clamp15(v(d.order) + j("t")),
+      routine: clamp15(v((d.order + d.voice) / 2) + j("r")),
+      noise: clamp15(v(d.hearth) + j("no")), quiet: clamp15(6 - v(d.porch) + j("q")),
+      guests: clamp15(v(d.porch) + j("g")), host: clamp15(v((d.hearth + d.porch) / 2) + j("h")),
+      kitchen: clamp15(v((d.hearth + d.mission) / 2) + j("k")),
+    };
+  }
+  function lensesOf(p) {
+    if (p.lenses) return p.lenses;
+    const d = p.dims || {}; const L = (x) => Math.min(3, Math.max(0, Math.round(3 * ((x ?? 50) / 100))));
+    return { property: L(d.pool), governance: L(d.voice), labor: L(d.order),
+      membership: Math.min(3, Math.max(0, L(d.mission) - (hashN(p.id + "m", 2)))), outside: L(d.porch) };
+  }
+  const ECON_LENS = { split: 0, weighted: 0, fund: 2, sliding: 2, commons: 3, labor: 2 };
+  function houseLensesOf(h) {
+    if (h.lenses) return h.lenses;
+    return {
+      property: ECON_LENS[h.poolModel] ?? 2,
+      governance: 2, // every Commons house runs 2/3 votes
+      labor: 2,      // rotations are the default culture
+      membership: h.poolModel === "commons" || h.poolModel === "labor" ? 3 : (h.roomsOpen > 0 ? 2 : 1),
+      outside: Math.min(3, Math.max(0, Math.round(3 * ((h.networked ?? 50) / 100)))),
+    };
+  }
+
+  function rhythmFit(ra, rb) {
+    let sum = 0, wsum = 0;
+    const gaps = [];
+    RHYTHM_ITEMS.forEach((it) => {
+      const gap = Math.abs((ra[it.id] ?? 3) - (rb[it.id] ?? 3));
+      sum += it.w * (gap / 4); wsum += it.w;
+      gaps.push({ item: it, gap });
+    });
+    return { sim: 100 * (1 - sum / wsum), gaps };
+  }
+  function lensFit(la, lb) {
+    let sum = 0;
+    const gaps = [];
+    LENSES.forEach((l) => {
+      const gap = Math.abs((la[l.id] ?? 1) - (lb[l.id] ?? 1));
+      sum += gap / 3;
+      gaps.push({ lens: l, gap });
+    });
+    return { sim: 100 * (1 - sum / LENSES.length), gaps };
+  }
+  // thresholds calibrated on the seeded world's pairwise distribution
+  // (median ~73, q75 ~78): strong = top quartile, stretch = bottom decile
+  function bandOf(score) { return score >= 78 ? "strong" : score >= 60 ? "workable" : "stretch"; }
+  const BAND_LABELS = { strong: "Strong fit", workable: "Workable fit", stretch: "A stretch" };
+
+  function frictionsFrom(rGaps, lGaps) {
+    const out = []; const seen = new Set();
+    rGaps.filter((g) => g.gap >= 3).forEach((g) => {
+      if (seen.has(g.item.domain)) return;
+      seen.add(g.item.domain);
+      out.push({ title: g.item.domain, script: FRICTION_SCRIPTS[g.item.domain], gap: g.gap });
+    });
+    lGaps.filter((g) => g.gap >= 2).forEach((g) => {
+      out.push({ title: g.lens.label.toLowerCase(), gap: g.gap,
+        script: `You want different ${g.lens.label.toLowerCase()} setups (${g.lens.levels[0].toLowerCase()} ↔ ${g.lens.levels[3].toLowerCase()}) — name it before anyone signs anything.` });
+    });
+    return out.sort((a, b) => b.gap - a.gap).slice(0, 3);
+  }
+
+  function fit(a, b) {
+    const r = rhythmFit(rhythmsOf(a), rhythmsOf(b));
+    const l = lensFit(lensesOf(a), lensesOf(b));
+    const score = Math.round(0.55 * r.sim + 0.45 * l.sim);
+    return { score, band: bandOf(score), bandLabel: BAND_LABELS[bandOf(score)],
+      frictions: frictionsFrom(r.gaps, l.gaps), conflicts: conflictCount(a, b) };
+  }
+  function fitHouse(me, house, st) {
+    const ms = house.members.map((id) => personOrMe(id, st)).filter((m) => m && m.id !== "me");
+    // rhythms vs the member average; lenses vs the house's declared structure
+    const avg = {};
+    RHYTHM_ITEMS.forEach((it) => {
+      avg[it.id] = ms.length ? ms.reduce((s, m) => s + (rhythmsOf(m)[it.id] ?? 3), 0) / ms.length : 3;
+    });
+    const r = rhythmFit(rhythmsOf(me), avg);
+    const l = lensFit(lensesOf(me), houseLensesOf(house));
+    const score = Math.round(0.55 * r.sim + 0.45 * l.sim);
+    let conflicts = 0, conflictMembers = 0;
+    ms.forEach((m) => { const c = conflictCount(me, m); conflicts += c; if (c) conflictMembers++; });
+    return { score, band: bandOf(score), bandLabel: BAND_LABELS[bandOf(score)],
+      frictions: frictionsFrom(r.gaps, l.gaps), conflicts, conflictMembers,
+      budgetFit: house.rent <= me.budget * 1.05 };
+  }
+
+  // dims back-compat: derive the legacy six dims from v2 answers so meters,
+  // archetypes and older UI keep working
+  function dimsFromV2(rh, ln) {
+    const pct = (v) => Math.round(((v - 1) / 4) * 100);
+    const l = (v) => Math.round((v / 3) * 100);
+    return {
+      hearth: Math.round((pct(rh.noise) + pct(rh.host) + pct(rh.kitchen)) / 3),
+      order: Math.round((pct(rh.dishes) + pct(rh.tidy) + pct(rh.routine)) / 3),
+      voice: l(ln.governance),
+      mission: Math.round((l(ln.outside) + l(ln.membership)) / 2),
+      porch: Math.round((pct(rh.guests) + pct(rh.host) + l(ln.outside)) / 3),
+      pool: l(ln.property),
+    };
+  }
+
+  // the drafted house agreement (McCorkle & Mason 2009: agreements are the
+  // one institutionalized conflict-prevention tool) — composed from answers
+  function agreementFrom(profile, house) {
+    const r = rhythmsOf(profile), l = lensesOf(profile);
+    const lines = [];
+    lines.push(r.quiet >= 4 ? "Quiet hours: 10pm weeknights — headphones after." :
+      r.night >= 4 ? "Quiet hours: midnight weeknights; common rooms stay social till then." :
+      "Quiet hours: 11pm weeknights, flexible weekends.");
+    lines.push(r.dishes >= 4 ? "Dishes: same-day, always — the sink is not storage." :
+      "Dishes: nothing sleeps in the sink twice; full reset at the weekly clean.");
+    lines.push(r.routine >= 4 ? "Cleaning: a standing weekly reset hour, everyone in." :
+      "Cleaning: rotation covers the big stuff; tidy-as-you-go for the rest.");
+    lines.push(r.guests >= 4 ? "Guests: welcome with a heads-up; couch max 2 nights/week." :
+      r.guests <= 2 ? "Guests: heads-up required, overnights the exception not the rule." :
+      "Guests: fine with notice; recurring overnights get a house check-in.");
+    const econ = ECON_TEMPLATES[Math.min(ECON_TEMPLATES.length - 1, [0, 2, 2, 4][l.property] ?? 2)];
+    lines.push(`Money: run the ${econ.name} system${house ? "" : " (or whatever the house you join already runs)"} — the ledger keeps score, not memory.`);
+    lines.push(l.governance >= 2 ? "Decisions: anything over the line goes to a house vote (2/3 passes)." :
+      "Decisions: do-ocracy for small stuff; talk before anything irreversible.");
+    lines.push(l.membership >= 2 ? "New people: trial stay before commitment — both directions." :
+      "New people: meet the whole house before keys change hands.");
+    return lines;
+  }
+
   /* ---------- Store plumbing ---------- */
 
   let state;
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 7) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 8) return; }
     } catch (e) { /* reseed */ }
     state = seedState();
     seedChoreHistory(state);
@@ -854,7 +1084,12 @@
       },
     },
 
-    match, matchHouse: (me, house) => matchHouse(me, house, state), archetype, conflictCount,
+    match: (a, b) => fit(a, b),
+    matchHouse: (me, house) => fitHouse(me, house, state),
+    archetype, conflictCount,
+    quizV2: { RHYTHM_ITEMS, LENSES, CHARACTER_ITEMS, SVO_ITEMS, CONFLICT_ITEM, TRAIT_LABELS, BAND_LABELS },
+    rhythmsOf, lensesOf, houseLensesOf, dimsFromV2,
+    agreement: (profile, house) => agreementFrom(profile || state.me, house),
 
     chores: {
       all: () => state.chores.slice(),
