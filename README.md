@@ -13,7 +13,7 @@ No build step, no backend. Open `index.html`, or:
 python3 -m http.server 8080
 ```
 
-All state is in `localStorage` (`dp-commons-v2`), seeded with a fictional NYC world; the banner's **Reset the demo** reseeds it. The demo user already lives at Cypress Yard so house-ops flows work immediately.
+Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn — no server), take the quiz, join or found a house, run it. App pages are auth-gated; a new user starts houseless like a real one. State lives in `localStorage` (`dp-commons-v7`); "Reset this device" is in the account danger zone.
 
 ## The tools
 

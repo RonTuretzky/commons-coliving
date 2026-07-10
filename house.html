@@ -267,9 +267,26 @@
       const btn = document.getElementById("join-btn");
       if (btn) {
         btn.addEventListener("click", () => {
+          if (!Commons.account.active()) {
+            Shell.toast("Joining a house starts with an account");
+            setTimeout(() => { location.href = "account.html"; }, 700);
+            return;
+          }
+          if (Commons.houses.mine()) {
+            Shell.toast("You already have a house — moving means leaving first");
+            return;
+          }
+          // Real join flow: the crew reviews you (fictional crews review fast).
           Commons.connects.add("house", house.id);
-          Shell.toast(house.hasLocation ? "Request sent — the house will reach out" : "You're in the mix — the founders will be in touch", "green");
-          render();
+          btn.disabled = true;
+          const face = btn.querySelector(".face");
+          const reviewer = Commons.people.get(house.members[0]);
+          face.textContent = `${reviewer ? reviewer.name.split(" ")[0] : "The crew"} is looking at your profile…`;
+          setTimeout(() => {
+            Commons.houses.join(house.id);
+            Shell.toast(`${reviewer ? reviewer.name.split(" ")[0] : "The crew"} said yes — welcome to ${house.name} 🎉`, "green");
+            setTimeout(() => { location.href = "dashboard.html"; }, 900);
+          }, 1400);
         });
       }
     }

@@ -174,7 +174,7 @@ People have extremely different chore tastes, and the same person has extremely 
 
 ## 5. Demo-mode prototype (this repo)
 
-Static, no build step, deployable to GitHub Pages. All state in `localStorage` (`dp-commons-v1`), seeded with a fictional-but-plausible NYC world: ~7 houses, ~14 seekers, events past & upcoming, one house the demo user already belongs to (so Operate flows are demoable instantly). A demo banner offers one-click reset.
+Static, no build step. **Productized, local-first:** a marketing landing funnels into real account creation (name, photo, avatar, optional WebAuthn **passkey** — Touch ID guards the account, no server involved). App pages are auth-gated like any product. A new user starts houseless: quiz → browse the seeded NYC world (7 houses, 15 seekers, events) → **actually join a house** (you enter its roster, chore/bill rotations, contribution sheet, and meal plan) or found one (fresh, empty systems). All state in `localStorage` (`dp-commons-v7`); device reset lives in the account's danger zone. A 29-test Playwright suite drives the entire journey.
 
 | Page | Flow covered |
 |---|---|
@@ -192,6 +192,7 @@ Static, no build step, deployable to GitHub Pages. All state in `localStorage` (
 | `meals.html` | Flow 5c-ii (meal presets, cost/quantity calculator, cook rotation, batch timeline) |
 | `chore-builder.html` | Flow 5c-ii (space-by-space chore calculator with effort estimates → applied rotation) |
 | `ledger.html` | Flow 5a-ii (expenses w/ four split modes, simplify-debts, one-tap rail settlement, category meters, activity feed) |
+| `account.html` | Auth center: sign-up (photo, avatar, passkey), sign-in, profile management, danger zone |
 | `checkin.html` | Flow 5c-iii (chore tastes, weekly bandwidth & appetite, the reallocator + "what moved") |
 
 **Copy rule:** the product says *system*, not *template* ("run the house on a system that works"); calculators are first-class, labeled CALCULATOR, and showcased on the landing page.

@@ -76,7 +76,9 @@
             ${Shell.avatarHtml(p, "lg")}
             <div class="stack" style="--gap:4px;flex:1;min-width:220px">
               <h1 class="text-h3">${U.esc(p.name)}${isMe ? ` <span class="pill ink">you</span>` : ""}</h1>
-              <p class="small muted">${p.age} · ${U.esc(p.borough)} · looks for ≤ ${U.fmtMoney(p.budget)}/mo</p>
+              <p class="small muted">${p.age ? p.age + " · " : ""}${U.esc(p.borough)} · looks for ≤ ${U.fmtMoney(p.budget)}/mo</p>
+              ${isMe && Commons.account.active() && Commons.account.get().email
+                ? `<p class="small muted">✉️ ${U.esc(Commons.account.get().email)} <span class="text-caption">— housemates can reach you here</span></p>` : ""}
               <div class="row wrap">${seekingPill(p)}</div>
             </div>
           </div>

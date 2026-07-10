@@ -104,6 +104,7 @@
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("steward");
+    Shell.gate();
 
     const U = Commons.util;
     const house = Commons.houses.mine();
@@ -292,6 +293,11 @@
         if (Math.abs(myNet) >= 0.01) parts.push(myNet > 0
           ? `Ledger says the house owes you ${U.fmtMoney(Math.abs(myNet))} — settling is one tap whenever.`
           : `Ledger says you owe ${U.fmtMoney(Math.abs(myNet))} across the house — one tap squares it.`);
+        const plan = Commons.meals.plan();
+        if (plan && plan.rotation && plan.rotation.includes("me")) {
+          const pos = plan.rotation.indexOf("me") + 1;
+          parts.push(`Meal plan's running (${plan.dinners} shared dinners/wk) — you're cook #${pos} in the rotation.`);
+        }
         parts.push("Ask me anything, or tap a chip below. If you're slammed this week, just say so — I'll reshuffle your chores.");
         Commons.steward.push({ who: "steward", text: parts.join("\n") });
       }

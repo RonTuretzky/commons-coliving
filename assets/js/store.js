@@ -9,7 +9,7 @@
      - bills: deterministic monthly rotation
    ============================================================ */
 (function () {
-  const KEY = "dp-commons-v5";
+  const KEY = "dp-commons-v7";
   const DAY = 86400000;
   const now = Date.now();
   const days = (n) => new Date(now + n * DAY).toISOString();
@@ -274,6 +274,10 @@
         ["Mutual aid ops", "Preserving & pickling", "Early mornings"], ["420", "latenoise"], ["cats"],
         "Runs a fridge network across three neighborhoods. In bed by ten, up by six.", "has-house", ["e-mixer-prospect"]),
 
+      P("p-theo", "Theo Alvarez", 30, "Bed-Stuy", 1500, { hearth: 72, order: 58, voice: 62, mission: 78, porch: 68, pool: 74 },
+        ["Long dinners", "House fund", "Projects over vibes-only"], ["smoke", "sublet"], [],
+        "Cypress's sixth — keeps the group chat funny and the pantry stocked.", "has-house", ["e-mixer-prospect", "e-vibecamp"]),
+
       // Seekers
       P("p-maya", "Maya Okafor", 27, "Crown Heights", 1400, { hearth: 82, order: 50, voice: 55, mission: 75, porch: 78, pool: 70 },
         ["Zine library", "Sunday cook-offs", "Abolitionist reading group"], ["smoke", "meat"], [],
@@ -313,7 +317,7 @@
       { id: "h-cypress", name: "Cypress Yard", borough: "Bed-Stuy", hasLocation: true, rent: 1450, poolModel: "fund",
         poolMonthly: 180, mission: "Food justice — a 12-seat table, a fridge on the gate, big open dinners.",
         networked: 72, roomsOpen: 1, moveIn: days(35), founded: "Mar 2024",
-        members: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"],
+        members: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"],
         values: ["Open dinners", "Community fridge", "House fund", "Quiet-ish weeknights"],
         rules: ["Quiet hours 11pm weeknights", "Guests welcome, heads-up in chat", "Dinner shift = no dish duty"],
         hue: "#0d9488", blurb: "Six of us in a brownstone with a long table and a longer group chat. One room opening up." },
@@ -376,10 +380,10 @@
         escrow: { state: "held", total: 2035, note: "11 deposits held · releases on check-in" } },
       { id: "e-mixer-prospect", title: "Long Meadow Mixer", type: "mixer", when: days(-21), where: "Prospect Park",
         price: 0, capacity: 50, host: "h-ridge", desc: "Spring edition. Four founding groups traded numbers.",
-        attendees: ["me", "p-zora", "p-eli", "p-june", "p-maya", "p-sofia", "p-lena", "p-ty"], escrow: null, past: true },
+        attendees: ["p-theo", "p-zora", "p-eli", "p-june", "p-maya", "p-sofia", "p-lena", "p-ty"], escrow: null, past: true },
       { id: "e-vibecamp", title: "Vibe Camp II", type: "retreat", when: days(-60), where: "Ramapo, NJ",
         price: 240, capacity: 120, host: null, desc: "The big one. Three houses catalyzed out of the last edition.",
-        attendees: ["me", "p-zora", "p-priya", "p-marcus", "p-maya", "p-dev", "p-amara", "p-jonah", "p-noor", "p-casey", "p-gus"],
+        attendees: ["p-theo", "p-zora", "p-priya", "p-marcus", "p-maya", "p-dev", "p-amara", "p-jonah", "p-noor", "p-casey", "p-gus"],
         escrow: { state: "released", total: 26400, note: "Released to venue after the weekend" }, past: true },
       { id: "e-workday-old", title: "Bushwick Static Build Day", type: "workday", when: days(-35), where: "Bushwick Static",
         price: 0, capacity: 20, host: "h-bushwick", desc: "Built the stage, painted the hall, ate a heroic quantity of pizza.",
@@ -392,36 +396,36 @@
 
   function seedState() {
     return {
-      version: 5,
+      version: 7,
       seededAt: now,
       account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
       me: {
-        id: "me", name: "You", age: 30, borough: "Bed-Stuy", budget: 1500,
-        quizDone: true, // demo persona; quiz.html overwrites
-        dims: { hearth: 72, order: 58, voice: 62, mission: 78, porch: 68, pool: 74 },
-        values: ["Long dinners", "Shared treasury", "Projects over vibes-only"],
-        hard: ["smoke", "sublet"], flags: [],
-        blurb: "Demo persona — retake the quiz to make this yours.",
-        seeking: "has-house", events: ["e-mixer-prospect", "e-vibecamp"],
+        id: "me", name: "You", age: null, borough: "Bed-Stuy", budget: 1500,
+        quizDone: false,
+        dims: { hearth: 50, order: 50, voice: 50, mission: 50, porch: 50, pool: 50 },
+        values: [],
+        hard: [], flags: [],
+        blurb: "New here — the quiz fills this in.",
+        seeking: "room", events: [],
       },
       people: seedPeople(),
       houses: seedHouses(),
       events: seedEvents(),
-      myHouseId: "h-cypress",
-      rsvps: ["e-retreat-catskills"],
-      escrowPaid: { "e-retreat-catskills": 185 },
+      myHouseId: null,
+      rsvps: [],
+      escrowPaid: {},
       connects: [],           // {kind:'house'|'person', id, at}
       treasury: { balance: 2340, currency: "USD" },
       contributions: [        // this month's pool contributions (poolMonthly each)
-        { member: "me", paid: true }, { member: "p-zora", paid: true },
+        { member: "p-theo", paid: true }, { member: "p-zora", paid: true },
         { member: "p-eli", paid: true }, { member: "p-priya", paid: false },
         { member: "p-marcus", paid: false }, { member: "p-june", paid: true },
       ],
       bills: [
-        { id: "b-net", name: "Internet (fiber)", amount: 89, dueDay: 5, rotation: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"], offset: 2 },
-        { id: "b-coned", name: "Con Edison", amount: 214, dueDay: 12, rotation: ["p-eli", "p-june", "me", "p-marcus", "p-zora", "p-priya"], offset: 0 },
-        { id: "b-csa", name: "CSA veg box", amount: 128, dueDay: 18, rotation: ["p-zora", "me", "p-june", "p-eli", "p-priya", "p-marcus"], offset: 4 },
-        { id: "b-water", name: "Water & compost", amount: 63, dueDay: 22, rotation: ["p-priya", "p-marcus", "me", "p-june", "p-zora", "p-eli"], offset: 1 },
+        { id: "b-net", name: "Internet (fiber)", amount: 89, dueDay: 5, rotation: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"], offset: 2 },
+        { id: "b-coned", name: "Con Edison", amount: 214, dueDay: 12, rotation: ["p-eli", "p-june", "p-theo", "p-marcus", "p-zora", "p-priya"], offset: 0 },
+        { id: "b-csa", name: "CSA veg box", amount: 128, dueDay: 18, rotation: ["p-zora", "p-theo", "p-june", "p-eli", "p-priya", "p-marcus"], offset: 4 },
+        { id: "b-water", name: "Water & compost", amount: 63, dueDay: 22, rotation: ["p-priya", "p-marcus", "p-theo", "p-june", "p-zora", "p-eli"], offset: 1 },
       ],
       billsPaid: {},          // { "b-net:2026-07": true }
       proposals: [
@@ -436,59 +440,59 @@
         { id: "pr-quiet", title: "Quiet hours 11pm on weeknights", kind: "rule",
           desc: "Common rooms wind down at 11 Sunday–Thursday. Headphones after.",
           proposer: "p-june", createdAt: days(-20), status: "passed", resolvedAt: days(-17),
-          votes: { "p-june": true, "p-priya": true, "p-eli": true, "p-sofia": false, "me": true } },
+          votes: { "p-june": true, "p-priya": true, "p-eli": true, "p-sofia": false, "p-theo": true } },
         { id: "pr-stoop", title: "Front stoop repair", kind: "spend", amount: 220,
           desc: "Loose tread on the stoop. Marcus knows a mason.",
           proposer: "p-zora", createdAt: days(-34), status: "passed", resolvedAt: days(-31), executed: true,
-          votes: { "p-zora": true, "me": true, "p-eli": true, "p-june": true } },
+          votes: { "p-zora": true, "p-theo": true, "p-eli": true, "p-june": true } },
       ],
       chores: [
-        { id: "c-kitchen", name: "Kitchen reset", emoji: "🍳", kind: "kitchen", minutes: 20, freqDays: 7, start: days(-70), rotation: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] },
-        { id: "c-trash", name: "Trash & recycling", emoji: "🗑️", kind: "trash", minutes: 10, freqDays: 7, start: days(-70), rotation: ["p-june", "me", "p-zora", "p-eli", "p-priya", "p-marcus"] },
-        { id: "c-bath", name: "Bathroom deep clean", emoji: "🛁", kind: "bathroom", minutes: 30, freqDays: 14, start: days(-84), rotation: ["p-priya", "p-marcus", "p-june", "me", "p-zora", "p-eli"] },
-        { id: "c-sweep", name: "Sweep common rooms", emoji: "🧹", kind: "floors", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-marcus", "p-june", "me", "p-zora", "p-eli", "p-priya"] },
-        { id: "c-plants", name: "Plants & stoop", emoji: "🪴", kind: "outdoor", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-zora", "p-eli", "p-priya", "p-marcus", "p-june", "me"] },
-        { id: "c-compost", name: "Compost run", emoji: "🌰", kind: "trash", minutes: 15, freqDays: 14, start: days(-84), rotation: ["p-eli", "p-priya", "p-marcus", "p-june", "me", "p-zora"] },
+        { id: "c-kitchen", name: "Kitchen reset", emoji: "🍳", kind: "kitchen", minutes: 20, freqDays: 7, start: days(-70), rotation: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] },
+        { id: "c-trash", name: "Trash & recycling", emoji: "🗑️", kind: "trash", minutes: 10, freqDays: 7, start: days(-70), rotation: ["p-june", "p-theo", "p-zora", "p-eli", "p-priya", "p-marcus"] },
+        { id: "c-bath", name: "Bathroom deep clean", emoji: "🛁", kind: "bathroom", minutes: 30, freqDays: 14, start: days(-84), rotation: ["p-priya", "p-marcus", "p-june", "p-theo", "p-zora", "p-eli"] },
+        { id: "c-sweep", name: "Sweep common rooms", emoji: "🧹", kind: "floors", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-marcus", "p-june", "p-theo", "p-zora", "p-eli", "p-priya"] },
+        { id: "c-plants", name: "Plants & stoop", emoji: "🪴", kind: "outdoor", minutes: 15, freqDays: 7, start: days(-70), rotation: ["p-zora", "p-eli", "p-priya", "p-marcus", "p-june", "p-theo"] },
+        { id: "c-compost", name: "Compost run", emoji: "🌰", kind: "trash", minutes: 15, freqDays: 14, start: days(-84), rotation: ["p-eli", "p-priya", "p-marcus", "p-june", "p-theo", "p-zora"] },
       ],
       choreDone: {},          // { choreId: { period: { by, at } } } — seeded below
       choreOverrides: {},     // { "choreId:period": memberId } — set by the rebalancer
       chorePrefs: {           // love/hate by CHORE_KINDS id
-        me: { loves: ["kitchen"], hates: ["bathroom"] },
+        "p-theo": { loves: ["kitchen"], hates: ["bathroom"] },
         "p-zora": { loves: ["cooking", "kitchen"], hates: ["trash"] },
         "p-eli": { loves: ["organizing", "trash"], hates: ["outdoor"] },
         "p-priya": { loves: ["floors"], hates: [] },
         "p-marcus": { loves: ["outdoor"], hates: ["organizing"] },
         "p-june": { loves: ["outdoor", "cooking"], hates: ["floors"] },
       },
-      bandwidth: { me: "normal", "p-zora": "normal", "p-eli": "high", "p-priya": "normal", "p-marcus": "low", "p-june": "normal" },
-      mealAppetite: { me: "fine", "p-zora": "love", "p-eli": "fine", "p-priya": "fine", "p-marcus": "avoid", "p-june": "fine" },
+      bandwidth: { "p-theo": "normal", "p-zora": "normal", "p-eli": "high", "p-priya": "normal", "p-marcus": "low", "p-june": "normal" },
+      mealAppetite: { "p-theo": "fine", "p-zora": "love", "p-eli": "fine", "p-priya": "fine", "p-marcus": "avoid", "p-june": "fine" },
       mealPlan: { presetId: "dinner-club", eaters: 6, dinners: 3, vegShare: 0.5, tier: "standard",
-        batchDay: "Sunday", rotation: ["p-zora", "me", "p-june", "p-priya", "p-marcus", "p-eli"] },
+        batchDay: "Sunday", rotation: ["p-zora", "p-theo", "p-june", "p-priya", "p-marcus", "p-eli"] },
       expenses: [
         { id: "x-costco", desc: "Costco run — dry goods & staples", amount: 187.4, paidBy: "p-june", category: "groceries",
-          at: days(-2), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+          at: days(-2), split: { mode: "equal", participants: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
         { id: "x-coned", desc: "Con Edison (June)", amount: 214, paidBy: "p-eli", category: "utilities", fromBill: "b-coned",
-          at: days(-4), recurring: "monthly", split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+          at: days(-4), recurring: "monthly", split: { mode: "equal", participants: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
         { id: "x-keg", desc: "Keg + ice for the stoop party", amount: 96, paidBy: "p-marcus", category: "fun",
-          at: days(-6), split: { mode: "equal", participants: ["me", "p-zora", "p-priya", "p-marcus"] },
+          at: days(-6), split: { mode: "equal", participants: ["p-theo", "p-zora", "p-priya", "p-marcus"] },
           note: "June & Eli sat this one out — not split to them." },
-        { id: "x-supplies", desc: "Cleaning supplies restock", amount: 43.75, paidBy: "me", category: "supplies",
-          at: days(-8), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+        { id: "x-supplies", desc: "Cleaning supplies restock", amount: 43.75, paidBy: "p-theo", category: "supplies",
+          at: days(-8), split: { mode: "equal", participants: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
         { id: "x-canning", desc: "Bulk tomatoes for canning day", amount: 62, paidBy: "p-june", category: "groceries",
-          at: days(-10), split: { mode: "shares", participants: ["p-june", "p-zora", "me", "p-priya"],
-            values: { "p-june": 2, "p-zora": 2, "me": 1, "p-priya": 1 } },
+          at: days(-10), split: { mode: "shares", participants: ["p-june", "p-zora", "p-theo", "p-priya"],
+            values: { "p-june": 2, "p-zora": 2, "p-theo": 1, "p-priya": 1 } },
           note: "Canning crew took double shares — they keep double jars." },
-        { id: "x-ubers", desc: "Cars back from Vibe Camp", amount: 75, paidBy: "me", category: "transport",
-          at: days(-12), split: { mode: "exact", participants: ["p-zora", "p-marcus", "me"],
-            values: { "p-zora": 30, "p-marcus": 30, "me": 15 } } },
+        { id: "x-ubers", desc: "Cars back from Vibe Camp", amount: 75, paidBy: "p-theo", category: "transport",
+          at: days(-12), split: { mode: "exact", participants: ["p-zora", "p-marcus", "p-theo"],
+            values: { "p-zora": 30, "p-marcus": 30, "p-theo": 15 } } },
         { id: "x-bath", desc: "Shower curtain + bathmat", amount: 38, paidBy: "p-priya", category: "supplies",
-          at: days(-15), split: { mode: "equal", participants: ["me", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
+          at: days(-15), split: { mode: "equal", participants: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] } },
         { id: "x-pizza", desc: "Pizza for stoop-repair day", amount: 54, paidBy: "p-marcus", category: "fun",
-          at: days(-18), split: { mode: "equal", participants: ["me", "p-eli", "p-marcus", "p-june"] } },
+          at: days(-18), split: { mode: "equal", participants: ["p-theo", "p-eli", "p-marcus", "p-june"] } },
       ],
       settlements: [
-        { id: "s-1", from: "p-priya", to: "me", amount: 40, at: days(-5), rail: { fee: 0.02, seconds: 1.8, ref: "rail-8f3a21" } },
-        { id: "s-2", from: "me", to: "p-eli", amount: 62, at: days(-12), rail: { fee: 0.03, seconds: 2.4, ref: "rail-c07d55" } },
+        { id: "s-1", from: "p-priya", to: "p-theo", amount: 40, at: days(-5), rail: { fee: 0.02, seconds: 1.8, ref: "rail-8f3a21" } },
+        { id: "s-2", from: "p-theo", to: "p-eli", amount: 62, at: days(-12), rail: { fee: 0.03, seconds: 2.4, ref: "rail-c07d55" } },
       ],
       stewardChat: [],        // {who:'me'|'steward', text, at, actions?}
       maintenance: [
@@ -584,7 +588,7 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 5) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 7) return; }
     } catch (e) { /* reseed */ }
     state = seedState();
     seedChoreHistory(state);
@@ -726,35 +730,59 @@
     account: {
       get: () => state.account,
       exists: () => !!state.account,
-      create(fields) {
-        state.account = {
-          name: fields.name, email: fields.email || null, borough: fields.borough,
-          budget: fields.budget, hue: fields.hue || "#0d9488", bio: fields.bio || "",
-          createdAt: new Date().toISOString(),
-        };
+      active: () => !!(state.account && !state.account.signedOut),
+      _applyIdentity() {
+        const a = state.account;
         Object.assign(state.me, {
-          name: fields.name, borough: fields.borough, budget: fields.budget,
-          hue: fields.hue || "#0d9488",
-          blurb: fields.bio || "New around here — say hi at a mixer.",
+          name: a.name, borough: a.borough, budget: a.budget, hue: a.hue,
+          blurb: a.bio || state.me.blurb,
         });
-        save(); return state.account;
+        if (a.photo) state.me.photo = a.photo; else delete state.me.photo;
       },
-      update(patch) {
-        if (!state.account) return null;
-        Object.assign(state.account, patch);
-        const mirror = {};
-        ["name", "borough", "budget", "hue"].forEach((k) => { if (k in patch) mirror[k] = patch[k]; });
-        if ("bio" in patch) mirror.blurb = patch.bio || state.me.blurb;
-        Object.assign(state.me, mirror);
-        save(); return state.account;
-      },
-      signOut() {
-        state.account = null;
+      _demoIdentity() {
         Object.assign(state.me, {
           name: "You", borough: "Bed-Stuy", budget: 1500,
           blurb: "Demo persona — create an account or retake the quiz to make this yours.",
         });
         delete state.me.hue;
+        delete state.me.photo;
+      },
+      create(fields) {
+        state.account = {
+          name: fields.name, email: fields.email || null, borough: fields.borough,
+          budget: fields.budget, hue: fields.hue || "#0d9488", bio: fields.bio || "",
+          photo: fields.photo || null, passkey: null, signedOut: false,
+          createdAt: new Date().toISOString(),
+        };
+        this._applyIdentity();
+        save(); return state.account;
+      },
+      update(patch) {
+        if (!state.account) return null;
+        Object.assign(state.account, patch);
+        this._applyIdentity();
+        save(); return state.account;
+      },
+      setPasskey(credId) {
+        if (!state.account) return;
+        state.account.passkey = credId ? { credId, addedAt: new Date().toISOString() } : null;
+        save();
+      },
+      signOut() {
+        if (!state.account) return;
+        state.account.signedOut = true;
+        this._demoIdentity();
+        save();
+      },
+      signIn() {
+        if (!state.account) return null;
+        state.account.signedOut = false;
+        this._applyIdentity();
+        save(); return state.account;
+      },
+      remove() {
+        state.account = null;
+        this._demoIdentity();
         save();
       },
     },
@@ -770,6 +798,41 @@
       mine: () => state.houses.find((h) => h.id === state.myHouseId) || null,
       add(h) { state.houses.unshift(h); save(); return h; },
       dims: (h) => houseDims(h, state),
+      // Join an existing house: you enter every running system — the roster,
+      // the contribution sheet, each bill and chore rotation, the meal plan.
+      join(id) {
+        const h = state.houses.find((x) => x.id === id);
+        if (!h || h.members.includes("me")) return h || null;
+        h.members.push("me");
+        if (h.roomsOpen > 0) h.roomsOpen -= 1;
+        state.myHouseId = id;
+        if (!state.contributions.some((c) => c.member === "me")) state.contributions.push({ member: "me", paid: false });
+        state.bills.forEach((b) => { if (!b.rotation.includes("me")) b.rotation.push("me"); });
+        state.chores.forEach((c) => { if (!c.rotation.includes("me")) c.rotation.push("me"); });
+        if (state.mealPlan && state.mealPlan.rotation && !state.mealPlan.rotation.includes("me")) {
+          state.mealPlan.rotation.push("me");
+          state.mealPlan.eaters = h.members.length;
+        }
+        save(); return h;
+      },
+      // Found a house of your own: the gallery keeps the world, but YOUR
+      // house starts with clean systems — no inherited chores or ledgers.
+      claimOwn(h) {
+        state.houses.unshift(h);
+        state.myHouseId = h.id;
+        state.contributions = [{ member: "me", paid: true }];
+        state.bills = [];
+        state.chores = [];
+        state.choreDone = {};
+        state.choreOverrides = {};
+        state.mealPlan = null;
+        state.expenses = [];
+        state.settlements = [];
+        state.proposals = [];
+        state.treasury = { balance: 0, currency: "USD" };
+        state.maintenance = [];
+        save(); return h;
+      },
     },
     events: {
       all: () => state.events.slice().sort((a, b) => new Date(a.when) - new Date(b.when)),

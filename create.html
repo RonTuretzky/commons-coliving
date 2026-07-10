@@ -192,6 +192,7 @@
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("create");
+    Shell.gate();
     (function () {
       const U = Commons.util;
       const esc = U.esc;
@@ -438,8 +439,8 @@
       function launch() {
         if (!draft.moveIn) { Shell.toast("Pick an earliest move-in date"); return; }
         launched = buildHouse();
-        Commons.houses.add(launched);
-        inviteLink = "commons.decentralpark.nyc/join/" + launched.id + "#" + rand(6);
+        Commons.houses.claimOwn(launched);
+        inviteLink = new URL("house.html?id=" + encodeURIComponent(launched.id), location.href).href;
         Shell.toast("🎉 " + launched.name + " is live", "green");
         renderSuccess();
       }
@@ -485,7 +486,7 @@
               <input id="invite-link" class="input mono" readonly value="${esc(inviteLink)}" style="flex:1;min-width:220px" />
               <button type="button" class="park-btn secondary" id="copy-invite">Copy invite</button>
             </div>
-            <p class="text-caption muted" style="margin-top:8px">Invites are single-use and signed — only people you invite can join.</p>
+            <p class="text-caption muted" style="margin-top:8px">The link opens your house's page — anyone you send it to can request a room, and you say yes or no.</p>
           </div>
           <div class="row wrap center">
             <a class="lifted green" href="house.html?id=${encodeURIComponent(launched.id)}"><span class="shadow"></span><span class="face">See your house page</span></a>
@@ -496,7 +497,7 @@
       }
       function copyInvite() {
         const input = qs("#invite-link");
-        const done = () => Shell.toast("Invite copied — each link is single-use", "green");
+        const done = () => Shell.toast("Link copied — send it to your people", "green");
         const fallback = () => {
           try { input.focus(); input.select(); document.execCommand("copy"); done(); }
           catch (e) { input.focus(); input.select(); Shell.toast("Select and copy the link above"); }

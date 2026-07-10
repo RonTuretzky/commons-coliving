@@ -20,31 +20,87 @@
     const page = document.getElementById("page");
     const HUES = ["#0d9488", "#16a34a", "#0284c7", "#166534", "#075985", "#513c35"];
     const BOROUGHS = ["Bed-Stuy", "Bushwick", "Crown Heights", "Greenpoint", "Gowanus", "Red Hook", "Ridgewood", "Sunset Park", "Bay Ridge", "Beacon, NY"];
+    const webauthnOk = !!window.PublicKeyCredential;
 
     let draft = null;
+
+    /* ---------- passkey (WebAuthn, device-bound — no server involved) ---------- */
+    const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+
+    async function passkeyCreate(name) {
+      const cred = await navigator.credentials.create({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: "Commons" },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: name, displayName: name },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { userVerification: "preferred", residentKey: "preferred" },
+        timeout: 60000,
+      }});
+      return b64(cred.rawId);
+    }
+    async function passkeyVerify(credId) {
+      await navigator.credentials.get({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ type: "public-key", id: unb64(credId) }],
+        userVerification: "preferred",
+        timeout: 60000,
+      }});
+      return true;
+    }
+
+    /* ---------- photo: downscale to a 192px square data URL ---------- */
+    function readPhoto(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const S = 192;
+          const c = document.createElement("canvas");
+          c.width = S; c.height = S;
+          const side = Math.min(img.width, img.height);
+          c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+        img.src = url;
+      });
+    }
 
     function startDraft() {
       const a = Commons.account.get();
       const me = Commons.me();
       draft = a
-        ? { name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "" }
-        : { name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "" };
+        ? { name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null }
+        : { name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null };
+    }
+
+    function avatarPreview() {
+      if (draft.photo) return `<span class="avatar lg" style="background-image:url('${draft.photo}');background-size:cover;background-position:center;color:transparent">.</span>`;
+      return `<span class="avatar lg" style="background:${draft.hue}">${U.esc(U.initials(draft.name || "You"))}</span>`;
     }
 
     function formHtml(isNew) {
       const hueSwatches = HUES.map((h) =>
-        `<button type="button" class="avatar ${draft.hue === h ? "" : "sm"}" data-hue="${h}" style="background:${h};cursor:pointer;border:${draft.hue === h ? "3px solid var(--ink)" : "2px solid var(--paper-0)"}" title="${h}">${U.esc(U.initials(draft.name || "You"))}</button>`
+        `<button type="button" class="avatar sm" data-hue="${h}" style="background:${h};cursor:pointer;border:${draft.hue === h && !draft.photo ? "3px solid var(--ink)" : "2px solid var(--paper-0)"}">${U.esc(U.initials(draft.name || "You"))}</button>`
       ).join("");
       return `
       <div class="card stack">
+        <div class="row wrap" style="gap:16px">
+          <span id="ava-preview">${avatarPreview()}</span>
+          <div class="stack" style="--gap:6px;flex:1;min-width:220px">
+            <label class="park-btn light sm" style="align-self:start;cursor:pointer">📷 ${draft.photo ? "Change photo" : "Add a photo"}
+              <input id="a-photo" type="file" accept="image/*" style="display:none" />
+            </label>
+            ${draft.photo ? `<button type="button" class="park-btn ghost sm" id="a-photo-clear" style="align-self:start">Remove photo</button>` : `<div class="row wrap" style="gap:8px">${hueSwatches}</div>`}
+            <span class="text-caption muted">${draft.photo ? "" : "…or pick a color and let your initials do the work."}</span>
+          </div>
+        </div>
         <div class="field">
           <label for="a-name">Name</label>
           <input class="input" id="a-name" value="${U.esc(draft.name)}" placeholder="The name housemates will see" />
           <div class="help">Shows on your profile, the chore board, the ledger — everywhere your avatar goes.</div>
-        </div>
-        <div class="field">
-          <label>Avatar color</label>
-          <div class="row wrap" style="gap:10px">${hueSwatches}</div>
         </div>
         <div class="grid grid-2">
           <div class="field">
@@ -62,58 +118,129 @@
           <input class="input" id="a-bio" value="${U.esc(draft.bio)}" placeholder="e.g. Big-dinner person, early riser, has strong compost opinions." />
         </div>
         <div class="field">
-          <label for="a-email">Email (optional)</label>
+          <label for="a-email">Contact email (optional)</label>
           <input class="input" id="a-email" type="email" value="${U.esc(draft.email)}" placeholder="you@example.com" />
-          <div class="help">Stays on this device — there's no server to send it to. A real deployment would verify it and add a passkey here.</div>
+          <div class="help">Shows on your profile so housemates can reach you off-app. Stored on this device, like everything here.</div>
         </div>
         <div class="row wrap">
           <button class="lifted" id="a-save"><span class="shadow"></span><span class="face">${isNew ? "Create my account" : "Save changes"}</span></button>
-          ${isNew ? "" : `<button class="park-btn ghost" id="a-signout">Sign out</button>`}
         </div>
+      </div>`;
+    }
+
+    function passkeyCardHtml(a) {
+      if (!webauthnOk) return "";
+      return `
+      <div class="card stack">
+        <div class="kicker">Passkey</div>
+        ${a.passkey
+          ? `<p class="small">🔐 This account is guarded by your device — Touch ID, Face ID, or your screen lock. Signing back in takes a fingerprint, not a password.</p>
+             <p class="text-caption muted">Added ${U.fmtDate(a.passkey.addedAt)}. The key never leaves this device; there's nothing to leak.</p>
+             <button class="park-btn light sm" id="pk-remove" style="align-self:start">Remove passkey</button>`
+          : `<p class="small">Add a passkey and signing back in takes Touch ID instead of trust. The key is created by your device, for this site, and never leaves the machine.</p>
+             <button class="park-btn secondary sm" id="pk-add" style="align-self:start">🔐 Add a passkey</button>`}
       </div>`;
     }
 
     function render() {
       const a = Commons.account.get();
       startDraft();
+
       if (!a) {
         page.innerHTML = `
         <div class="stack-lg">
           <div>
-            <div class="kicker">Your account</div>
+            <div class="kicker">Get started</div>
             <h1 class="text-h2">Make it yours</h1>
-            <p class="lede">Right now you're exploring as the demo persona. An account puts your name on the
-            door — your profile, your quiz results, your chores, your side of the ledger.</p>
-            <p class="text-caption muted">Local-first: your account lives in this browser. No password, no server,
-            nothing leaves the device. Reset the demo and it's gone; that's the deal.</p>
+            <p class="lede">Your account is your name on the door — your profile, your quiz results, your
+            chores, your side of the ledger. Thirty seconds, then the quiz does the matchmaking.</p>
           </div>
           ${formHtml(true)}
+          <p class="text-caption muted">Local-first by design: your account lives in this browser, and adding a passkey
+          (next step) locks it to your device. Nothing leaves the machine.</p>
         </div>`;
-      } else {
-        const me = Commons.me();
-        const house = Commons.houses.mine();
-        page.innerHTML = `
-        <div class="stack-lg">
-          <div class="row between wrap">
-            <div>
-              <div class="kicker">Your account</div>
-              <h1 class="text-h2">${U.esc(a.name)}</h1>
-              <p class="small muted">Member since ${U.fmtDate(a.createdAt)} · ${U.esc(a.borough)}${house ? ` · lives at <a href="house.html?id=${house.id}">${U.esc(house.name)}</a>` : ""}</p>
-            </div>
-            ${Shell.avatarHtml(me, "lg")}
-          </div>
-          <div class="row wrap">
-            <a class="park-btn light sm" href="person.html?id=me">View your public profile</a>
-            <a class="park-btn light sm" href="quiz.html">Retake the quiz</a>
-            <a class="park-btn light sm" href="checkin.html">Weekly check-in</a>
-          </div>
-          ${formHtml(false)}
-        </div>`;
+        wireForm(true);
+        return;
       }
-      wire(!a);
+
+      if (a.signedOut) {
+        page.innerHTML = `
+        <div class="card center-text stack-lg" style="padding:clamp(32px,6vw,56px)">
+          ${Shell.avatarHtml({ id: "me", name: a.name, hue: a.hue, photo: a.photo }, "lg")}
+          <div>
+            <h1 class="text-h3">Welcome back, ${U.esc(a.name.split(/\s+/)[0])}</h1>
+            <p class="lede">${a.passkey ? "Your passkey is the key — one touch and you're home." : "One tap and you're home."}</p>
+          </div>
+          <div class="row center wrap">
+            <button class="lifted" id="signin"><span class="shadow"></span><span class="face">${a.passkey ? "🔐 Sign in with passkey" : "Sign in"}</span></button>
+          </div>
+          <p class="text-caption muted">Not you? <button class="park-btn ghost sm" id="acct-delete">Delete this account from the device</button></p>
+        </div>`;
+        document.getElementById("signin").addEventListener("click", async () => {
+          if (a.passkey && webauthnOk) {
+            try { await passkeyVerify(a.passkey.credId); }
+            catch (e) { Shell.toast("Passkey check didn't complete — try again"); return; }
+          }
+          Commons.account.signIn();
+          Shell.toast(`Welcome home, ${a.name.split(/\s+/)[0]}`, "green");
+          setTimeout(() => location.reload(), 400);
+        });
+        wireDelete();
+        return;
+      }
+
+      const me = Commons.me();
+      const house = Commons.houses.mine();
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="row between wrap">
+          <div>
+            <div class="kicker">Your account</div>
+            <h1 class="text-h2">${U.esc(a.name)}</h1>
+            <p class="small muted">Member since ${U.fmtDate(a.createdAt)} · ${U.esc(a.borough)}${house ? ` · lives at <a href="house.html?id=${house.id}">${U.esc(house.name)}</a>` : " · not in a house yet"}</p>
+          </div>
+          ${Shell.avatarHtml(me, "lg")}
+        </div>
+        <div class="row wrap">
+          <a class="park-btn light sm" href="person.html?id=me">Your public profile</a>
+          <a class="park-btn light sm" href="quiz.html">${me.quizDone ? "Retake the quiz" : "Take the quiz"}</a>
+          ${house ? `<a class="park-btn light sm" href="checkin.html">Weekly check-in</a>` : `<a class="park-btn light sm" href="browse.html">Find your house</a>`}
+        </div>
+        ${formHtml(false)}
+        ${passkeyCardHtml(a)}
+        <div class="card flat stack">
+          <div class="kicker" style="color:var(--red)">Danger zone</div>
+          <div class="row between wrap">
+            <span class="small">Sign out of this device${a.passkey ? " (passkey required to get back in)" : ""}.</span>
+            <button class="park-btn light sm" id="a-signout">Sign out</button>
+          </div>
+          <div class="row between wrap">
+            <span class="small">Delete the account and start this device over.</span>
+            <button class="park-btn destructive sm" id="acct-delete">Delete account</button>
+          </div>
+          <div class="row between wrap">
+            <span class="small">Wipe everything — account, houses, ledger, the lot.</span>
+            <button class="park-btn destructive sm" id="wipe-all">Reset this device</button>
+          </div>
+        </div>
+      </div>`;
+      wireForm(false);
+      wirePasskey(a);
+      wireDelete();
+      document.getElementById("a-signout").addEventListener("click", () => {
+        Commons.account.signOut();
+        Shell.toast("Signed out");
+        setTimeout(() => location.reload(), 400);
+      });
+      const wipe = document.getElementById("wipe-all");
+      if (wipe) wipe.addEventListener("click", () => {
+        if (wipe.dataset.armed) { Commons.reset(); localStorage.removeItem("dp-ledger-autosettle"); location.href = "index.html"; return; }
+        wipe.dataset.armed = "1"; wipe.textContent = "Really wipe it all?";
+        Shell.toast("Tap again to confirm — this clears everything");
+      });
     }
 
-    function wire(isNew) {
+    function wireForm(isNew) {
       page.querySelector("#a-name").addEventListener("input", (e) => { draft.name = e.target.value; });
       page.querySelector("#a-bio").addEventListener("input", (e) => { draft.bio = e.target.value; });
       page.querySelector("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
@@ -123,34 +250,90 @@
         page.querySelector("#a-budget-val").textContent = U.fmtMoney(draft.budget);
       });
       page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => {
-        draft.hue = b.dataset.hue;
-        // re-render just the swatch row states
-        page.querySelectorAll("[data-hue]").forEach((x) => {
-          const on = x.dataset.hue === draft.hue;
-          x.classList.toggle("sm", !on);
-          x.style.border = on ? "3px solid var(--ink)" : "2px solid var(--paper-0)";
-        });
+        draft.hue = b.dataset.hue; draft.photo = draft.photo; refreshAvatarUi();
       }));
-      page.querySelector("#a-save").addEventListener("click", () => {
+      page.querySelector("#a-photo").addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        try {
+          draft.photo = await readPhoto(file);
+          refreshAvatarUi();
+          Shell.toast("Looking sharp", "green");
+        } catch (err) { Shell.toast("Couldn't read that image — try another"); }
+      });
+      const clear = page.querySelector("#a-photo-clear");
+      if (clear) clear.addEventListener("click", () => { draft.photo = null; refreshAvatarUi(); });
+
+      function refreshAvatarUi() {
+        // re-render just the form card, keep field values
+        const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget };
+        const card = page.querySelector("#ava-preview").closest(".card");
+        const tmp = document.createElement("div");
+        tmp.innerHTML = formHtml(isNew);
+        card.replaceWith(tmp.firstElementChild);
+        Object.assign(draft, keep);
+        wireForm(isNew);
+      }
+
+      page.querySelector("#a-save").addEventListener("click", async () => {
         const name = draft.name.trim();
         if (!name) { Shell.toast("A name is the whole point"); return; }
         if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) { Shell.toast("That email doesn't look right"); return; }
-        const fields = { name, email: draft.email.trim() || null, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: draft.bio.trim() };
+        const fields = { name, email: draft.email.trim() || null, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: draft.bio.trim(), photo: draft.photo };
         if (isNew) {
           Commons.account.create(fields);
-          Shell.toast(`Welcome, ${name.split(/\s+/)[0]} — the house knows your name now`, "green");
+          // offer a passkey right away, then onboard to the quiz
+          if (webauthnOk) {
+            try {
+              const credId = await passkeyCreate(name);
+              Commons.account.setPasskey(credId);
+              Shell.toast("Account + passkey created — welcome", "green");
+            } catch (e) {
+              Shell.toast("Account created — you can add a passkey any time", "green");
+            }
+          } else {
+            Shell.toast(`Welcome, ${name.split(/\s+/)[0]}`, "green");
+          }
+          setTimeout(() => { location.href = Commons.me().quizDone ? "browse.html" : "quiz.html"; }, 700);
         } else {
           Commons.account.update(fields);
           Shell.toast("Saved", "green");
+          setTimeout(() => location.reload(), 400);
         }
-        // rebuild navbar so the avatar/name updates immediately
-        location.reload();
       });
-      const out = page.querySelector("#a-signout");
-      if (out) out.addEventListener("click", () => {
-        Commons.account.signOut();
-        Shell.toast("Signed out — back to the demo persona");
-        setTimeout(() => location.reload(), 500);
+    }
+
+    function wirePasskey(a) {
+      const add = document.getElementById("pk-add");
+      if (add) add.addEventListener("click", async () => {
+        try {
+          const credId = await passkeyCreate(a.name);
+          Commons.account.setPasskey(credId);
+          Shell.toast("Passkey added — your device is the key now", "green");
+          setTimeout(() => location.reload(), 400);
+        } catch (e) { Shell.toast("Passkey setup didn't complete — no changes made"); }
+      });
+      const rm = document.getElementById("pk-remove");
+      if (rm) rm.addEventListener("click", async () => {
+        try { await passkeyVerify(a.passkey.credId); }
+        catch (e) { Shell.toast("Passkey check didn't complete"); return; }
+        Commons.account.setPasskey(null);
+        Shell.toast("Passkey removed");
+        setTimeout(() => location.reload(), 400);
+      });
+    }
+
+    function wireDelete() {
+      const del = document.getElementById("acct-delete");
+      if (del) del.addEventListener("click", () => {
+        if (del.dataset.armed) {
+          Commons.account.remove();
+          Shell.toast("Account deleted from this device");
+          setTimeout(() => location.reload(), 500);
+          return;
+        }
+        del.dataset.armed = "1"; del.textContent = "Really delete?";
+        Shell.toast("Tap again to confirm");
       });
     }
 

@@ -32,18 +32,17 @@
     const C = window.Commons;
     const U = C.util;
     const account = C.account.get();
+    const activeAcct = C.account.active();
     const links = NAV.map((n) =>
       `<a href="${n.href}" class="${n.id === active ? "on" : ""}">${n.label}</a>`
     ).join("");
-    const accountEl = account
+    const accountEl = activeAcct
       ? `<a href="account.html" class="row" style="gap:8px;text-decoration:none;color:var(--ink);margin-left:6px" title="Your account">
            ${avatarHtml(C.me(), "sm")}<span class="display" style="font-size:.9rem">${U.esc(account.name.split(/\s+/)[0])}</span></a>`
-      : `<a class="park-btn sm light" href="account.html" style="margin-left:6px">Create account</a>`;
-    const banner = account
-      ? `Demo world — everything lives in your browser. <button type="button" id="demo-reset">Reset the demo</button>`
-      : `Demo world — you're exploring as the demo persona. <a href="account.html">Create your account</a> · <button type="button" id="demo-reset">Reset the demo</button>`;
+      : account
+        ? `<a class="park-btn sm light" href="account.html" style="margin-left:6px">Sign in</a>`
+        : `<a class="park-btn sm light" href="account.html" style="margin-left:6px">Create account</a>`;
     return `
-    <div class="demo-banner">${banner}</div>
     <header class="navbar">
       <div class="container nav-inner">
         <a class="brand" href="index.html">
@@ -102,7 +101,7 @@
           </div>
         </div>
         <div class="legal">
-          <span>Commons is a demo prototype — no real money, houses, or housemates were harmed.</span>
+          <span>Commons is in early access — payments are simulated while the rails are finished. Your data lives on your device.</span>
           <span>P2P license · Decentral Park</span>
         </div>
       </div>
@@ -125,6 +124,9 @@
   function avatarHtml(profile, size) {
     const U = window.Commons.util;
     if (!profile) return "";
+    if (profile.photo) {
+      return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background-image:url('${profile.photo}');background-size:cover;background-position:center;color:transparent">${U.esc(U.initials(profile.name))}</span>`;
+    }
     const bg = profile.hue || U.hue(profile.id);
     return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background:${bg}">${U.esc(U.initials(profile.name))}</span>`;
   }
@@ -140,9 +142,16 @@
     document.body.insertAdjacentHTML("beforeend", footer());
     const burger = document.getElementById("nav-burger");
     if (burger) burger.addEventListener("click", () => document.getElementById("nav-links").classList.toggle("open"));
-    const reset = document.getElementById("demo-reset");
-    if (reset) reset.addEventListener("click", () => { window.Commons.reset(); toast("Demo world reseeded"); setTimeout(() => location.reload(), 500); });
   }
 
-  window.Shell = { render, toast, avatarHtml, matchPill, LINKS };
+  // Auth gate for app pages: no active account → straight to the auth page,
+  // like any app with a front door. Call right after Shell.render().
+  function gate() {
+    const C = window.Commons;
+    if (C.account.active()) return false;
+    location.replace("account.html");
+    return true;
+  }
+
+  window.Shell = { render, gate, toast, avatarHtml, matchPill, LINKS };
 })();
