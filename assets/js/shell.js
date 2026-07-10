@@ -6,8 +6,9 @@
 (function () {
   const LINKS = {
     website: "https://decentralpark.nyc",
+    mutualAid: "https://mutualaid.fun",
     about: "https://decentralpark.nyc/about",
-    meetings: "https://decentralpark.nyc/meetings",
+    meetings: "https://decentralpark.nyc/",
     newsletter: "https://paragraph.com/@decentralpark",
     github: "https://github.com/RonTuretzky/decentralparknyc",
     instagram: "https://instagram.com/decentralparknyc",
@@ -91,7 +92,7 @@
           <div>
             <h4>Solidarity apps</h4>
             <ul>
-              <li><a href="${LINKS.website}" target="_blank" rel="noopener">Mutual Aid — give without giving</a></li>
+              <li><a href="${LINKS.mutualAid}" target="_blank" rel="noopener">Mutual Aid — give without giving</a></li>
               <li><a href="${LINKS.meetings}" target="_blank" rel="noopener">Meetups — gather in the park</a></li>
               <li><a href="index.html">colive.fun — find your people</a></li>
             </ul>

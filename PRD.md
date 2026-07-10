@@ -149,7 +149,7 @@ People have extremely different chore tastes, and the same person has extremely 
 Launching a house chains straight into configuration: create → chore calculator (`?setup=1`, step 1 of 2) → meal calculator (step 2) → dashboard. Houses with missing systems get a "finish setting up" nudge with per-system checkmarks.
 
 **5d. Steward (AI house manager)**
-> **Integration decision:** the steward seat will be filled by [lab0r.fun](https://lab0r.fun/) — no further in-house steward features. The current rule-based chat stays as a placeholder until that integration.
+> **The steward is [lab0r.fun](https://lab0r.fun/).** All steward surfaces attribute it; the current rule-based chat is an explicitly-labeled stand-in until the full agent integration ships. No further in-house steward features.
 - Chat interface. It reminds about chores and bill rotations, takes **maintenance requests** ("the sink is leaking" → triage → here's how to fix it yourself → or here are three plumbers near you), tracks follow-ups, answers house-rules questions.
 - Later: connects to the house's vendor accounts via MCP; a human still owns accounts, the steward drafts and coordinates.
 
