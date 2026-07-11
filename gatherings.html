@@ -475,7 +475,8 @@
       });
     })();
 
-    (function railsStatus() {
+    window.addEventListener("rails:addresses", () => { railsStatus(); render(); });
+    function railsStatus() {
       const el = document.getElementById("rails-status");
       if (!el) return;
       if (!window.Rails || !Rails.enabled) { el.textContent = "Deposits run off-chain in this browser."; return; }
@@ -486,7 +487,8 @@
       } else {
         el.innerHTML = 'Create a wallet in <a href="account.html" style="color:var(--green-0)">your account</a> to put deposits on ' + Rails.net().label + ".";
       }
-    })();
+    }
+    railsStatus();
 
     render();
     renderMine();

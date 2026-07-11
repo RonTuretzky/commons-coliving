@@ -12,13 +12,44 @@
   const KEY_WALLET = "dp-wallet-key";
   const KEY_CHAIN = "dp-chain";
 
-  // Escrow deployments per network. Local/test networks can override via
-  // localStorage("dp-escrow-<net>") — the e2e suite uses that with anvil.
+  // Escrow address resolution, strongest first (crowdstake.fun convention):
+  //   1. localStorage("dp-escrow-<net>") — e2e/preview pins (anvil)
+  //   2. the runtime manifest published by the contracts-deploy workflow to
+  //      the `addresses` branch (raw.githubusercontent.com sends CORS headers;
+  //      release-asset downloads do not) — deploys go live with NO rebuild
+  //   3. baked-in fallbacks below
   const ESCROW = {
-    gnosis: null, // set after mainnet deployment
+    gnosis: null,
     chiado: null,
     local: null,
   };
+  const MANIFEST_URL = "https://raw.githubusercontent.com/RonTuretzky/commons-coliving/addresses/addresses.json";
+  const CHAIN_IDS = { gnosis: "100", chiado: "10200" };
+  const KEY_MANIFEST = "dp-addresses";
+
+  function manifestEscrow(netKey) {
+    try {
+      const m = JSON.parse(localStorage.getItem(KEY_MANIFEST) || "null");
+      const entry = m && m.chains && m.chains[CHAIN_IDS[netKey]];
+      const addr = entry && entry.gatheringEscrow;
+      return /^0x[0-9a-fA-F]{40}$/.test(addr || "") ? addr : null;
+    } catch (e) { return null; }
+  }
+
+  async function hydrateAddresses() {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 5000);
+      const r = await fetch(MANIFEST_URL, { cache: "no-store", signal: ctl.signal });
+      clearTimeout(t);
+      if (!r.ok) return;
+      const m = await r.json();
+      if (m && m.chains) {
+        localStorage.setItem(KEY_MANIFEST, JSON.stringify(m));
+        window.dispatchEvent(new Event("rails:addresses"));
+      }
+    } catch (e) { /* offline or branch not published yet — fallbacks stand */ }
+  }
 
   const NETWORKS = {
     gnosis: {
@@ -79,7 +110,7 @@
   function netId() { return localStorage.getItem(KEY_CHAIN) || "gnosis"; }
   function net() { return NETWORKS[netId()] || NETWORKS.gnosis; }
   function escrowAddress() {
-    return localStorage.getItem("dp-escrow-" + netId()) || ESCROW[netId()] || null;
+    return localStorage.getItem("dp-escrow-" + netId()) || manifestEscrow(netId()) || ESCROW[netId()] || null;
   }
 
   function pub() {
@@ -179,8 +210,11 @@
       },
     },
 
+    hydrateAddresses,
     short: (addr) => (addr ? addr.slice(0, 6) + "…" + addr.slice(-4) : ""),
     explorerTx: (hash) => (net().explorer ? net().explorer + "/tx/" + hash : null),
     explorerAddr: (addr) => (net().explorer ? net().explorer + "/address/" + addr : null),
   };
+
+  hydrateAddresses(); // fire-and-forget; pages listen for "rails:addresses"
 })();

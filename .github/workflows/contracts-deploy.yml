@@ -1,0 +1,135 @@
+name: Deploy GatheringEscrow
+
+# Manual deploy keeping the key in a secret. After deploying, publishes/updates
+# the rolling `contract-addresses` GitHub release with an addresses.json
+# manifest AND mirrors it to the `addresses` branch, which the static frontend
+# fetches at runtime via raw.githubusercontent.com (CORS-friendly) — so
+# contract redeploys go live with NO frontend rebuild.
+# Pattern copied from BreadchainCoop/crowdstake.fun.
+#
+# Requires repo secret: DEPLOY_PRIVATE_KEY (funded on the target chain).
+# Optional secret: GNOSIS_RPC_URL.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: "Target chain"
+        type: choice
+        default: gnosis
+        options:
+          - gnosis
+          - chiado
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: "1.4.4"
+
+      - name: Install forge-std
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Resolve chain (id + RPC + explorer)
+        id: chain
+        run: |
+          case "${{ inputs.chain }}" in
+            gnosis)
+              ID=100
+              RPC="${{ secrets.GNOSIS_RPC_URL || 'https://rpc.gnosischain.com' }}"
+              BS="https://gnosis.blockscout.com" ;;
+            chiado)
+              ID=10200
+              RPC="https://rpc.chiadochain.net"
+              BS="https://gnosis-chiado.blockscout.com" ;;
+          esac
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "rpc=$RPC" >> "$GITHUB_OUTPUT"
+          echo "blockscout=$BS" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests first
+        run: forge test
+
+      - name: Deploy
+        id: deploy
+        env:
+          PRIVATE_KEY: ${{ secrets.DEPLOY_PRIVATE_KEY }}
+        run: |
+          forge script script/Deploy.s.sol:Deploy \
+            --rpc-url "${{ steps.chain.outputs.rpc }}" --broadcast --slow -vvvv
+          ADDR=$(python3 -c "import json;d=json.load(open('broadcast/Deploy.s.sol/${{ steps.chain.outputs.id }}/run-latest.json'));print([t['contractAddress'] for t in d['transactions'] if t.get('contractName')=='GatheringEscrow'][0])")
+          echo "addr=$ADDR" >> "$GITHUB_OUTPUT"
+          {
+            echo "### GatheringEscrow deployed on ${{ inputs.chain }} (chain ${{ steps.chain.outputs.id }})"
+            echo "\`$ADDR\`"
+            echo ""
+            echo "Published to the \`contract-addresses\` release + \`addresses\` branch — the live frontend picks it up on next page load (no rebuild needed)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify on Blockscout (best effort)
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          forge verify-contract "${{ steps.deploy.outputs.addr }}" \
+            src/GatheringEscrow.sol:GatheringEscrow \
+            --verifier blockscout \
+            --verifier-url "${{ steps.chain.outputs.blockscout }}/api" \
+            --chain-id "${{ steps.chain.outputs.id }}" || true
+
+      # Rolling release: merged per chain so a chiado deploy never drops gnosis.
+      - name: Publish address manifest (rolling release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHAIN_ID: ${{ steps.chain.outputs.id }}
+          ADDR: ${{ steps.deploy.outputs.addr }}
+        run: |
+          set -euo pipefail
+          gh release download contract-addresses -p addresses.json -O prev.json -R "$GITHUB_REPOSITORY" \
+            || echo '{}' > prev.json
+          python3 - <<'PY'
+          import json, os, time
+          try:
+              prev = json.load(open("prev.json"))
+          except Exception:
+              prev = {}
+          chains = prev.get("chains", {})
+          chains[os.environ["CHAIN_ID"]] = {
+              "gatheringEscrow": os.environ["ADDR"],
+              "commit": os.environ.get("GITHUB_SHA", ""),
+              "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+          }
+          json.dump({"version": 1, "chains": chains}, open("addresses.json", "w"), indent=2)
+          print(open("addresses.json").read())
+          PY
+          gh release view contract-addresses -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create contract-addresses -R "$GITHUB_REPOSITORY" \
+                 --title "Contract addresses (latest)" \
+                 --notes "Rolling manifest of live contract addresses. The static frontend fetches addresses.json at runtime."
+          gh release upload contract-addresses addresses.json --clobber -R "$GITHUB_REPOSITORY"
+
+      # Mirror to the `addresses` branch: raw.githubusercontent.com sends
+      # Access-Control-Allow-Origin: *, release-asset downloads do not.
+      - name: Mirror manifest to addresses branch (CORS-fetchable)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m json.tool addresses.json >/dev/null
+          content_b64=$(base64 -w0 addresses.json)
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/addresses.json?ref=addresses" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/addresses.json" \
+            -f message="chore(addresses): publish manifest @ ${GITHUB_SHA::7}" \
+            -f content="$content_b64" \
+            -f branch=addresses \
+            ${sha:+-f sha="$sha"}
