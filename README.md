@@ -27,7 +27,15 @@ Faithful vanilla-CSS port of [decentralpark-ui-kit](https://github.com/decentral
 
 ## Mechanics
 
-Deliberately web2: templates + a ledger + votes. Deterministic bill rotation, period-calculated chores (`period = floor((now−start)/freq)`, no stored instances), 2/3-majority proposals with auto-resolution, platform-held event deposits. A trustless enforcement layer is explicitly parked (see PRD §8).
+Templates + a ledger + votes. Deterministic bill rotation, period-calculated chores (`period = floor((now−start)/freq)`, no stored instances), 2/3-majority proposals with auto-resolution.
+
+## Gnosis rails (real)
+
+- **Wallets:** every account gets a real Gnosis Chain address, generated on-device (`assets/js/rails.js`, vendored viem); key never leaves the browser. Balances read via the public RPC. Native **xDai** — a dollar that costs a fraction of a cent to move.
+- **Gathering deposits:** non-custodial via `contracts/src/GatheringEscrow.sol` (Foundry; 10 unit tests) — attendees can pull out before start, host cancelling makes everyone refundable forever, an uncancelled gathering lets the host claim after start. The platform never holds funds.
+- **Deploy:** `contracts/deploy.sh gnosis` with a funded key, then set the address in `ESCROW.gnosis` in `rails.js`. Until then the UI runs the same flows off-chain and says so.
+- **Chain e2e:** the suite spins up anvil, deploys the contract, and drives wallet-funding → on-chain escrow → deposit → cancel-refund through the real UI (localhost runs only).
+- Not wired on purpose: onramps (later), Safe multisig house funds (wanted simpler).
 
 ## E2E tests
 

@@ -1,5 +1,6 @@
 // Commons e2e suite — the productized user journey, asserted against real store state.
 import { chromium } from 'playwright';
+import { spawn, execSync } from 'child_process';
 
 const BASE = process.env.BASE_URL || 'http://localhost:8091';
 let browser, ctx, page;
@@ -23,7 +24,7 @@ async function fresh(url) {
   await page.waitForTimeout(300);
 }
 async function go(url) { await page.goto(BASE + '/' + url); await page.waitForTimeout(350); }
-const ev = (fn) => page.evaluate(fn);
+const ev = (fn, arg) => page.evaluate(fn, arg);
 
 async function addVirtualAuthenticator() {
   const client = await ctx.newCDPSession(page);
@@ -48,6 +49,35 @@ async function test(name, fn) {
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
 browser = await chromium.launch();
+
+/* ---------- chain rig: anvil + escrow deployment (localhost runs only) ---------- */
+const CHAIN = BASE.includes('localhost');
+const FOUNDRY = process.env.HOME + '/.foundry/bin';
+const ANVIL_KEY0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const REPO = '/Users/wk/conductor/workspaces/research/cancun';
+let anvil = null, escrowAddr = null;
+if (CHAIN) {
+  anvil = spawn(FOUNDRY + '/anvil', ['--silent'], { stdio: 'ignore' });
+  await new Promise((r) => setTimeout(r, 1500));
+  const out = execSync(
+    FOUNDRY + `/forge create src/GatheringEscrow.sol:GatheringEscrow --root ${REPO}/contracts ` +
+    `--rpc-url http://127.0.0.1:8545 --private-key ${ANVIL_KEY0} --broadcast`,
+    { encoding: 'utf8' });
+  escrowAddr = (out.match(/Deployed to: (0x[0-9a-fA-F]{40})/) || [])[1];
+  console.log('anvil escrow at', escrowAddr);
+}
+async function freshChain(url) {
+  if (ctx) await ctx.close();
+  ctx = await browser.newContext();
+  await ctx.addInitScript(([addr]) => {
+    localStorage.setItem('dp-chain', 'local');
+    localStorage.setItem('dp-escrow-local', addr);
+  }, [escrowAddr]);
+  consoleErrors = [];
+  await newPage();
+  await page.goto(BASE + '/' + url);
+  await page.waitForTimeout(300);
+}
 
 /* ---------- 0. public pages load clean ---------- */
 const PUBLIC = ['index.html', 'browse.html', 'house.html?id=h-redhook', 'person.html?id=p-maya', 'gatherings.html', 'templates.html', 'quiz.html', 'account.html', 'chore-builder.html', 'meals.html'];
@@ -375,6 +405,67 @@ await test('setup wizard: launch → chores → meals → dashboard complete', a
   assert((await ev(() => window.Commons.meals.plan()?.presetId)) === 'dinner-club', 'plan not saved in setup');
   assert(!(await ev(() => document.getElementById('page').textContent.includes('Finish setting up'))), 'setup nudge still showing after completion');
 });
+
+/* ---------- on-chain rails (anvil) ---------- */
+if (CHAIN && escrowAddr) {
+  await freshChain('account.html');
+  const cdp2 = await addVirtualAuthenticator();
+  await test('rails: signup creates a real wallet; funding shows in balance', async () => {
+    await page.fill('#a-name', 'Chain Tester');
+    await page.locator('#a-save').click();
+    await page.waitForTimeout(2200); // passkey + redirect to quiz (no rails there)
+    assert((await ev(() => !!localStorage.getItem('dp-wallet-key'))), 'no wallet key stored on signup');
+    await go('account.html'); // rails-enabled page
+    const addr = await ev(() => window.Rails && Rails.address());
+    assert(addr && addr.startsWith('0x'), 'no wallet address derivable');
+    execSync(FOUNDRY + `/cast send ${addr} --value 50ether --private-key ${ANVIL_KEY0} --rpc-url http://127.0.0.1:8545`, { stdio: 'ignore' });
+    const bal = await ev(() => Rails.balance());
+    assert(Number(bal) >= 50, 'funding not visible: ' + bal);
+  });
+
+  await test('rails: hosting a priced gathering opens on-chain escrow', async () => {
+    await go('gatherings.html');
+    await page.locator('#host-toggle').click();
+    const d = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    await page.fill('#g-title', 'Chain Mixer');
+    await page.fill('#g-when', d);
+    await page.fill('#g-where', 'On Chain, Gnosis');
+    await page.fill('#g-price', '15');
+    await page.locator('#g-submit').click();
+    await page.waitForTimeout(2500); // create tx confirms on anvil
+    const evt = await ev(() => window.Commons.events.all().find((x) => x.title === 'Chain Mixer'));
+    assert(evt && evt.chain === true && evt.escrowTx, 'event not marked on-chain: ' + JSON.stringify({c: evt && evt.chain, t: evt && evt.escrowTx}));
+    const info = await ev((id) => Rails.escrow.info(id), evt.id);
+    const wallet = await ev(() => Rails.address());
+    assert(info.host && info.host.toLowerCase() === wallet.toLowerCase(), 'contract host mismatch: ' + JSON.stringify(info) + ' vs ' + wallet);
+    assert(info.deposit === '15', 'contract deposit mismatch: ' + info.deposit);
+  });
+
+  await test('rails: real deposit moves real xDai into the contract', async () => {
+    const evt = await ev(() => window.Commons.events.all().find((x) => x.title === 'Chain Mixer'));
+    const before = Number(await ev(() => Rails.balance()));
+    await ev((id) => Rails.escrow.deposit(id, 15), evt.id);
+    const info = await ev((id) => Rails.escrow.info(id), evt.id);
+    assert(info.pot === '15', 'pot not funded: ' + info.pot);
+    const after = Number(await ev(() => Rails.balance()));
+    assert(before - after > 14.9, 'balance did not drop by the deposit');
+  });
+
+  await test('rails: host cancel on-chain refunds the deposit', async () => {
+    const evt = await ev(() => window.Commons.events.all().find((x) => x.title === 'Chain Mixer'));
+    await ev((id) => Commons.events.payEscrow(id, 15), evt.id); // mirror local so UI shows refundable state
+    const before = Number(await ev(() => Rails.balance()));
+    await go('gatherings.html');
+    await page.locator("[data-action='cancel-gathering']").first().click();
+    await page.waitForTimeout(200);
+    await page.locator("[data-action='cancel-gathering']").first().click();
+    await page.waitForTimeout(3000); // cancel + withdraw txs
+    assert(!(await ev(() => window.Commons.events.all().some((x) => x.title === 'Chain Mixer'))), 'event not removed locally');
+    const after = Number(await ev(() => Rails.balance()));
+    assert(after - before > 14.9, 'deposit not refunded on-chain: ' + before + ' -> ' + after);
+  });
+}
+if (anvil) anvil.kill();
 
 await browser.close();
 

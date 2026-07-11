@@ -83,6 +83,7 @@
         <div class="card ink host-cta">
           <div>
             <div class="kicker" style="color: var(--pine-0)">Host your own</div>
+            <p class="text-caption" style="color:#9db3a6;margin-top:4px" id="rails-status"></p>
             <p style="margin-top: 8px">A mixer on your stoop, an open dinner, a catalyst weekend — houses are catalyzed by whoever puts the date on the calendar. Free events go straight up; priced ones hold deposits until the day happens.</p>
           </div>
           <span><button class="lifted sm stroke" id="host-toggle"><span class="shadow"></span><span class="face">Host a gathering</span></button></span>
@@ -128,6 +129,8 @@
   </main>
 
   <script src="assets/js/store.js"></script>
+  <script src="assets/js/vendor/viem.js"></script>
+  <script src="assets/js/rails.js"></script>
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("gatherings");
@@ -321,26 +324,71 @@
         }
         case "reserve": {
           const amt = Number(btn.dataset.amount) || 0;
+          const evt = Commons.events.get(id);
+          if (evt && evt.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
+            const face = btn.querySelector(".face"); if (face) face.textContent = "Signing on Gnosis…";
+            btn.disabled = true;
+            Rails.escrow.deposit(id, amt).then((hash) => {
+              Commons.state.escrowTx = Commons.state.escrowTx || {};
+              Commons.state.escrowTx[id] = hash;
+              Commons.events.payEscrow(id, amt);
+              Shell.toast("Deposited on-chain — held by the contract, not by anyone", "green");
+              render();
+            }).catch(() => {
+              btn.disabled = false; if (face) face.textContent = "Reserve · " + U.fmtMoney(amt) + " into escrow";
+              Shell.toast("Transaction didn't go through — is the wallet funded?");
+            });
+            break;
+          }
           Commons.events.payEscrow(id, amt);
           Shell.toast("Held in escrow — not paid to anyone yet", "green");
           render();
           break;
         }
         case "refund": {
-          // The store has no refund API — un-RSVP, then unwind the escrow
-          // record locally through the exposed state so the demo stays honest.
           const amt = Commons.events.escrowPaid(id);
-          Commons.events.unrsvp(id);
-          const ev = Commons.events.get(id);
-          if (amt && ev && ev.escrow) ev.escrow.total = Math.max(0, ev.escrow.total - amt);
-          if (amt) { delete Commons.state.escrowPaid[id]; Commons.save(); }
+          const evc = Commons.events.get(id);
+          const localRefund = () => {
+            Commons.events.unrsvp(id);
+            const ev = Commons.events.get(id);
+            if (amt && ev && ev.escrow) ev.escrow.total = Math.max(0, ev.escrow.total - amt);
+            if (amt) { delete Commons.state.escrowPaid[id]; Commons.save(); }
+            render();
+          };
+          if (evc && evc.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
+            btn.disabled = true; btn.textContent = "Withdrawing on Gnosis…";
+            Rails.escrow.withdraw(id).then(() => {
+              localRefund();
+              Shell.toast(`Withdrawn on-chain — ${U.fmtMoney(amt)} back in your wallet`, "green");
+            }).catch(() => {
+              btn.disabled = false; btn.textContent = "Un-RSVP (refunds instantly)";
+              Shell.toast("Withdraw didn't go through — try again");
+            });
+            break;
+          }
+          localRefund();
           Shell.toast(`Refunded instantly — ${U.fmtMoney(amt)} back in your pocket`, "green");
-          render();
           break;
         }
         case "cancel-gathering": {
           const ev = Commons.events.get(id);
           if (btn.dataset.armed) {
+            if (ev && ev.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
+              btn.disabled = true; btn.textContent = "Cancelling on Gnosis…";
+              const mine = Number(Commons.events.escrowPaid(id)) > 0;
+              Rails.escrow.cancel(id)
+                .then(() => (mine ? Rails.escrow.withdraw(id) : null))
+                .then(() => {
+                  Commons.events.cancel(id);
+                  Shell.toast("Cancelled on-chain — every deposit is refundable at the contract", "green");
+                  render(); renderMine();
+                })
+                .catch(() => {
+                  btn.disabled = false; btn.textContent = "Cancel it";
+                  Shell.toast("Chain cancel failed — try again");
+                });
+              break;
+            }
             Commons.events.cancel(id);
             Shell.toast("Cancelled — deposits refunded on the spot", "green");
             render(); renderMine();
@@ -400,18 +448,44 @@
         if (!title) { Shell.toast("Give it a name people will say out loud"); return; }
         if (!when || new Date(when + "T12:00:00") < new Date()) { Shell.toast("Pick a date that hasn't happened yet"); return; }
         if (!where) { Shell.toast("People need somewhere to show up"); return; }
-        Commons.events.add({
+        const price = Number(document.getElementById("g-price").value) || 0;
+        const ev = Commons.events.add({
           title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
           capacity: Number(document.getElementById("g-cap").value) || 20,
-          price: Number(document.getElementById("g-price").value) || 0,
+          price,
           desc: document.getElementById("g-desc").value.trim() || "Come through — details in the group chat.",
         });
         form.classList.add("hidden");
         document.getElementById("g-title").value = ""; document.getElementById("g-desc").value = "";
-        Shell.toast("It's on the calendar — see you there", "green");
         render(); renderMine();
         window.scrollTo({ top: 0, behavior: "smooth" });
+        if (price > 0 && window.Rails && Rails.enabled && Rails.escrow.available()) {
+          Shell.toast("On the calendar — opening escrow on " + Rails.net().label + "…", "green");
+          Rails.escrow.create(ev.id, new Date(ev.when).getTime(), price).then((hash) => {
+            const e2 = Commons.events.get(ev.id);
+            if (e2) { e2.chain = true; e2.escrowTx = hash; Commons.save(); }
+            Shell.toast("Escrow live on-chain — deposits are held by code now", "green");
+            render(); renderMine();
+          }).catch(() => {
+            Shell.toast("Chain unreachable or wallet unfunded — deposits run off-chain for now");
+          });
+        } else {
+          Shell.toast("It's on the calendar — see you there", "green");
+        }
       });
+    })();
+
+    (function railsStatus() {
+      const el = document.getElementById("rails-status");
+      if (!el) return;
+      if (!window.Rails || !Rails.enabled) { el.textContent = "Deposits run off-chain in this browser."; return; }
+      if (Rails.escrow.available()) {
+        el.textContent = "Deposits are held by the GatheringEscrow contract on " + Rails.net().label + " — code, not custody.";
+      } else if (Rails.hasWallet()) {
+        el.textContent = "Wallet ready on " + Rails.net().label + " — escrow contract not deployed on this network yet, so deposits run off-chain.";
+      } else {
+        el.innerHTML = 'Create a wallet in <a href="account.html" style="color:var(--green-0)">your account</a> to put deposits on ' + Rails.net().label + ".";
+      }
     })();
 
     render();

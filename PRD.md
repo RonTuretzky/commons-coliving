@@ -211,9 +211,14 @@ Static, no build step. **Productized, local-first:** a marketing landing funnels
 
 quiz completion → profiles with dealbreakers set → matches viewed → connect requests → mixer RSVPs → **retreat escrow paid** (the money-trust moment) → founding groups formed → houses launched → **months of active house ops** (north star) → rooms refilled through the platform.
 
-## 8. Parked: trustless enforcement (explicitly not now)
+## 8. Gnosis rails (live)
 
-The product is web2: templates + ledgers + votes + platform-held deposits. A trustless layer ([commune-os-sc](https://github.com/communetxyz/commune-os-sc) proved the shape — period-calculated chores, 2/3 voting, deposit slashing) stays parked until some flow has real users, real money, and a real counterparty-trust problem that Stripe-plus-policy can't solve. The demo's mechanics (deterministic rotations, threshold votes, deposits) were designed so they *could* be enforced trustlessly later without changing the UX — that's the only concession made to it.
+Slices 1–2 of the trustless layer are implemented, quietly, on **Gnosis Chain** (native xDai = a dollar with sub-cent fees):
+
+- **Wallets** — real device-generated addresses attached to accounts at signup (viem, vendored; key stays in the browser). No third-party wallet provider, no seed-phrase ceremony.
+- **Gathering deposits** — the `GatheringEscrow` contract holds deposits non-custodially: attendee exit before start, cancel-makes-refundable-forever, host claim after start. The platform never touches funds (which is also the clean regulatory posture).
+- **Deliberately not built:** Safe-multisig house funds (simpler wanted — the fund stays a ledger), onramps (later; Stripe/Privy is the shortlist), P2P settles to walletless housemates (the seeded crew has no wallets; the UI says so instead of pretending).
+- Chain e2e runs the full flow against anvil in CI-style; unit tests in Foundry.
 
 ## 9. Open questions
 

@@ -13,6 +13,8 @@
   </main>
 
   <script src="assets/js/store.js"></script>
+  <script src="assets/js/vendor/viem.js"></script>
+  <script src="assets/js/rails.js"></script>
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("");
@@ -128,6 +130,71 @@
       </div>`;
     }
 
+    function walletCardHtml() {
+      if (!window.Rails || !Rails.enabled) return "";
+      if (!Rails.hasWallet()) {
+        return `<div class="card stack">
+          <div class="kicker">Wallet · Gnosis Chain</div>
+          <p class="small">A real address on Gnosis Chain, generated on this device — it's how gathering deposits
+          get held by code instead of by us. The key never leaves your browser.</p>
+          <button class="park-btn secondary sm" id="w-create" style="align-self:start">⛓ Create my wallet</button>
+        </div>`;
+      }
+      const addr = Rails.address();
+      return `<div class="card stack">
+        <div class="row between wrap">
+          <div class="kicker">Wallet · ${U.esc(Rails.net().label)}</div>
+          <span class="pill pine">${U.esc(Rails.net().nativeSymbol)}</span>
+        </div>
+        <div class="row wrap" style="gap:8px">
+          <code style="background:var(--paper-1);padding:6px 10px;border-radius:8px;font-size:.85rem">${U.esc(addr)}</code>
+          <button class="park-btn ghost sm" id="w-copy">Copy</button>
+          ${Rails.explorerAddr(addr) ? `<a class="park-btn ghost sm" target="_blank" rel="noopener" href="${Rails.explorerAddr(addr)}">Explorer ↗</a>` : ""}
+        </div>
+        <p class="small">Balance: <strong class="amount tnum" id="w-balance">…</strong> <span class="muted">xDai</span>
+          <button class="park-btn ghost sm" id="w-refresh">refresh</button></p>
+        <p class="text-caption muted">xDai is a dollar-pegged native token — sending it costs a fraction of a cent.
+        Fund this address from any Gnosis wallet to make deposits real.</p>
+        <div class="row wrap">
+          <button class="park-btn light sm" id="w-export">Reveal private key</button>
+          <span id="w-key-slot"></span>
+        </div>
+      </div>`;
+    }
+    function wireWallet() {
+      const mk = document.getElementById("w-create");
+      if (mk) mk.addEventListener("click", () => {
+        const addr = Rails.ensureWallet();
+        Commons.account.update({ wallet: addr });
+        Shell.toast("Wallet created — a real Gnosis address, born on this device", "green");
+        setTimeout(() => location.reload(), 500);
+      });
+      const cp = document.getElementById("w-copy");
+      if (cp) cp.addEventListener("click", () => {
+        navigator.clipboard && navigator.clipboard.writeText(Rails.address());
+        Shell.toast("Address copied");
+      });
+      const refreshBal = async () => {
+        const el = document.getElementById("w-balance");
+        if (!el) return;
+        try { const b = await Rails.balance(); el.textContent = Number(b).toFixed(4); }
+        catch (e) { el.textContent = "rpc unreachable"; }
+      };
+      const rf = document.getElementById("w-refresh");
+      if (rf) { rf.addEventListener("click", refreshBal); refreshBal(); }
+      const ex = document.getElementById("w-export");
+      if (ex) ex.addEventListener("click", () => {
+        if (!ex.dataset.armed) {
+          ex.dataset.armed = "1"; ex.textContent = "Really reveal it?";
+          Shell.toast("Anyone with this key owns the wallet — tap again if you're alone");
+          return;
+        }
+        document.getElementById("w-key-slot").innerHTML =
+          `<code style="background:#fff3f2;border:1px solid var(--red-1);padding:6px 10px;border-radius:8px;font-size:.75rem;word-break:break-all">${U.esc(Rails.exportKey())}</code>`;
+        ex.textContent = "Reveal private key"; delete ex.dataset.armed;
+      });
+    }
+
     function passkeyCardHtml(a) {
       if (!webauthnOk) return "";
       return `
@@ -208,6 +275,7 @@
         </div>
         ${formHtml(false)}
         ${passkeyCardHtml(a)}
+        ${walletCardHtml()}
         <div class="card flat stack">
           <div class="kicker" style="color:var(--red)">Danger zone</div>
           <div class="row between wrap">
@@ -226,6 +294,7 @@
       </div>`;
       wireForm(false);
       wirePasskey(a);
+      wireWallet();
       wireDelete();
       document.getElementById("a-signout").addEventListener("click", () => {
         Commons.account.signOut();
@@ -282,6 +351,9 @@
         const fields = { name, email: draft.email.trim() || null, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: draft.bio.trim(), photo: draft.photo };
         if (isNew) {
           Commons.account.create(fields);
+          if (window.Rails && Rails.enabled) {
+            try { Commons.account.update({ wallet: Rails.ensureWallet() }); } catch (e) { /* wallet optional */ }
+          }
           // offer a passkey right away, then onboard to the quiz
           if (webauthnOk) {
             try {
