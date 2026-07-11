@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title ICollateralManager
+/// @notice Interface for managing collateral deposits and slashing (no withdrawals)
+interface ICollateralManager {
+    // Events
+    event CollateralDeposited(address indexed member, uint256 amount);
+    event CollateralSlashed(address indexed member, uint256 amount, address indexed recipient);
+    event CollateralWithdrawn(address indexed member, uint256 amount);
+
+    // Errors
+    error InvalidDepositAmount();
+    error InvalidTokenAddress();
+
+    // Functions
+    function depositCollateral(address member, uint256 amount) external;
+
+    function slashCollateral(address member, uint256 amount, address recipient) external;
+
+    function isCollateralSufficient(address member, uint256 amount) external view returns (bool);
+
+    function getCollateralBalance(address member) external view returns (uint256);
+
+    function withdrawCollateral(address member) external;
+}

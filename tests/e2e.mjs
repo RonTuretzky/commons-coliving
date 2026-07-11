@@ -55,7 +55,7 @@ const CHAIN = BASE.includes('localhost');
 const FOUNDRY = process.env.HOME + '/.foundry/bin';
 const ANVIL_KEY0 = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const REPO = '/Users/wk/conductor/workspaces/research/cancun';
-let anvil = null, escrowAddr = null;
+let anvil = null, escrowAddr = null, communeAddr = null;
 if (CHAIN) {
   anvil = spawn(FOUNDRY + '/anvil', ['--silent'], { stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 1500));
@@ -64,15 +64,22 @@ if (CHAIN) {
     `--rpc-url http://127.0.0.1:8545 --private-key ${ANVIL_KEY0} --broadcast`,
     { encoding: 'utf8' });
   escrowAddr = (out.match(/Deployed to: (0x[0-9a-fA-F]{40})/) || [])[1];
-  console.log('anvil escrow at', escrowAddr);
+  const out2 = execSync(
+    FOUNDRY + `/forge create vendor/commune-os/CommuneOS.sol:CommuneOS --root ${REPO}/contracts ` +
+    `--rpc-url http://127.0.0.1:8545 --private-key ${ANVIL_KEY0} --broadcast ` +
+    `--constructor-args 0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3`,
+    { encoding: 'utf8' });
+  communeAddr = (out2.match(/Deployed to: (0x[0-9a-fA-F]{40})/) || [])[1];
+  console.log('anvil escrow at', escrowAddr, '· communeOS at', communeAddr);
 }
 async function freshChain(url) {
   if (ctx) await ctx.close();
   ctx = await browser.newContext();
-  await ctx.addInitScript(([addr]) => {
+  await ctx.addInitScript(([addr, commune]) => {
     localStorage.setItem('dp-chain', 'local');
     localStorage.setItem('dp-escrow-local', addr);
-  }, [escrowAddr]);
+    localStorage.setItem('dp-communeos-local', commune);
+  }, [escrowAddr, communeAddr]);
   consoleErrors = [];
   await newPage();
   await page.goto(BASE + '/' + url);
@@ -465,6 +472,34 @@ if (CHAIN && escrowAddr) {
     assert(after - before > 14.9, 'deposit not refunded on-chain: ' + before + ' -> ' + after);
   });
 }
+if (CHAIN && communeAddr) {
+  await test('rails: chore rotation syncs to CommuneOS and mark-done dual-writes', async () => {
+    // give the chain tester a house + rotation, then sync it on-chain via the UI
+    await go('account.html');
+    await ev(() => {
+      window.Commons.houses.claimOwn({ id: 'h-chain', name: 'Chain House', borough: 'Bed-Stuy', hasLocation: true,
+        rent: 1300, poolModel: 'fund', poolMonthly: 150, mission: '', networked: 50, roomsOpen: 0, moveIn: null,
+        founded: 'forming', members: ['me'], values: [], rules: [], hue: '#0d9488', blurb: 'chain test' });
+      window.Commons.chorePlanner.apply(window.Commons.chorePlanner.estimate({ kitchen: 1, trash: 1 }, 1).chores);
+    });
+    await go('chores.html');
+    await page.locator('#chain-sync').click();
+    await page.waitForTimeout(3000); // createCommune tx
+    const cc = await ev(() => window.Commons.state.choreChain);
+    assert(cc && typeof cc.communeId === 'number', 'commune not created: ' + JSON.stringify(cc));
+    // mark the first chore done through the UI → dual-write
+    await page.locator('[data-chore]').first().click();
+    await page.waitForTimeout(3000); // markChoreComplete tx
+    const done = await ev(async (cc2) => {
+      const chores = window.Commons.chores.all();
+      const c = chores[0];
+      const period = window.Commons.chores.period(c);
+      return await Rails.commune.isComplete(cc2.communeId, cc2.ids[c.id], period);
+    }, cc);
+    assert(done === true, 'completion not recorded on CommuneOS');
+  });
+}
+
 if (anvil) anvil.kill();
 
 await browser.close();

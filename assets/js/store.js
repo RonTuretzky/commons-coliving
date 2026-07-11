@@ -543,6 +543,7 @@
       ],
       choreDone: {},          // { choreId: { period: { by, at } } } — seeded below
       choreOverrides: {},     // { "choreId:period": memberId } — set by the rebalancer
+      choreChain: null,       // { communeId, network, ids: {localChoreId: onchainId}, tx } — optional CommuneOS log
       chorePrefs: {           // love/hate by CHORE_KINDS id
         "p-theo": { loves: ["kitchen"], hates: ["bathroom"] },
         "p-zora": { loves: ["cooking", "kitchen"], hates: ["trash"] },
@@ -901,6 +902,7 @@
           rotation: members.slice(i % members.length).concat(members.slice(0, i % members.length)),
         }));
         state.choreDone = {};
+        state.choreChain = null; // a replaced rotation invalidates the on-chain log — re-sync to start a fresh one
         save();
         return state.chores;
       },

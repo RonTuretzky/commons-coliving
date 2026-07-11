@@ -7,9 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy GatheringEscrow to Gnosis mainnet'
+        description: 'Deploy to Gnosis mainnet'
         type: boolean
         default: false
+      script:
+        description: 'Which contract to deploy'
+        type: choice
+        default: 'Deploy'
+        options:
+          - Deploy            # GatheringEscrow
+          - DeployCommuneOS   # vendored share-house.fun CommuneOS (chore log)
 
 # etherform pinned to a specific commit: its `main` was overhauled (breaking the
 # reusable-workflow contract). 4e78fbb is the revision this stack was built against
@@ -33,7 +40,7 @@ jobs:
       contents: read
       pull-requests: write
     with:
-      deploy-script: 'contracts/script/Deploy.s.sol:Deploy'
+      deploy-script: 'contracts/script/${{ inputs.script }}.s.sol:${{ inputs.script }}'
       network-config-path: '.github/deploy-networks.json'
       network-index: 0
       indexing-wait: 60
@@ -76,17 +83,19 @@ jobs:
           net = os.path.basename(os.path.dirname(path))
           chain_ids = {"gnosis": "100", "chiado": "10200"}
           dep = json.load(open(path))
-          addr = next(c["address"] for c in dep["contracts"] if "GatheringEscrow" in c["sourcePathAndName"])
           try:
               prev = json.load(open("prev.json"))
           except Exception:
               prev = {}
           chains = prev.get("chains", {})
-          chains[chain_ids.get(net, net)] = {
-              "gatheringEscrow": addr,
-              "commit": os.environ.get("GITHUB_SHA", ""),
-              "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-          }
+          entry = chains.get(chain_ids.get(net, net), {})
+          for c in dep["contracts"]:
+              name = c["sourcePathAndName"].split(":")[-1]
+              key = name[0].lower() + name[1:]
+              entry[key] = c["address"]
+          entry["commit"] = os.environ.get("GITHUB_SHA", "")
+          entry["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+          chains[chain_ids.get(net, net)] = entry
           json.dump({"version": 1, "chains": chains}, open("addresses.json", "w"), indent=2)
           print(open("addresses.json").read())
           PY

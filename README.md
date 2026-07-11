@@ -35,6 +35,7 @@ Templates + a ledger + votes. Deterministic bill rotation, period-calculated cho
 - **Gathering deposits:** non-custodial via `contracts/src/GatheringEscrow.sol` (Foundry; 10 unit tests) — attendees can pull out before start, host cancelling makes everyone refundable forever, an uncancelled gathering lets the host claim after start. The platform never holds funds.
 - **Deploy:** `contracts/deploy.sh gnosis` with a funded key, then set the address in `ESCROW.gnosis` in `rails.js`. Until then the UI runs the same flows off-chain and says so.
 - **Chain e2e:** the suite spins up anvil, deploys the contract, and drives wallet-funding → on-chain escrow → deposit → cancel-refund through the real UI (localhost runs only).
+- **Optional on-chain chore log:** the vendored [commune-os](https://github.com/communetxyz/commune-os-sc) suite (share-house.fun's contracts) — a house can put its rotation on CommuneOS (`createCommune` with chore schedules; the same `period = (now−start)/frequency` math), and every mark-done also writes `markChoreComplete` for an immutable completion record. Deploy via CI with `script=DeployCommuneOS`.
 - Not wired on purpose: onramps (later), Safe multisig house funds (wanted simpler).
 
 ## E2E tests

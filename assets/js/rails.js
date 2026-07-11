@@ -23,15 +23,22 @@
     chiado: null,
     local: null,
   };
+  // share-house.fun's CommuneOS (vendored from communetxyz/commune-os-sc) —
+  // the optional on-chain chore log. Same resolution: pin > manifest > baked.
+  const COMMUNE_OS = {
+    gnosis: null,
+    chiado: null,
+    local: null,
+  };
   const MANIFEST_URL = "https://raw.githubusercontent.com/RonTuretzky/commons-coliving/addresses/addresses.json";
   const CHAIN_IDS = { gnosis: "100", chiado: "10200" };
   const KEY_MANIFEST = "dp-addresses";
 
-  function manifestEscrow(netKey) {
+  function manifestAddr(netKey, key) {
     try {
       const m = JSON.parse(localStorage.getItem(KEY_MANIFEST) || "null");
       const entry = m && m.chains && m.chains[CHAIN_IDS[netKey]];
-      const addr = entry && entry.gatheringEscrow;
+      const addr = entry && entry[key];
       return /^0x[0-9a-fA-F]{40}$/.test(addr || "") ? addr : null;
     } catch (e) { return null; }
   }
@@ -107,10 +114,35 @@
       outputs: [{ name: "", type: "uint96" }] },
   ];
 
+  const COMMUNE_ABI = [
+    { type: "function", name: "createCommune", stateMutability: "nonpayable",
+      inputs: [
+        { name: "name", type: "string" }, { name: "collateralRequired", type: "bool" },
+        { name: "collateralAmount", type: "uint256" },
+        { name: "choreSchedules", type: "tuple[]", components: [
+          { name: "id", type: "uint256" }, { name: "title", type: "string" },
+          { name: "frequency", type: "uint256" }, { name: "startTime", type: "uint256" },
+          { name: "deleted", type: "bool" },
+        ]},
+        { name: "username", type: "string" },
+      ], outputs: [{ name: "communeId", type: "uint256" }] },
+    { type: "function", name: "markChoreComplete", stateMutability: "nonpayable",
+      inputs: [{ name: "communeId", type: "uint256" }, { name: "choreId", type: "uint256" }, { name: "period", type: "uint256" }], outputs: [] },
+    { type: "function", name: "choreScheduler", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  ];
+  const SCHEDULER_ABI = [
+    { type: "function", name: "isChoreComplete", stateMutability: "view",
+      inputs: [{ name: "communeId", type: "uint256" }, { name: "choreId", type: "uint256" }, { name: "period", type: "uint256" }],
+      outputs: [{ name: "", type: "bool" }] },
+  ];
+
   function netId() { return localStorage.getItem(KEY_CHAIN) || "gnosis"; }
   function net() { return NETWORKS[netId()] || NETWORKS.gnosis; }
   function escrowAddress() {
-    return localStorage.getItem("dp-escrow-" + netId()) || manifestEscrow(netId()) || ESCROW[netId()] || null;
+    return localStorage.getItem("dp-escrow-" + netId()) || manifestAddr(netId(), "gatheringEscrow") || ESCROW[netId()] || null;
+  }
+  function communeOsAddress() {
+    return localStorage.getItem("dp-communeos-" + netId()) || manifestAddr(netId(), "communeOS") || COMMUNE_OS[netId()] || null;
   }
 
   function pub() {
@@ -207,6 +239,52 @@
           address: escrowAddress(), abi: ABI, functionName: "deposits", args: [idFor(idStr), a.address],
         });
         return V.formatEther(d);
+      },
+    },
+
+    // ---- CommuneOS: the optional on-chain chore log (share-house.fun model) ----
+    commune: {
+      available: () => !!communeOsAddress() && !!localStorage.getItem(KEY_WALLET),
+      address: communeOsAddress,
+      // chores: [{onchainId, name, freqDays, startMs}]
+      async create(houseName, chores) {
+        const client = wal();
+        const schedules = chores.map((c) => ({
+          id: BigInt(c.onchainId),
+          title: c.name,
+          frequency: BigInt(Math.max(1, Math.round(c.freqDays * 86400))),
+          startTime: BigInt(Math.floor(c.startMs / 1000)),
+          deleted: false,
+        }));
+        const hash = await client.writeContract({
+          address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "createCommune",
+          args: [houseName, false, 0n, schedules, "colive.fun"],
+        });
+        const receipt = await pub().waitForTransactionReceipt({ hash });
+        // CommuneCreated(uint256 indexed communeId, string, address indexed, bool, uint256)
+        const topic = V.keccak256(V.stringToBytes("CommuneCreated(uint256,string,address,bool,uint256)"));
+        const log = receipt.logs.find((l) => l.topics && l.topics[0] === topic);
+        if (!log) throw new Error("no CommuneCreated event");
+        return { communeId: Number(BigInt(log.topics[1])), hash };
+      },
+      async markComplete(communeId, choreId, period) {
+        const client = wal();
+        const hash = await client.writeContract({
+          address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "markChoreComplete",
+          args: [BigInt(communeId), BigInt(choreId), BigInt(period)],
+        });
+        await pub().waitForTransactionReceipt({ hash });
+        return hash;
+      },
+      async schedulerAddress() {
+        return await pub().readContract({ address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "choreScheduler", args: [] });
+      },
+      async isComplete(communeId, choreId, period) {
+        const sched = await this.schedulerAddress();
+        return await pub().readContract({
+          address: sched, abi: SCHEDULER_ABI, functionName: "isChoreComplete",
+          args: [BigInt(communeId), BigInt(choreId), BigInt(period)],
+        });
       },
     },
 
