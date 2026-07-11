@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Federation — inter-house rails, a colive.fun proposal</title>
+<link rel="icon" href="assets/img/logomark.png" />
+<style>
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-700.woff2") format("woff2"); font-weight: 700; }
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-500.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-700.woff2") format("woff2"); font-weight: 700; }
+  :root{
+    --green:#16a34a; --green-0:#86efac; --green-1:#15803d; --green-2:#166534;
+    --pine:#0d9488; --pine-0:#5eead4; --pine-1:#0f766e; --pine-2:#134e4a;
+    --sky:#0284c7; --sky-1:#0369a1;
+    --paper:#f0fdf4; --paper-1:#dcfce7; --paper-2:#bbf7d0;
+    --ink:#14211a; --grey:#3f4a44; --red:#df0b00; --warn:#ce7f00;
+    --display:"Park Display", ui-sans-serif, system-ui, sans-serif;
+    --body:"Park Body", ui-sans-serif, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, var(--paper-2), transparent 60%),
+      radial-gradient(1000px 500px at -10% 110%, var(--paper-1), transparent 55%),
+      var(--paper);
+    overflow:hidden;
+  }
+  .deck{position:fixed;inset:0}
+  .slide{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:clamp(24px,4.5vw,64px) clamp(24px,6vw,88px);
+    opacity:0;transform:translateY(14px) scale(.99);
+    transition:opacity .45s ease, transform .45s ease;pointer-events:none;
+    overflow-y:auto;
+  }
+  .slide.active{opacity:1;transform:none;pointer-events:auto}
+  .kicker{font-family:var(--display);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    font-size:clamp(11px,1.1vw,13px);color:var(--pine-1);margin-bottom:16px}
+  h1{font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:.95;font-size:clamp(38px,7vw,92px)}
+  h2{font-family:var(--display);font-weight:700;letter-spacing:-.015em;line-height:1.02;font-size:clamp(26px,4.2vw,52px);margin-bottom:10px}
+  h3{font-family:var(--display);font-weight:700;font-size:clamp(16px,1.6vw,21px)}
+  .lede{font-size:clamp(15px,1.7vw,21px);color:var(--grey);max-width:840px;margin:16px auto 0;line-height:1.5}
+  .cols{display:grid;gap:16px;margin-top:26px;width:min(1180px,94vw)}
+  .c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}.c4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){.c2,.c3,.c4{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--paper-2);border-radius:16px;padding:18px 20px;text-align:left;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  .card h3{margin-bottom:8px}
+  .card p, .card li{font-size:clamp(13px,1.25vw,15.5px);color:var(--grey);line-height:1.5}
+  .card ul{padding-left:18px;margin-top:6px}
+  .card .src{display:block;margin-top:10px;font-size:clamp(11px,1vw,12.5px);color:var(--pine-1);font-family:var(--display);font-weight:500}
+  .pill{display:inline-block;border-radius:999px;padding:3px 12px;font-family:var(--display);font-weight:500;font-size:clamp(11px,1.05vw,13px);margin-bottom:8px}
+  .pill.g{background:var(--green-0);color:var(--green-2)} .pill.p{background:var(--pine-0);color:var(--pine-2)}
+  .pill.r{background:#f7cac2;color:var(--red)} .pill.k{background:var(--ink);color:var(--paper)}
+  .pill.s{background:#bae6fd;color:var(--sky-1)} .pill.w{background:#fde9cc;color:var(--warn)}
+  .big{font-family:var(--display);font-weight:700;font-size:clamp(30px,3.6vw,52px);line-height:1}
+  .tag{font-family:var(--display);font-weight:500;font-size:clamp(12px,1.1vw,14px);color:var(--grey)}
+  .quote{font-size:clamp(15px,1.8vw,22px);line-height:1.5;max-width:860px;margin:20px auto 0;color:var(--ink)}
+  .quote em{background:linear-gradient(transparent 60%, var(--green-0) 60%);font-style:normal}
+  .foot{margin-top:18px;font-size:clamp(11px,1vw,13px);color:var(--grey)}
+  table{border-collapse:collapse;width:min(1100px,94vw);margin-top:22px;background:#fff;border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  th{font-family:var(--display);font-weight:500;font-size:clamp(11px,1vw,13px);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--grey);text-align:left;padding:12px 14px;border-bottom:2px solid var(--paper-2);background:var(--paper)}
+  td{padding:11px 14px;border-bottom:1px solid var(--paper-1);font-size:clamp(12.5px,1.2vw,15px);text-align:left;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .arrow-flow{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:24px;
+    font-family:var(--display);font-weight:500;font-size:clamp(13px,1.4vw,17px)}
+  .arrow-flow .step{background:#fff;border:1px solid var(--paper-2);border-radius:12px;padding:10px 16px;box-shadow:0 10px 24px -18px rgba(20,33,26,.4)}
+  .arrow-flow .a{color:var(--pine);font-size:1.3em}
+  .progress{position:fixed;top:0;left:0;height:4px;background:var(--green);transition:width .35s ease;z-index:20}
+  .dots{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:9px;z-index:20}
+  .dots button{width:9px;height:9px;border-radius:50%;border:0;background:var(--paper-2);cursor:pointer;padding:0;transition:.25s}
+  .dots button.on{background:var(--green);transform:scale(1.35)}
+  .nav{position:fixed;top:50%;transform:translateY(-50%);z-index:20;border:1px solid var(--paper-2);
+    background:rgba(255,255,255,.85);width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:19px;
+    display:flex;align-items:center;justify-content:center}
+  .nav:hover{border-color:var(--green-0)}
+  .nav.prev{left:18px}.nav.next{right:18px}
+  .counter{position:fixed;bottom:18px;right:22px;font-family:var(--display);font-weight:500;font-size:13px;color:var(--grey);z-index:20}
+  .brand{position:fixed;top:16px;left:22px;display:flex;align-items:center;gap:8px;z-index:20;
+    font-family:var(--display);font-weight:700;font-size:15px}
+  .brand img{width:26px;height:26px}
+  @media(max-width:720px){.nav{display:none}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="brand"><img src="assets/img/logomark.png" alt=""/><span>colive<span style="color:var(--pine-1)">.fun</span> · proposal</span></div>
+<div class="deck" id="deck">
+
+  <!-- 1 · Title -->
+  <section class="slide">
+    <div class="kicker">Proposal · not built · Decentral Park NYC</div>
+    <h1>The Federation</h1>
+    <p class="lede">Inter-house rails for colive.fun. One house solves coordination for eight people.
+    The problems left over — idle tools, retail prices, labor gluts, rent shocks, where a split lands —
+    are exactly the ones <em>no single house can solve alone</em>.</p>
+    <p class="foot">A working single-neighborhood prototype (tool library + bulk orders) was built and shelved for this design pass · ←/→ to move</p>
+  </section>
+
+  <!-- 2 · Why federate -->
+  <section class="slide">
+    <div class="kicker">Why</div>
+    <h2>Every commune movement that survived, federated</h2>
+    <div class="cols c4">
+      <div class="card"><span class="pill p">Hutterites</span>
+        <h3>The leut</h3>
+        <p>Colonies of ~100 cap their size and split — but the <em>leut</em> (federation) finances the daughter colony, shares combine harvesters, and acts as the insurance pool. The split protocol we shipped assumes this layer exists.</p></div>
+      <div class="card"><span class="pill p">Kibbutzim</span>
+        <h3>Regional co-ops</h3>
+        <p>Individual kibbutzim were small; their purchasing federations and regional factories got them industrial-scale prices and credit no single settlement could touch.</p></div>
+      <div class="card"><span class="pill p">Rochdale → CWS</span>
+        <h3>Wholesale society</h3>
+        <p>Retail co-ops federated into the Co-operative Wholesale Society within 19 years — because member stores couldn't beat wholesale prices alone. Bulk buying is the oldest federation move there is.</p></div>
+      <div class="card"><span class="pill p">Mondragon</span>
+        <h3>Inter-co-op funds</h3>
+        <p>Worker co-ops pool a share of surplus into common funds that absorb shocks and capitalize new co-ops. Solidarity as a balance sheet line, not a vibe.</p></div>
+    </div>
+    <p class="foot">The pattern: sovereignty at the small unit, shared capital and shared risk at the federation.</p>
+  </section>
+
+  <!-- 3 · The principle -->
+  <section class="slide">
+    <div class="kicker">The design principle</div>
+    <h2>Subsidiarity, enforced by architecture</h2>
+    <p class="quote">The house stays sovereign. The federation only holds what a single house <em>cannot</em>:
+    shared capital goods, shared price power, shared risk. Nothing moves up a level without a vote at that level.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Stays in the house</span><ul>
+        <li>Ledger, chores, meals, bounties</li><li>The agreement &amp; its votes</li><li>All member data — houses are opaque to each other by default</li></ul></div>
+      <div class="card"><span class="pill s">Goes to the federation</span><ul>
+        <li>Tool registry &amp; loan escrows</li><li>Bulk-order pledges</li><li>Solidarity fund &amp; claims</li><li>Cross-house labor clearing</li></ul></div>
+      <div class="card"><span class="pill r">Exists nowhere</span><ul>
+        <li>No token, no reputation score</li><li>No global feed of house internals</li><li>No custody — same rule as gathering deposits</li></ul></div>
+    </div>
+    <p class="foot">Ostrom's eighth design principle — nested enterprises — is the whole slide in four words.</p>
+  </section>
+
+  <!-- 4 · What exists today -->
+  <section class="slide">
+    <div class="kicker">Starting position</div>
+    <h2>The rails are already live</h2>
+    <div class="cols c4">
+      <div class="card"><span class="pill g">Shipped</span><h3>Device wallets</h3><p>Every account holds a real Gnosis address; xDai moves for a fraction of a cent. The federation's money rail costs nothing new.</p></div>
+      <div class="card"><span class="pill g">Shipped</span><h3>GatheringEscrow</h3><p>Non-custodial deposits: refundable before start, host-cancel refunds forever. A tool loan or a bulk pledge is <em>the same shape</em> — deposit, condition, release.</p></div>
+      <div class="card"><span class="pill g">Shipped</span><h3>CommuneOS</h3><p>Houses already opt their chore rotations and bounties onto an immutable log. Per-house on-chain identity exists.</p></div>
+      <div class="card"><span class="pill g">Shipped</span><h3>Split protocol + directory</h3><p>Daughter houses are born location-less and need the federation as a landing pad; browse already shows every house's five-lens profile.</p></div>
+    </div>
+    <p class="foot">Nothing below requires infrastructure we don't already run — that's the point of having built the rails first.</p>
+  </section>
+
+  <!-- 5 · Layer 1: tool library -->
+  <section class="slide">
+    <div class="kicker">Layer 1 · prototyped</div>
+    <h2>The tool library</h2>
+    <p class="lede">A power drill is used for 13 minutes in its lifetime. Six houses do not need six dehydrators, five ladders, and two pickup trucks.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Prototype (built, shelved)</span><h3>Borrow / return</h3>
+        <p>Registry of tools with owner house, availability, 14-day due dates; borrowing and returning drove the house ledger. Worked end-to-end in the local-first store.</p></div>
+      <div class="card"><span class="pill s">Federation version</span><h3>Deposit-backed loans</h3>
+        <p>Borrowing house escrows a deposit against the tool (the GatheringEscrow pattern, verbatim). Returned on time → refund. Late or lost → owner claims. Free-riding priced, not policed.</p></div>
+      <div class="card"><span class="pill w">The honest cost</span><h3>Logistics, not code</h3>
+        <p>Pickup and drop-off friction kills tool libraries more than defection does. Anchor each tool to a host house with stated hours; the truck is itself a shared tool.</p></div>
+    </div>
+  </section>
+
+  <!-- 6 · Layer 2: bulk orders -->
+  <section class="slide">
+    <div class="kicker">Layer 2 · prototyped</div>
+    <h2>Bulk orders — threshold pledges</h2>
+    <div class="arrow-flow">
+      <span class="step">🌾 Any house opens an order</span><span class="a">→</span>
+      <span class="step">Houses pledge quantities</span><span class="a">→</span>
+      <span class="step">Threshold met → locked</span><span class="a">→</span>
+      <span class="step">Each share lands on that house's ledger</span>
+    </div>
+    <div class="cols c2">
+      <div class="card"><span class="pill g">Prototype (built, shelved)</span>
+        <p>Open orders with unit prices and thresholds; pledges tracked per house; locking wrote my house's share straight onto the shared-expense ledger as a groceries entry, split across members. All local-first.</p></div>
+      <div class="card"><span class="pill s">Federation version</span>
+        <p>A pledge <em>is</em> an escrow deposit in xDai — the order locking releases funds to the coordinating house, which rotates monthly like a bill. Under-threshold orders auto-refund on expiry. No one fronts money for neighbors; the contract does.</p></div>
+    </div>
+    <p class="foot">Wholesale case rates run 20–40% under retail on staples — the discount is the recruitment pitch for house #7.</p>
+  </section>
+
+  <!-- 7 · Layer 3: labor exchange -->
+  <section class="slide">
+    <div class="kicker">Layer 3</div>
+    <h2>Hours clear across houses</h2>
+    <p class="lede">The labor-credit ledger already counts hours inside a house. Federation means Marcus fixing Bushwick Static's boiler creates a 3-hour credit that Cypress can spend on Bushwick's welder next month.</p>
+    <div class="cols c3">
+      <div class="card"><h3>House-to-house, not person-to-person</h3><p>Debts net between houses, like the ledger's simplify-debts. People stay inside their house's books; the federation sees only house balances.</p></div>
+      <div class="card"><h3>Anchored, not floating</h3><p>Pure time-banks decay when hours have no floor. Each house sets its rate (the Points &amp; Pool knob, already shipped); imbalances settle in hours first, xDai as the release valve.</p></div>
+      <div class="card"><h3>Skill discovery for free</h3><p>The federation skill directory is the quiz's values/skills fields, aggregated house-level and opt-in. No new data collected.</p></div>
+    </div>
+  </section>
+
+  <!-- 8 · Layer 4: solidarity fund -->
+  <section class="slide">
+    <div class="kicker">Layer 4 · the serious one</div>
+    <h2>The solidarity fund</h2>
+    <p class="lede">Rent shock, job loss, a boiler that dies in January. Barn-raising, as a balance sheet.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill s">Mechanics</span><ul>
+        <li>Monthly premium per house (say $20/member) into a pool contract on Gnosis</li>
+        <li>Claims filed by a house, not a person</li><li>Released by federation vote — the same 2/3 machinery, one house one vote</li></ul></div>
+      <div class="card"><span class="pill w">Failure modes, priced in</span><ul>
+        <li><strong>Adverse selection:</strong> premiums scale with claims history per house</li>
+        <li><strong>Moral hazard:</strong> claims are loans first, grants by supermajority</li>
+        <li><strong>Capture:</strong> pool capped at N months of premiums; overflow rebates</li></ul></div>
+      <div class="card"><span class="pill p">Why chain</span>
+        <p>The pool is the first place real custody could creep in. A minimal contract — deposits in, 2/3-of-houses signature out, everything public — keeps the platform's hands off the money, same promise as gathering deposits. Explicitly <em>not</em> a Safe multisig UI; one small purpose-built contract.</p></div>
+    </div>
+  </section>
+
+  <!-- 9 · Layer 5: split landing pad -->
+  <section class="slide">
+    <div class="kicker">Layer 5</div>
+    <h2>Where daughter houses land</h2>
+    <p class="quote">The shipped split protocol creates a daughter house with members, a fund share, and <em>no lease</em>.
+    The Hutterite leut solves this by provisioning the daughter colony before the split. Ours:</p>
+    <div class="cols c3">
+      <div class="card"><h3>Lead pipeline</h3><p>Federation-level list of viable leases and landlords who've already rented to a member house — the highest-value shared asset in NYC.</p></div>
+      <div class="card"><h3>Guarantor capacity</h3><p>The solidarity fund co-signs or fronts a deposit as a structured loan, repaid from the daughter's pool over 12 months.</p></div>
+      <div class="card"><h3>Furniture day</h3><p>Tool library + truck + a federation work-day gathering (the gathering flow already handles this, escrow and all).</p></div>
+    </div>
+  </section>
+
+  <!-- 10 · Governance -->
+  <section class="slide">
+    <div class="kicker">Governance</div>
+    <h2>One house, one vote — and no federation class</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Inside the house</span><h3>Shipped</h3><p>2/3 pass-the-phone votes run spending, disputes, and agreement amendments today. Unchanged.</p></div>
+      <div class="card"><span class="pill s">Between houses</span><h3>Delegates, rotating</h3><p>Each house's delegate seat rotates like a bill rotation — deterministic, no elections, no permanent federation people. Ostrom again: those affected by the rules participate in changing them.</p></div>
+      <div class="card"><span class="pill r">Deliberately missing</span><h3>No federation veto over houses</h3><p>The federation can eject a house from shared pools (2/3), but can never reach inside one — no lever exists to pull.</p></div>
+    </div>
+  </section>
+
+  <!-- 11 · Architecture -->
+  <section class="slide">
+    <div class="kicker">Architecture</div>
+    <h2>Local-first houses, chain-shared federation</h2>
+    <p class="lede">The unsolved problem in the current app: two houses' browsers share no state. Three candidate transports:</p>
+    <table>
+      <tr><th>Transport</th><th>How</th><th>Verdict</th></tr>
+      <tr><td><strong>Chain-only</strong></td><td>Every pledge/loan/claim is a Gnosis tx; UIs read contract state. Registry contract holds the house roster.</td><td><span class="pill g">Recommended</span> — rails exist, writes cost pennies, custody stays impossible, and reads are free via the public RPC we already use.</td></tr>
+      <tr><td>Git-backed JSON</td><td>A shared repo branch as the registry (the pattern our address manifest already uses).</td><td><span class="pill w">Fallback</span> — fine for the tool catalog, wrong for money; merge conflicts are governance disputes in disguise.</td></tr>
+      <tr><td>Hosted backend</td><td>A small KV/worker service.</td><td><span class="pill r">Rejected</span> — reintroduces the server and the custodian the whole design avoids.</td></tr>
+    </table>
+    <p class="foot">New contracts needed: FederationRegistry (roster + delegates), ToolEscrow and PledgePool (both ~GatheringEscrow-sized), SolidarityPool. All small, all forge-testable, all deployed by the existing etherform CI.</p>
+  </section>
+
+  <!-- 12 · What we will not build -->
+  <section class="slide">
+    <div class="kicker">Restraint</div>
+    <h2>What the federation will never be</h2>
+    <div class="cols c4">
+      <div class="card"><span class="pill r">No token</span><p>xDai is the unit. A federation token is a governance attack surface and a speculation magnet with zero added function.</p></div>
+      <div class="card"><span class="pill r">No reputation scores</span><p>Deposits price risk; scores moralize it. The quiz taught us: measure behavior, never rank people.</p></div>
+      <div class="card"><span class="pill r">No house transparency mandate</span><p>Houses publish five lens dots and what they pledge. Ledgers, members, agreements stay home.</p></div>
+      <div class="card"><span class="pill r">No custody</span><p>If the platform can touch the money, the design failed. Same rule since the first gathering deposit.</p></div>
+    </div>
+  </section>
+
+  <!-- 13 · Sequencing -->
+  <section class="slide">
+    <div class="kicker">Sequencing</div>
+    <h2>Four phases, each useful alone</h2>
+    <table>
+      <tr><th>Phase</th><th>Ships</th><th>Needs</th></tr>
+      <tr><td><strong>0 · now</strong></td><td>Directory + lens dots on browse (already live), this deck circulated to houses</td><td>Nothing</td></tr>
+      <tr><td><strong>1 · tools &amp; bulk</strong></td><td>Revive the shelved prototype UI on chain transport: ToolEscrow + PledgePool contracts, network page returns to the nav</td><td>2–3 pilot houses, ~2 weeks of contract work</td></tr>
+      <tr><td><strong>2 · labor clearing</strong></td><td>House-level hour balances, netting, xDai release valve</td><td>Phase 1 habits established</td></tr>
+      <tr><td><strong>3 · solidarity fund</strong></td><td>SolidarityPool contract, premiums, claim votes, split landing-pad loans</td><td>≥5 houses and a season of Phase 1–2 trust</td></tr>
+    </table>
+    <p class="foot">The order is deliberate: start where defection is cheap (a drill), end where it's expensive (the fund).</p>
+  </section>
+
+  <!-- 14 · The ask -->
+  <section class="slide">
+    <div class="kicker">The ask</div>
+    <h2>Pick the pilot</h2>
+    <p class="quote">Phase 1 needs <em>two houses and a shared drill</em>, not a whitepaper.
+    Decide: which two houses, which ten tools, which first bulk order — and whether the transport is chain-first as recommended.</p>
+    <div class="cols c3">
+      <div class="card"><h3>Decision 1</h3><p>Approve chain-first transport (contracts over registries over servers).</p></div>
+      <div class="card"><h3>Decision 2</h3><p>Scope Phase 1: tool library + one recurring bulk order (rice or oil — the prototype's seeds were real quotes).</p></div>
+      <div class="card"><h3>Decision 3</h3><p>Name the pilot houses and the coordinating rotation.</p></div>
+    </div>
+    <p class="foot">colive.fun · a Decentral Park solidarity app · the prototype UI lives in git history, ready to revive against the contracts</p>
+  </section>
+
+</div>
+
+<button class="nav prev" onclick="move(-1)">←</button>
+<button class="nav next" onclick="move(1)">→</button>
+<div class="dots" id="dots"></div>
+<div class="counter" id="counter"></div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  slides.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.onclick = () => show(i);
+    dots.appendChild(b);
+  });
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => s.classList.toggle("active", j === cur));
+    [...dots.children].forEach((d, j) => d.classList.toggle("on", j === cur));
+    document.getElementById("progress").style.width = ((cur + 1) / slides.length * 100) + "%";
+    document.getElementById("counter").textContent = (cur + 1) + " / " + slides.length;
+  }
+  function move(d) { show(cur + d); }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") move(1);
+    if (e.key === "ArrowLeft" || e.key === "PageUp") move(-1);
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+  });
+  show(0);
+</script>
+</body>
+</html>
