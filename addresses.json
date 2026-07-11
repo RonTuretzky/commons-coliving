@@ -3,8 +3,9 @@
   "chains": {
     "100": {
       "gatheringEscrow": "0xfc1bbce6e2b1353f4c3f2e52fb78d5c6d2fef19e",
-      "commit": "run-29145602518",
-      "updatedAt": "2026-07-11T08:11:19Z"
+      "commit": "7b76ac0dcf169b0f9ce5f1bfe57af5f9ed7deed1",
+      "updatedAt": "2026-07-11T08:55:34Z",
+      "communeOS": "0x6826877a57929243d4549f84cdd4b7ea0bc217ec"
     }
   }
 }
