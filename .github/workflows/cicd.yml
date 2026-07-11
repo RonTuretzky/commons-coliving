@@ -53,25 +53,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      # NOTE: etherform's _deploy-testnet.yml declares outputs at the job level
+      # only, so nothing propagates through workflow_call — download by pattern
+      # and infer the network from the artifact's directory name instead.
       - name: Download deployment artifact
         uses: actions/download-artifact@v4
         with:
-          name: deployment-${{ needs.deploy.outputs.network_name }}
+          pattern: deployment-*
           path: deployments/
+          merge-multiple: true
 
       - name: Publish address manifest (release + addresses branch)
         env:
           GH_TOKEN: ${{ github.token }}
-          NETWORK: ${{ needs.deploy.outputs.network_name }}
         run: |
           set -euo pipefail
           gh release download contract-addresses -p addresses.json -O prev.json -R "$GITHUB_REPOSITORY" \
             || echo '{}' > prev.json
           python3 - <<'PY'
-          import json, os, time
-          net = os.environ["NETWORK"]
+          import glob, json, os, time
+          path = glob.glob("deployments/**/deployment.json", recursive=True)[0]
+          net = os.path.basename(os.path.dirname(path))
           chain_ids = {"gnosis": "100", "chiado": "10200"}
-          dep = json.load(open(f"deployments/{net}/deployment.json"))
+          dep = json.load(open(path))
           addr = next(c["address"] for c in dep["contracts"] if "GatheringEscrow" in c["sourcePathAndName"])
           try:
               prev = json.load(open("prev.json"))

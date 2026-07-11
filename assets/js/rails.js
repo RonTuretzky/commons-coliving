@@ -19,7 +19,7 @@
   //      release-asset downloads do not) — deploys go live with NO rebuild
   //   3. baked-in fallbacks below
   const ESCROW = {
-    gnosis: null,
+    gnosis: "0xfc1bbce6e2b1353f4c3f2e52fb78d5c6d2fef19e", // deployed via etherform CI, run 29145602518
     chiado: null,
     local: null,
   };
