@@ -26,7 +26,7 @@
   // share-house.fun's CommuneOS (vendored from communetxyz/commune-os-sc) —
   // the optional on-chain chore log. Same resolution: pin > manifest > baked.
   const COMMUNE_OS = {
-    gnosis: null,
+    gnosis: "0x6826877a57929243d4549f84cdd4b7ea0bc217ec", // etherform CI run 29146804272
     chiado: null,
     local: null,
   };
