@@ -1,4 +1,10 @@
 {
   "version": 1,
-  "chains": {}
+  "chains": {
+    "100": {
+      "gatheringEscrow": "0xfc1bbce6e2b1353f4c3f2e52fb78d5c6d2fef19e",
+      "commit": "run-29145602518",
+      "updatedAt": "2026-07-11T08:11:19Z"
+    }
+  }
 }
