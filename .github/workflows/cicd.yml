@@ -1,0 +1,101 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy GatheringEscrow to Gnosis mainnet'
+        type: boolean
+        default: false
+
+# etherform pinned to a specific commit: its `main` was overhauled (breaking the
+# reusable-workflow contract). 4e78fbb is the revision this stack was built against
+# (same pin as zkburn-decentralized).
+jobs:
+  ci:
+    uses: BreadchainCoop/etherform/.github/workflows/_ci.yml@4e78fbbcdd45f7cdbd61355efd5c54c4afe4ae0a
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      check-formatting: true
+      test-verbosity: 'vv'
+      etherform-ref: '4e78fbbcdd45f7cdbd61355efd5c54c4afe4ae0a'
+
+  # Gnosis mainnet deploy — manual trigger only (spends real xDai from the deployer key).
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    uses: BreadchainCoop/etherform/.github/workflows/_deploy-testnet.yml@4e78fbbcdd45f7cdbd61355efd5c54c4afe4ae0a
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      deploy-script: 'contracts/script/Deploy.s.sol:Deploy'
+      network-config-path: '.github/deploy-networks.json'
+      network-index: 0
+      indexing-wait: 60
+      verify-contracts: true
+      etherform-ref: '4e78fbbcdd45f7cdbd61355efd5c54c4afe4ae0a'
+    secrets:
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      RPC_URL: ${{ secrets.RPC_URL }}
+
+  # crowdstake.fun convention: publish the merged address manifest to the rolling
+  # `contract-addresses` release AND mirror it to the `addresses` branch
+  # (raw.githubusercontent.com sends CORS headers; release assets do not), so the
+  # static frontend hydrates new addresses at runtime — no rebuild.
+  publish-addresses:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-${{ needs.deploy.outputs.network_name }}
+          path: deployments/
+
+      - name: Publish address manifest (release + addresses branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NETWORK: ${{ needs.deploy.outputs.network_name }}
+        run: |
+          set -euo pipefail
+          gh release download contract-addresses -p addresses.json -O prev.json -R "$GITHUB_REPOSITORY" \
+            || echo '{}' > prev.json
+          python3 - <<'PY'
+          import json, os, time
+          net = os.environ["NETWORK"]
+          chain_ids = {"gnosis": "100", "chiado": "10200"}
+          dep = json.load(open(f"deployments/{net}/deployment.json"))
+          addr = next(c["address"] for c in dep["contracts"] if "GatheringEscrow" in c["sourcePathAndName"])
+          try:
+              prev = json.load(open("prev.json"))
+          except Exception:
+              prev = {}
+          chains = prev.get("chains", {})
+          chains[chain_ids.get(net, net)] = {
+              "gatheringEscrow": addr,
+              "commit": os.environ.get("GITHUB_SHA", ""),
+              "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+          }
+          json.dump({"version": 1, "chains": chains}, open("addresses.json", "w"), indent=2)
+          print(open("addresses.json").read())
+          PY
+          gh release view contract-addresses -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create contract-addresses -R "$GITHUB_REPOSITORY" \
+                 --title "Contract addresses (latest)" \
+                 --notes "Rolling manifest of live contract addresses. The static frontend fetches addresses.json at runtime."
+          gh release upload contract-addresses addresses.json --clobber -R "$GITHUB_REPOSITORY"
+          python3 -m json.tool addresses.json >/dev/null
+          content_b64=$(base64 -w0 addresses.json)
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/addresses.json?ref=addresses" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/addresses.json" \
+            -f message="chore(addresses): publish manifest @ ${GITHUB_SHA::7}" \
+            -f content="$content_b64" \
+            -f branch=addresses \
+            ${sha:+-f sha="$sha"}
