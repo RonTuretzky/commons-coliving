@@ -114,7 +114,7 @@
           </div>
         </div>
         <div class="legal">
-          <span>colive.fun is in early access — payments are simulated while the rails are finished. Your data lives on your device.</span>
+          <span>Local-first — your data lives on your device. Money rails run on Gnosis Chain.</span>
           <span>P2P license · Decentral Park</span>
         </div>
       </div>
@@ -158,6 +158,19 @@
     document.body.insertAdjacentHTML("beforeend", footer());
     const burger = document.getElementById("nav-burger");
     if (burger) burger.addEventListener("click", () => document.getElementById("nav-links").classList.toggle("open"));
+    installPwa();
+  }
+
+  // PWA: manifest + service worker, injected here so every page gets both
+  // without repeating <head> boilerplate. Chrome processes dynamic manifests.
+  function installPwa() {
+    if (!document.querySelector('link[rel="manifest"]')) {
+      document.head.insertAdjacentHTML("beforeend",
+        '<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0d9488">');
+    }
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
   }
 
   // Auth gate for app pages: no active account → straight to the auth page,

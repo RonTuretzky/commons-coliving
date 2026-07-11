@@ -9,7 +9,7 @@
      - bills: deterministic monthly rotation
    ============================================================ */
 (function () {
-  const KEY = "dp-commons-v8";
+  const KEY = "dp-commons-v9";
   const DAY = 86400000;
   const now = Date.now();
   const days = (n) => new Date(now + n * DAY).toISOString();
@@ -483,7 +483,7 @@
 
   function seedState() {
     return {
-      version: 8,
+      version: 9,
       seededAt: now,
       account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
       me: {
@@ -583,6 +583,28 @@
         { id: "s-2", from: "p-theo", to: "p-eli", amount: 62, at: days(-12), rail: { fee: 0.03, seconds: 2.4, ref: "rail-c07d55" } },
       ],
       stewardChat: [],        // {who:'me'|'steward', text, at, actions?}
+      tasks: [                // bounties — CommuneOS TaskManager model (optional on-chain)
+        { id: "t-railing", desc: "Fix the stoop railing (wobbling since build day)", budget: 45, dueDate: days(10),
+          assignedTo: "p-marcus", status: "open", createdBy: "p-zora", at: days(-2), onchain: null },
+        { id: "t-shelf", desc: "Mount the pantry shelf", budget: 20, dueDate: days(-5),
+          assignedTo: "p-eli", status: "done", createdBy: "p-june", at: days(-12), onchain: null },
+      ],
+      labor: [                // hours ledger — work-trade credits (Twin Oaks model)
+        { id: "l-1", member: "p-june", hours: 3, kind: "cooking", desc: "Canning day lead", at: days(-9) },
+        { id: "l-2", member: "p-marcus", hours: 2, kind: "outdoor", desc: "Stoop planters", at: days(-6) },
+        { id: "l-3", member: "p-eli", hours: 1.5, kind: "organizing", desc: "Cellar restack", at: days(-4) },
+      ],
+      laborRate: 15,          // $ credited per logged hour (Points & Pool knob)
+      agreementDoc: null,     // {version, lines[], updatedAt, signatures{member:iso}, history[], notarized?}
+      checkinLog: [           // instrumentation for the quiz validation loop
+        { at: days(-21), member: "p-marcus", bandwidth: "normal", appetite: "fine" },
+        { at: days(-14), member: "p-june", bandwidth: "high", appetite: "love" },
+        { at: days(-7), member: "p-marcus", bandwidth: "low", appetite: "avoid" },
+      ],
+      clicks: {               // post-event mutual match: picks stay private unless mutual
+        "e-mixer-prospect": { "p-maya": ["me", "p-sofia"], "p-lena": ["p-ty"], "p-ty": ["me", "p-lena"] },
+        "e-vibecamp": { "p-dev": ["p-noor"], "p-noor": ["p-dev", "me"], "p-amara": ["p-gus"] },
+      },
       maintenance: [
         { id: "m-sink", title: "Kitchen sink slow drain", status: "open", openedBy: "p-zora", at: days(-2), notes: "Steward suggested enzyme treatment before calling anyone." },
         { id: "m-radiator", title: "Front room radiator knock", status: "resolved", openedBy: "p-eli", at: days(-40), notes: "Bled the line — fixed. $0." },
@@ -816,15 +838,58 @@
   /* ---------- Store plumbing ---------- */
 
   let state;
+  // A v8 world upcasts losslessly: every v9 addition is a new key with a safe
+  // empty default (no fictional bounties/picks appear in an existing user's world).
+  function upcastV8(s8) {
+    return Object.assign({}, s8, {
+      version: 9,
+      tasks: s8.tasks || [],
+      labor: s8.labor || [],
+      laborRate: s8.laborRate || 15,
+      agreementDoc: s8.agreementDoc || null,
+      checkinLog: s8.checkinLog || [],
+      clicks: s8.clicks || {},
+    });
+  }
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 8) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 9) return; }
     } catch (e) { /* reseed */ }
+    try {
+      const v8 = localStorage.getItem("dp-commons-v8");
+      if (v8) {
+        const s8 = JSON.parse(v8);
+        if (s8 && s8.version === 8) { state = upcastV8(s8); save(); return; }
+      }
+    } catch (e) { /* fall through to reseed */ }
     state = seedState();
     seedChoreHistory(state);
     save();
   }
+  // (rollRecurring runs after load, below)
+  function rollRecurring() {
+    if (!state || !state.events) return;
+    let changed = false;
+    state.events.forEach((e) => {
+      if (e.recurringMonthly && !e.past) {
+        let when = new Date(e.when);
+        const day = when.getDate();
+        const now2 = new Date();
+        while (when < now2) {
+          // clamp to the target month's length (Jan 31 → Feb 28, not Mar 3), keep the time
+          when = new Date(when.getTime());
+          when.setDate(1);
+          when.setMonth(when.getMonth() + 1);
+          when.setDate(Math.min(day, new Date(when.getFullYear(), when.getMonth() + 1, 0).getDate()));
+          changed = true;
+        }
+        e.when = when.toISOString();
+      }
+    });
+    if (changed) save();
+  }
+
   function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
   function reset() { localStorage.removeItem(KEY); load(); }
 
@@ -848,7 +913,45 @@
 
   /* ---------- Public API ---------- */
 
+  function proposalThreshold() {
+    const h = state.houses.find((x) => x.id === state.myHouseId);
+    return h ? Math.ceil((h.members.length * 2) / 3) : 2;
+  }
+  // 2/3 auto-resolution, shared by voting AND proposal creation (a solo house's
+  // own yes already meets threshold). Rejected disputes free the task again.
+  function resolveProposal(p) {
+    if (p.status !== "open") return p;
+    const yes = Object.values(p.votes).filter(Boolean).length;
+    const no = Object.values(p.votes).filter((v) => v === false).length;
+    const t = proposalThreshold();
+    if (yes >= t) {
+      p.status = "passed"; p.resolvedAt = new Date().toISOString();
+      if (p.kind === "spend" && p.amount) { state.treasury.balance -= p.amount; p.executed = true; }
+      if (p.kind === "dispute" && p.taskId) {
+        const task = state.tasks.find((x) => x.id === p.taskId);
+        if (task) { task.assignedTo = p.newAssignee; task.status = "open"; p.executed = true; }
+      }
+      if (p.kind === "agreement" && p.lines) {
+        const doc = state.agreementDoc;
+        if (doc) {
+          doc.history.push({ version: doc.version, lines: doc.lines.slice(), at: doc.updatedAt, signatures: doc.signatures });
+          doc.version += 1; doc.lines = p.lines.slice(); doc.updatedAt = new Date().toISOString();
+          doc.signatures = {}; doc.notarized = null;
+          p.executed = true;
+        }
+      }
+    } else if (no >= t) {
+      p.status = "rejected"; p.resolvedAt = new Date().toISOString();
+      if (p.kind === "dispute" && p.taskId) {
+        const task = state.tasks.find((x) => x.id === p.taskId);
+        if (task && task.status === "disputed") task.status = "open";
+      }
+    }
+    return p;
+  }
+
   load();
+  rollRecurring();
 
   window.Commons = {
     get state() { return state; },
@@ -1047,6 +1150,56 @@
         }
         save(); return h;
       },
+      // The split protocol: a house past its social ceiling divides into two.
+      // Fund goes pro-rata by headcount; whichever side you're on keeps the
+      // running systems (pruned to its members) — the other side starts clean.
+      split(newName, movingIds) {
+        const mine = state.houses.find((x) => x.id === state.myHouseId);
+        if (!mine || !movingIds.length || movingIds.length >= mine.members.length) return null;
+        const staying = mine.members.filter((m) => !movingIds.includes(m));
+        const total = mine.members.length;
+        const movedShare = Math.round((state.treasury.balance * movingIds.length) / total * 100) / 100;
+        const iMove = movingIds.includes("me");
+        const nh = {
+          id: "h-" + Math.random().toString(36).slice(2, 8),
+          name: newName, hood: mine.hood, borough: mine.borough,
+          members: movingIds.slice(), roomsOpen: 0,
+          poolModel: mine.poolModel, poolMonthly: mine.poolMonthly,
+          rent: mine.rent, hue: mine.hue, mission: mine.mission,
+          values: (mine.values || []).slice(), rules: (mine.rules || []).slice(),
+          networked: mine.networked, hasLocation: false, founded: "forming", moveIn: null,
+          blurb: "Split from " + mine.name + " — same DNA, room to breathe.",
+          lenses: mine.lenses ? Object.assign({}, mine.lenses) : undefined,
+          treasurySeed: iMove ? 0 : movedShare,
+        };
+        mine.members = staying;
+        state.houses.unshift(nh);
+        const keep = iMove ? movingIds : staying;
+        state.contributions = state.contributions.filter((c) => keep.includes(c.member));
+        state.bills.forEach((b) => { b.rotation = b.rotation.filter((m) => keep.includes(m)); });
+        state.bills = state.bills.filter((b) => b.rotation.length);
+        state.chores.forEach((c) => { c.rotation = c.rotation.filter((m) => keep.includes(m)); });
+        state.chores = state.chores.filter((c) => c.rotation.length);
+        if (state.mealPlan && state.mealPlan.rotation) {
+          state.mealPlan.rotation = state.mealPlan.rotation.filter((m) => keep.includes(m));
+          state.mealPlan.eaters = keep.length;
+        }
+        state.treasury.balance = Math.round((state.treasury.balance - movedShare) * 100) / 100;
+        if (iMove) {
+          state.myHouseId = nh.id;
+          state.treasury.balance = movedShare;
+          nh.treasurySeed = 0;
+        }
+        state.tasks = state.tasks.filter((t) => keep.includes(t.assignedTo) || t.assignedTo === "me");
+        if (state.agreementDoc) {
+          // departed members' signatures no longer bind this side's agreement
+          Object.keys(state.agreementDoc.signatures).forEach((m) => {
+            if (!keep.includes(m)) delete state.agreementDoc.signatures[m];
+          });
+        }
+        save();
+        return { house: nh, movedShare };
+      },
       // Found a house of your own: the gallery keeps the world, but YOUR
       // house starts with clean systems — no inherited chores or ledgers.
       claimOwn(h) {
@@ -1063,6 +1216,10 @@
         state.proposals = [];
         state.treasury = { balance: 0, currency: "USD" };
         state.maintenance = [];
+        state.tasks = [];
+        state.labor = [];
+        state.agreementDoc = null;
+        state.checkinLog = [];
         save(); return h;
       },
     },
@@ -1121,6 +1278,16 @@
       markDone(choreId, period, by) {
         state.choreDone[choreId] = state.choreDone[choreId] || {};
         state.choreDone[choreId][period] = { by: by || "me", at: new Date().toISOString() };
+        const c = state.chores.find((x) => x.id === choreId);
+        if (c && c.minutes) {
+          // anyone can confirm, but the hours belong to whoever the rotation says did it
+          const doer = choreAssignee(c, period) || by || "me";
+          state.labor.push({
+            id: "l-" + Math.random().toString(36).slice(2, 8), member: doer,
+            hours: Math.round((c.minutes / 60) * 100) / 100, kind: c.kind || "organizing",
+            desc: c.name, at: new Date().toISOString(), fromChore: choreId,
+          });
+        }
         save();
       },
       completionRate(choreId) {
@@ -1138,7 +1305,21 @@
       bills: () => state.bills.slice(),
       billPayer, monthKey,
       billIsPaid: (billId) => !!state.billsPaid[billId + ":" + monthKey()],
-      payBill(billId) { state.billsPaid[billId + ":" + monthKey()] = true; save(); },
+      payBill(billId) {
+        if (state.billsPaid[billId + ":" + monthKey()]) return;
+        state.billsPaid[billId + ":" + monthKey()] = true;
+        const b = state.bills.find((x) => x.id === billId);
+        if (b && b.amount > 0) {
+          // the bill is real money someone fronted — it belongs in the ledger, split like everything else
+          state.expenses.unshift({
+            id: "x-" + Math.random().toString(36).slice(2, 8), at: new Date().toISOString(),
+            desc: b.name + " · " + monthKey(), amount: b.amount, paidBy: billPayer(b, new Date()),
+            category: "utilities", fromBill: billId,
+            split: { mode: "equal", participants: b.rotation.slice() },
+          });
+        }
+        save();
+      },
       rotationPreview(bill, monthsAhead) {
         const out = []; const base = new Date();
         for (let i = 0; i < (monthsAhead || 4); i++) {
@@ -1153,16 +1334,169 @@
       all: () => state.proposals.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
       get: (id) => state.proposals.find((p) => p.id === id) || null,
       add(p) { state.proposals.unshift(Object.assign({ id: "pr-" + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), status: "open", votes: {} }, p)); save(); return state.proposals[0]; },
-      threshold() { const h = state.houses.find((x) => x.id === state.myHouseId); return h ? Math.ceil((h.members.length * 2) / 3) : 2; },
+      threshold() { return proposalThreshold(); },
       vote(id, memberId, val) {
         const p = state.proposals.find((x) => x.id === id); if (!p || p.status !== "open") return p;
         p.votes[memberId] = val;
-        const yes = Object.values(p.votes).filter(Boolean).length;
-        const no = Object.values(p.votes).filter((v) => v === false).length;
-        const t = this.threshold();
-        if (yes >= t) { p.status = "passed"; p.resolvedAt = new Date().toISOString(); if (p.kind === "spend" && p.amount) { state.treasury.balance -= p.amount; p.executed = true; } }
-        else if (no >= t) { p.status = "rejected"; p.resolvedAt = new Date().toISOString(); }
+        resolveProposal(p);
         save(); return p;
+      },
+    },
+
+    // Bounties — one-off jobs with a budget, the CommuneOS TaskManager model.
+    // Disputes route through the same 2/3 proposal machinery as everything else.
+    tasks: {
+      all: () => state.tasks.slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      get: (id) => state.tasks.find((t) => t.id === id) || null,
+      open: () => state.tasks.filter((t) => t.status === "open"),
+      add(t) {
+        const task = Object.assign({
+          id: "t-" + Math.random().toString(36).slice(2, 8),
+          status: "open", createdBy: "me", at: new Date().toISOString(), onchain: null,
+        }, t);
+        task.budget = Math.max(0, Number(task.budget) || 0);
+        state.tasks.unshift(task); save(); return task;
+      },
+      markDone(id) {
+        const t = state.tasks.find((x) => x.id === id); if (!t || t.status !== "open") return t;
+        t.status = "done"; t.doneAt = new Date().toISOString();
+        if (t.budget > 0) {
+          state.labor.push({
+            id: "l-" + Math.random().toString(36).slice(2, 8), member: t.assignedTo,
+            hours: Math.round((t.budget / state.laborRate) * 100) / 100, kind: "organizing",
+            desc: "Bounty: " + t.desc, at: new Date().toISOString(), fromTask: id,
+          });
+        }
+        save(); return t;
+      },
+      dispute(id, newAssignee) {
+        const t = state.tasks.find((x) => x.id === id); if (!t || !newAssignee) return null;
+        t.status = "disputed";
+        const p = {
+          id: "pr-" + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(),
+          status: "open", votes: { me: true }, kind: "dispute", taskId: id, newAssignee, reassignTo: newAssignee,
+          title: "Reassign: " + t.desc,
+          desc: "Move this bounty to a new assignee. Passing the vote reassigns it on the spot.",
+          proposer: "me",
+        };
+        state.proposals.unshift(p);
+        resolveProposal(p); // a solo house's own vote already decides it
+        save(); return p;
+      },
+      setOnchain(id, oc) { const t = state.tasks.find((x) => x.id === id); if (t) { t.onchain = oc; save(); } },
+    },
+
+    // Labor credits — the Twin Oaks insight: count hours, not just dollars.
+    // Chores auto-log on mark-done; credit = hours × the house rate.
+    labor: {
+      all: () => state.labor.slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      rate: () => state.laborRate,
+      setRate(r) { state.laborRate = Number(r) || 15; save(); },
+      log(entry) {
+        const e = Object.assign({
+          id: "l-" + Math.random().toString(36).slice(2, 8),
+          member: "me", at: new Date().toISOString(),
+        }, entry);
+        state.labor.push(e); save(); return e;
+      },
+      remove(id) { state.labor = state.labor.filter((l) => l.id !== id); save(); },
+      hoursBy(member) { return Math.round(state.labor.filter((l) => l.member === member).reduce((s, l) => s + l.hours, 0) * 100) / 100; },
+      creditBy(member) { return Math.round(this.hoursBy(member) * state.laborRate * 100) / 100; },
+      byMember() {
+        const out = {};
+        state.labor.forEach((l) => { out[l.member] = Math.round(((out[l.member] || 0) + l.hours) * 100) / 100; });
+        return out;
+      },
+    },
+
+    // The living house agreement — versioned, signed, amended by 2/3 vote.
+    agreementDoc: {
+      get: () => state.agreementDoc,
+      // first call drafts v1 from the same generator the quiz uses
+      ensure() {
+        if (state.agreementDoc) return state.agreementDoc;
+        const mine = state.houses.find((x) => x.id === state.myHouseId);
+        if (!mine) return null;
+        state.agreementDoc = {
+          version: 1, lines: agreementFrom(state.me, mine),
+          updatedAt: new Date().toISOString(), signatures: {}, history: [], notarized: null,
+        };
+        save(); return state.agreementDoc;
+      },
+      sign(member) {
+        const d = state.agreementDoc; if (!d) return null;
+        d.signatures[member || "me"] = new Date().toISOString();
+        save(); return d;
+      },
+      signedBy: (member) => !!(state.agreementDoc && state.agreementDoc.signatures[member || "me"]),
+      // an amendment is a proposal; the 2/3 vote applies it (see proposals.vote)
+      proposeAmendment(lines, note) {
+        const d = state.agreementDoc; if (!d) return null;
+        const p = {
+          id: "pr-" + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(),
+          status: "open", votes: { me: true }, kind: "agreement", lines: lines.slice(),
+          title: "Amend the house agreement → v" + (d.version + 1),
+          desc: note || "Full text replaces the current version when this passes. Signatures reset.",
+          proposer: "me",
+        };
+        state.proposals.unshift(p);
+        resolveProposal(p); // a solo house's own vote already decides it
+        save(); return p;
+      },
+      setNotarized(info) { if (state.agreementDoc) { state.agreementDoc.notarized = info; save(); } },
+    },
+
+    // House health — the quiz-validation loop, instrumented.
+    health: {
+      log: () => state.checkinLog.slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      metrics() {
+        const per = (c) => currentPeriod(c);
+        let periods = 0, done = 0;
+        state.chores.forEach((c) => {
+          const p = per(c);
+          for (let i = 0; i < p; i++) { periods++; if ((state.choreDone[c.id] || {})[i]) done++; }
+        });
+        const cutoff = Date.now() - 28 * DAY;
+        const recent = state.checkinLog.filter((e) => new Date(e.at).getTime() > cutoff);
+        const myLog = state.checkinLog.filter((e) => e.member === "me");
+        const lowStreak = myLog.slice(-3).filter((e) => e.bandwidth === "low" || e.bandwidth === "away").length;
+        // a user dispute is one dispute, not two: open dispute proposals, plus any
+        // disputed task that somehow has no open proposal attached
+        const openDisputeProps = state.proposals.filter((p) => p.kind === "dispute" && p.status === "open");
+        const orphanDisputed = state.tasks.filter((t) => t.status === "disputed" &&
+          !openDisputeProps.some((p) => p.taskId === t.id)).length;
+        const disputes = openDisputeProps.length + orphanDisputed;
+        return {
+          choreRate: periods ? Math.round((done / periods) * 100) : 100,
+          checkins4w: recent.length,
+          lowStreak, disputes,
+          laborHours: Math.round(state.labor.reduce((s, l) => s + l.hours, 0) * 100) / 100,
+        };
+      },
+    },
+
+    // Post-event mutual match: picks are private; only reciprocal ones surface.
+    clicks: {
+      myPicks: (eventId) => ((state.clicks[eventId] || {}).me || []).slice(),
+      toggle(eventId, personId) {
+        state.clicks[eventId] = state.clicks[eventId] || {};
+        const mine = state.clicks[eventId].me = state.clicks[eventId].me || [];
+        const i = mine.indexOf(personId);
+        if (i >= 0) mine.splice(i, 1); else mine.push(personId);
+        save(); return mine.slice();
+      },
+      mutuals(eventId) {
+        const ev = state.clicks[eventId] || {};
+        return (ev.me || []).filter((pid) => (ev[pid] || []).includes("me"));
+      },
+      allMutuals() {
+        const seen = new Set(); const out = [];
+        Object.keys(state.clicks).forEach((eid) => {
+          this.mutuals(eid).forEach((pid) => {
+            if (!seen.has(pid)) { seen.add(pid); out.push({ eventId: eid, personId: pid }); }
+          });
+        });
+        return out;
       },
     },
 
@@ -1235,6 +1569,12 @@
               (avoiders.length ? avoiders.map(firstName).join(" & ") + (avoiders.length > 1 ? " are" : " is") + " off cook duty" : "") + ".";
           }
         }
+        const today = new Date().toISOString().slice(0, 10);
+        state.checkinLog = state.checkinLog.filter((e) => !(e.member === "me" && e.at.slice(0, 10) === today));
+        state.checkinLog.push({
+          at: new Date().toISOString(), member: "me",
+          bandwidth: state.bandwidth.me || "normal", appetite: state.mealAppetite.me || "fine",
+        });
         save();
         return { changes, mealNote };
       },
@@ -1387,6 +1727,8 @@
       addMaintenance(m) { state.maintenance.unshift(Object.assign({ id: "m-" + Math.random().toString(36).slice(2, 8), status: "open", at: new Date().toISOString(), openedBy: "me" }, m)); save(); },
     },
 
+    // upcast an older exported state to the current shape (null = unsupported)
+    migrate: (st) => (st && st.version === 9 ? st : (st && st.version === 8 ? upcastV8(st) : null)),
     util: { fmtMoney, fmtDate, fmtDateLong, relDate, initials, hue, esc, qp, clamp },
   };
 })();

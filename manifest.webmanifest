@@ -1,0 +1,13 @@
+{
+  "name": "colive.fun — find your people, share a home",
+  "short_name": "colive.fun",
+  "description": "Quiz-based matching, gatherings with escrowed deposits, and house operations on rails — a Decentral Park solidarity app.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#0d9488",
+  "icons": [
+    { "src": "assets/img/logomark-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/logomark.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

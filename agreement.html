@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>House Agreement — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* local to this page — the agreement is the constitution; typeset it like one */
+    .ag-lines { list-style: none; margin: 0; padding: 0; counter-reset: cl; }
+    .ag-lines li { counter-increment: cl; display: flex; gap: 16px; align-items: baseline; padding: 14px 2px; border-top: 1px solid var(--paper-1); font-size: 1.05rem; line-height: 1.7; }
+    .ag-lines li:first-child { border-top: 0; }
+    .ag-lines li::before { content: counter(cl, decimal-leading-zero); font-family: var(--display); font-weight: 700; font-size: .8rem; color: var(--pine); min-width: 26px; flex: none; }
+    .ag-lines.small li { font-size: .9rem; line-height: 1.55; padding: 8px 2px; }
+    .ag-hash { background: var(--paper-1); padding: 6px 10px; border-radius: 8px; font-size: .78rem; word-break: break-all; }
+    details.ag-fold { border-top: 1px solid var(--paper-1); }
+    details.ag-fold:first-of-type { border-top: 0; }
+    details.ag-fold summary { cursor: pointer; font-weight: 600; font-size: .9rem; padding: 10px 0; }
+    details.ag-fold[open] summary { color: var(--pine); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/vendor/viem.js"></script>
+  <script src="assets/js/rails.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("dashboard");
+    (function () {
+      if (Shell.gate()) return;
+
+      const U = Commons.util;
+      const page = document.getElementById("page");
+      const railsOk = !!(window.Rails && Rails.enabled);
+
+      // in-progress amendment draft, preserved across re-renders (signing re-renders the page)
+      let draft = null; // { text, note, forVersion }
+
+      function member(id) { return Commons.people.get(id); }
+      function firstName(id) { const p = member(id); return p ? p.name.split(" ")[0] : id; }
+
+      function render() {
+        const house = Commons.houses.mine();
+        if (!house) {
+          page.innerHTML = `<div class="empty stack">
+            <h2 class="text-h3">The agreement lives where the house does</h2>
+            <p>Join a crew or start one — the agreement drafts itself the day the house forms.</p>
+            <div class="row center wrap">
+              <a class="lifted sm" href="browse.html"><span class="shadow"></span><span class="face">Browse homes</span></a>
+              <a class="park-btn light" href="create.html">Start a house</a>
+            </div></div>`;
+          return;
+        }
+
+        const doc = Commons.agreementDoc.ensure();
+        const n = house.members.length;
+        const signed = house.members.filter((m) => Commons.agreementDoc.signedBy(m)).length;
+        const threshold = Commons.proposals.threshold();
+        const openAmends = Commons.proposals.all().filter((p) => p.kind === "agreement" && p.status === "open");
+        const stampedNow = !!(doc.notarized && doc.notarized.version === doc.version);
+        const txUrl = stampedNow && railsOk ? Rails.explorerTx(doc.notarized.tx) : null;
+        const draftText = draft && draft.forVersion === doc.version ? draft.text : doc.lines.join("\n");
+        const draftNote = draft && draft.forVersion === doc.version ? draft.note : "";
+        const hist = doc.history.slice().reverse();
+
+        page.innerHTML = `
+        <div class="stack-lg">
+
+          <!-- 1 · header -->
+          <div class="card stack" style="--gap:8px">
+            <div class="row between wrap">
+              <div class="stack" style="--gap:4px">
+                <div class="kicker">${U.esc(house.name)}</div>
+                <h1 class="text-h2">House Agreement — v${doc.version}</h1>
+              </div>
+              <span class="avatar-stack">${house.members.map((id) => Shell.avatarHtml(member(id))).join("")}</span>
+            </div>
+            <div class="row wrap">
+              <span class="pill paper">Updated ${U.fmtDate(doc.updatedAt)}</span>
+              <span class="pill ${signed === n ? "match" : "warn"}">${signed}/${n} signed</span>
+              ${txUrl ? `<a class="pill match" target="_blank" rel="noopener" href="${txUrl}">⛓ Notarized on Gnosis ↗</a>`
+                : stampedNow ? `<span class="pill match">⛓ Notarized on Gnosis</span>` : ""}
+            </div>
+            <p class="text-caption muted">The living constitution of the house — amended by two-thirds vote, signed by every member, kept where you can point at it.</p>
+          </div>
+
+          <!-- 2 · the text -->
+          <div class="card stack" style="--gap:6px">
+            <div class="row between wrap">
+              <div class="kicker">The text</div>
+              <span class="text-caption muted">${doc.lines.length} clause${doc.lines.length === 1 ? "" : "s"} · plain words, house law</span>
+            </div>
+            <ol class="ag-lines">${doc.lines.map((l) => `<li>${U.esc(l)}</li>`).join("")}</ol>
+          </div>
+
+          <!-- 3 · signatures -->
+          <div class="stack">
+            <div>
+              <div class="kicker">Signatures</div>
+              <h2 class="text-h3">Who's signed v${doc.version}</h2>
+            </div>
+            <div class="grid grid-3">
+              ${house.members.map((m) => {
+                const p = member(m);
+                const at = doc.signatures[m];
+                return `<div class="card flat stack" style="--gap:10px">
+                  <span class="row">${Shell.avatarHtml(p, "sm")} <span class="small"><strong>${U.esc(p.name)}</strong></span></span>
+                  ${at ? `<span class="pill match" style="align-self:start">✍️ Signed ${U.relDate(at)}</span>`
+                       : `<button class="park-btn sm secondary" style="align-self:start" data-act="sign" data-member="${m}">✍️ Sign</button>`}
+                </div>`;
+              }).join("")}
+            </div>
+            <p class="text-caption muted">One device, passed around the table — the digital version of everyone signing the kitchen-wall copy.</p>
+          </div>
+
+          <!-- 4 · amendments -->
+          <div class="stack">
+            <div class="row between wrap">
+              <div>
+                <div class="kicker">Amendments</div>
+                <h2 class="text-h3">Change the text</h2>
+              </div>
+              <span class="pill ink">Passes at ${threshold} of ${n} — two-thirds, then it applies itself</span>
+            </div>
+
+            <div class="card stack">
+              <h3 class="text-h4">Propose an amendment</h3>
+              <p class="small muted">Edit the full text below — one clause per line. When it passes, the new version takes over and the signatures reset. That's by design: new words, new signatures.</p>
+              <div class="field">
+                <label for="am-text">The agreement, as you'd have it</label>
+                <textarea class="input" id="am-text" rows="${Math.min(16, Math.max(6, doc.lines.length + 2))}">${U.esc(draftText)}</textarea>
+              </div>
+              <div class="field">
+                <label for="am-note">Note for the record (optional)</label>
+                <input class="input" id="am-note" value="${U.esc(draftNote)}" placeholder="What changed and why, in one line" />
+              </div>
+              <button class="lifted sm" style="align-self:start" data-act="propose"><span class="shadow"></span><span class="face">Propose the amendment</span></button>
+            </div>
+
+            ${openAmends.length
+              ? openAmends.map((p) => amendCard(p, threshold, house)).join("")
+              : `<div class="empty">No amendments on the table — the text stands as written.</div>`}
+          </div>
+
+          <!-- 5 · version history -->
+          <div class="card flat stack" style="--gap:4px">
+            <div class="kicker">Version history</div>
+            ${hist.length ? hist.map((h) => `
+              <details class="ag-fold">
+                <summary>v${h.version} · ${U.fmtDate(h.at)} · ${Object.keys(h.signatures || {}).length} signature${Object.keys(h.signatures || {}).length === 1 ? "" : "s"}</summary>
+                <ol class="ag-lines small" style="padding-bottom:10px">${(h.lines || []).map((l) => `<li>${U.esc(l)}</li>`).join("")}</ol>
+              </details>`).join("")
+            : `<p class="small muted">v1, unamended — this is the original text, as drafted when the house formed.</p>`}
+          </div>
+
+          <!-- 6 · notarize -->
+          ${notarizeCard(doc, stampedNow, txUrl)}
+        </div>`;
+
+        wire();
+      }
+
+      function amendCard(p, threshold, house) {
+        const yes = Object.entries(p.votes).filter(([, v]) => v === true);
+        const no = Object.entries(p.votes).filter(([, v]) => v === false);
+        const pending = house.members.filter((m) => !(m in p.votes));
+        return `<div class="card stack">
+          <div class="row between wrap">
+            <span class="pill pine">Agreement</span>
+            <span class="text-caption muted">${U.esc(firstName(p.by || p.proposer || "me"))} · ${U.relDate(p.createdAt)}</span>
+          </div>
+          <h3 class="text-h4">${U.esc(p.title)}</h3>
+          ${(p.desc || p.body) ? `<p class="small muted">${U.esc(p.desc || p.body)}</p>` : ""}
+          ${p.lines ? `<details class="ag-fold">
+            <summary>Read the proposed text · ${p.lines.length} clause${p.lines.length === 1 ? "" : "s"}</summary>
+            <ol class="ag-lines small" style="padding-bottom:10px">${p.lines.map((l) => `<li>${U.esc(l)}</li>`).join("")}</ol>
+          </details>` : ""}
+          <div class="row between wrap">
+            <span class="row" style="gap:2px">
+              <span class="avatar-stack">${yes.map(([id]) => Shell.avatarHtml(member(id), "sm")).join("")}</span>
+              <span class="text-caption muted" style="margin-left:8px">${yes.length} of ${threshold} needed${no.length ? ` · ${no.length} against` : ""}</span>
+            </span>
+          </div>
+          ${pending.length ? `<div class="stack" style="--gap:6px">
+            ${pending.map((m) => {
+              const pr = member(m);
+              return `<div class="row between" style="border-top:1px solid var(--paper-1);padding-top:6px">
+                <span class="row">${Shell.avatarHtml(pr, "sm")} <span class="small">${U.esc(pr.name)}</span></span>
+                <span class="row">
+                  <button class="park-btn sm green" data-act="vote" data-id="${p.id}" data-member="${m}" data-val="1">Yes</button>
+                  <button class="park-btn sm light" data-act="vote" data-id="${p.id}" data-member="${m}" data-val="0">No</button>
+                </span>
+              </div>`;
+            }).join("")}
+          </div>` : `<span class="text-caption muted">Everyone's voted — waiting on the math.</span>`}
+          <div class="progress"><i style="width:${Math.min(100, Math.round((yes.length / threshold) * 100))}%"></i></div>
+        </div>`;
+      }
+
+      function notarizeCard(doc, stampedNow, txUrl) {
+        if (!railsOk) return "";
+        const digest = Rails.contentHash(doc.lines.join("\n"));
+        return `<div class="card stack">
+          <div class="row between wrap">
+            <div class="kicker">Existence proof · Gnosis</div>
+            ${stampedNow ? `<span class="pill match">v${doc.version} stamped ✓</span>` : ""}
+          </div>
+          <p class="small">A keccak256 hash of the exact text, stamped on Gnosis in a zero-value transaction — proof this version existed today, without putting a word of it on-chain.</p>
+          <div class="row wrap" style="gap:8px">
+            <code class="ag-hash">${U.esc(digest)}</code>
+            <button class="park-btn ghost sm" data-act="copy-hash" data-hash="${U.esc(digest)}">Copy</button>
+          </div>
+          ${stampedNow
+            ? `<p class="small muted">Stamped ${U.fmtDate(doc.notarized.at)}${txUrl
+                ? ` · <a target="_blank" rel="noopener" href="${txUrl}">tx ${U.esc(Rails.short(doc.notarized.tx))} ↗</a>`
+                : ` · tx ${U.esc(Rails.short(doc.notarized.tx))}`}. Amend the text and you can stamp the new version too.</p>`
+            : Rails.hasWallet()
+              ? `<button class="lifted sm" style="align-self:start" data-act="notarize"><span class="shadow"></span><span class="face">Notarize v${doc.version} on Gnosis</span></button>`
+              : `<p class="text-caption muted"><a href="account.html">Create your wallet to notarize</a> — it's made on this device, and stamping costs a fraction of a cent.</p>`}
+        </div>`;
+      }
+
+      /* ---------- interactions ---------- */
+      function wire() {
+        const amText = document.getElementById("am-text");
+        const amNote = document.getElementById("am-note");
+        if (amText) {
+          const keep = () => {
+            draft = { text: amText.value, note: amNote.value, forVersion: Commons.agreementDoc.get().version };
+          };
+          amText.addEventListener("input", keep);
+          amNote.addEventListener("input", keep);
+        }
+
+        page.querySelectorAll("[data-act]").forEach((el) => {
+          el.addEventListener("click", async () => {
+            const act = el.dataset.act;
+
+            if (act === "sign") {
+              const m = el.dataset.member;
+              Commons.agreementDoc.sign(m);
+              const doc = Commons.agreementDoc.get();
+              const house = Commons.houses.mine();
+              const signedNow = house.members.filter((id) => doc.signatures[id]).length;
+              render();
+              Shell.toast(signedNow === house.members.length
+                ? `That's everyone — v${doc.version} carries the whole house`
+                : `${firstName(m)} signed v${doc.version} — pass the device on`, "green");
+            }
+
+            if (act === "propose") {
+              const text = document.getElementById("am-text").value;
+              const note = document.getElementById("am-note").value.trim();
+              const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+              if (!lines.length) { Shell.toast("An agreement needs at least one line"); return; }
+              const doc = Commons.agreementDoc.get();
+              if (lines.join("\n") === doc.lines.join("\n")) { Shell.toast("That's the current text, word for word — change something first"); return; }
+              Commons.agreementDoc.proposeAmendment(lines, note);
+              draft = null;
+              const house = Commons.houses.mine();
+              render();
+              Shell.toast(`Amendment proposed — needs ${Commons.proposals.threshold()} of ${house.members.length} votes`, "green");
+            }
+
+            if (act === "vote") {
+              const before = Commons.proposals.get(el.dataset.id).status;
+              const p = Commons.proposals.vote(el.dataset.id, el.dataset.member, el.dataset.val === "1");
+              if (p.status === "passed") draft = null; // only a version bump invalidates the draft
+              render();
+              if (p.status === "passed" && before === "open") {
+                Shell.toast(`Passed — the agreement is now v${Commons.agreementDoc.get().version}. Signatures reset by design: new words, new names.`, "green");
+              } else if (p.status === "rejected" && before === "open") {
+                Shell.toast("Rejected — the house keeps the current text");
+              } else {
+                Shell.toast("Vote in — waiting on the rest of the house");
+              }
+            }
+
+            if (act === "copy-hash") {
+              if (navigator.clipboard) navigator.clipboard.writeText(el.dataset.hash);
+              Shell.toast("Hash copied");
+            }
+
+            if (act === "notarize") {
+              const doc = Commons.agreementDoc.get();
+              const face = el.querySelector(".face");
+              el.disabled = true;
+              if (face) face.textContent = "Stamping on Gnosis…";
+              try {
+                const { digest, hash } = await Rails.notarize(doc.lines.join("\n"));
+                Commons.agreementDoc.setNotarized({ digest, tx: hash, version: doc.version, at: new Date().toISOString() });
+                render();
+                Shell.toast(`v${doc.version} notarized — the hash is on Gnosis for good`, "green");
+              } catch (e) {
+                el.disabled = false;
+                if (face) face.textContent = `Notarize v${doc.version} on Gnosis`;
+                const msg = ((e && (e.shortMessage || e.message)) || "it didn't go through").split("\n")[0].slice(0, 90);
+                Shell.toast("Couldn't notarize — " + msg);
+              }
+            }
+          });
+        });
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

@@ -37,6 +37,8 @@
   </div>
 
   <script src="assets/js/store.js"></script>
+  <script src="assets/js/vendor/viem.js"></script>
+  <script src="assets/js/rails.js"></script>
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("dashboard");
@@ -165,6 +167,14 @@
           </a>`;
         })()}
 
+        ${bountiesHtml(house)}
+
+        <div class="grid grid-3">
+          ${healthCardHtml()}
+          ${agreementCardHtml(house)}
+          ${splitCardHtml(house)}
+        </div>
+
         <div class="row between wrap" style="margin-top:12px">
           <div>
             <div class="kicker">Decisions</div>
@@ -204,7 +214,9 @@
         ? `<span class="pill pine">${U.fmtMoney(p.amount)} from the fund</span>`
         : p.kind === "dispute"
           ? `<span class="pill warn">Dispute — reassigns to ${U.esc(firstName(p.reassignTo || ""))}</span>`
-          : `<span class="pill paper">House rule</span>`;
+          : p.kind === "agreement"
+            ? `<span class="pill pine">Agreement amendment</span>`
+            : `<span class="pill paper">House rule</span>`;
       return `<div class="card stack">
         <div class="row between wrap">${kindPill}<span class="text-caption muted">${U.esc(firstName(p.proposer))} · ${U.relDate(p.createdAt)}</span></div>
         <h3 class="text-h4">${U.esc(p.title)}</h3>
@@ -215,12 +227,132 @@
             <span class="text-caption muted" style="margin-left:8px">${yes.length} of ${threshold} needed${no.length ? ` · ${no.length} against` : ""}</span>
           </span>
           ${iVoted
-            ? `<span class="text-caption muted">You voted — waiting on the house.</span>`
+            ? ""
             : `<span class="row"><button class="park-btn sm green" data-act="vote" data-id="${p.id}" data-val="1">Yes</button>
                <button class="park-btn sm light" data-act="vote" data-id="${p.id}" data-val="0">No</button></span>`}
         </div>
+        ${(() => {
+          // one device, passed around the table — housemates cast their votes here
+          const pending = Commons.houses.mine().members.filter((m) => m !== "me" && !(m in p.votes));
+          if (!pending.length) return "";
+          return `<div class="stack" style="--gap:6px;border-top:1px solid var(--paper-1);padding-top:8px">
+            <span class="text-caption muted">Pass the phone — the rest of the house votes here:</span>
+            <div class="row wrap" style="gap:8px">${pending.map((m) => `
+              <span class="row" style="gap:4px">${Shell.avatarHtml(member(m), "sm")}
+                <button class="park-btn sm green" data-act="vote" data-id="${p.id}" data-voter="${m}" data-val="1">✓</button>
+                <button class="park-btn sm light" data-act="vote" data-id="${p.id}" data-voter="${m}" data-val="0">✗</button>
+              </span>`).join("")}</div>
+          </div>`;
+        })()}
         <div class="progress"><i style="width:${Math.min(100, Math.round((yes.length / threshold) * 100))}%"></i></div>
       </div>`;
+    }
+
+    /* ---------- bounties: one-off jobs with a budget (CommuneOS task model) ---------- */
+    function chainReady() {
+      const cc = Commons.state.choreChain;
+      return !!(cc && window.Rails && Rails.enabled && Rails.commune.available() && cc.network === Rails.netId());
+    }
+    function bountiesHtml(house) {
+      const tasks = Commons.tasks.all();
+      const open = tasks.filter((t) => t.status !== "done");
+      const done = tasks.filter((t) => t.status === "done");
+      const memberOpts = (skip) => house.members.filter((m) => m !== skip)
+        .map((m) => `<option value="${m}">${U.esc(member(m).name)}</option>`).join("");
+      const card = (t) => `
+        <div class="card stack" style="--gap:8px">
+          <div class="row between wrap">
+            <span class="pill ${t.status === "disputed" ? "warn" : "pine"}">${t.status === "disputed" ? "In dispute" : U.fmtMoney(t.budget) + " bounty"}</span>
+            <span class="text-caption muted">due ${U.fmtDate(t.dueDate)}</span>
+          </div>
+          <strong class="display-bold small">${U.esc(t.desc)}</strong>
+          <div class="row" style="gap:8px">${Shell.avatarHtml(member(t.assignedTo), "sm")}
+            <span class="text-caption muted">${t.assignedTo === "me" ? "yours to do" : U.esc(firstName(t.assignedTo)) + " has it"}</span>
+            ${t.onchain ? (() => {
+              const url = (window.Rails && Rails.enabled && Rails.explorerTx) ? Rails.explorerTx(t.onchain.tx) : null;
+              return `<a class="pill match" style="font-size:.7rem" ${url ? `href="${url}" target="_blank" rel="noopener"` : ""}>⛓ on-chain #${t.onchain.taskId}</a>`;
+            })() : ""}
+          </div>
+          ${t.status === "open" ? `
+            <div class="row between wrap">
+              <button class="park-btn sm green" data-act="task-done" data-id="${t.id}">Mark done · pays in labor credit</button>
+              ${memberOpts(t.assignedTo) ? `<span class="row" style="gap:6px">
+                <select class="input" data-reassign="${t.id}" style="padding:4px 8px;font-size:.78rem;width:auto">${memberOpts(t.assignedTo)}</select>
+                <button class="park-btn sm light" data-act="task-dispute" data-id="${t.id}">Dispute</button>
+              </span>` : ""}
+            </div>` : t.status === "disputed"
+              ? `<p class="text-caption muted" style="margin:0">Reassignment is on the proposal board above — the house votes, two-thirds moves it.</p>` : ""}
+        </div>`;
+      return `
+        <div class="row between wrap" style="margin-top:12px">
+          <div><div class="kicker">One-off jobs</div><h2 class="text-h3">Bounties</h2></div>
+          <span class="row wrap">
+            ${chainReady() ? `<span class="pill ink">⛓ dual-writing to CommuneOS</span>` : ""}
+            <button class="lifted sm" data-act="task-form"><span class="shadow"></span><span class="face">Post a bounty</span></button>
+          </span>
+        </div>
+        <div class="card stack hidden" id="task-form">
+          <div class="grid grid-2">
+            <div class="field"><label for="t-desc">The job</label><input class="input" id="t-desc" maxlength="90" placeholder="e.g. Fix the cellar door hinge" /></div>
+            <div class="field"><label for="t-budget">Budget ($ → labor credit on completion)</label><input class="input" id="t-budget" type="number" min="0" step="5" value="25" /></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label for="t-assignee">Who takes it</label><select class="input" id="t-assignee">${house.members.map((m) => `<option value="${m}">${U.esc(member(m).name)}</option>`).join("")}</select></div>
+            <div class="field"><label for="t-due">Due</label><input class="input" id="t-due" type="date" /></div>
+          </div>
+          <div class="row wrap">
+            <button class="lifted sm green" data-act="task-add"><span class="shadow"></span><span class="face">Post it</span></button>
+            <button class="park-btn ghost" data-act="task-form">Never mind</button>
+          </div>
+        </div>
+        <div class="grid grid-3">
+          ${open.length ? open.map(card).join("") : `<div class="empty" style="grid-column:1/-1">No bounties on the board — the house is either finished or procrastinating.</div>`}
+        </div>
+        ${done.length ? `<div class="card flat stack"><div class="kicker">Done</div>
+          ${done.map((t) => `<div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:8px">
+            <span class="small"><strong>${U.esc(t.desc)}</strong> · ${U.esc(firstName(t.assignedTo))}</span>
+            <span class="row"><span class="pill match">${U.fmtMoney(t.budget)} credited</span><span class="text-caption muted">${t.doneAt ? U.fmtDate(t.doneAt) : ""}</span></span>
+          </div>`).join("")}</div>` : ""}`;
+    }
+
+    /* ---------- house health: the quiz-validation loop, measured ---------- */
+    function healthCardHtml() {
+      const m = Commons.health.metrics();
+      const tone = m.choreRate >= 80 ? "pos" : m.choreRate >= 55 ? "" : "neg";
+      return `<div class="card stack">
+        <div class="kicker">House health</div>
+        <div><span class="text-h2 amount ${tone}">${m.choreRate}%</span> <span class="small muted">of chore periods closed</span></div>
+        <p class="small muted" style="margin:0">${m.checkins4w} check-in${m.checkins4w === 1 ? "" : "s"} in the last 4 weeks · ${m.laborHours}h logged · ${m.disputes ? `<span class="amount neg">${m.disputes} open dispute${m.disputes > 1 ? "s" : ""}</span>` : "no disputes"}</p>
+        ${m.lowStreak >= 2 ? `<p class="small" style="margin:0;color:var(--red)">${m.lowStreak} of your last 3 check-ins were low-bandwidth — let the <a href="checkin.html">reallocator</a> lighten your week.</p>` : ""}
+        <a class="park-btn light sm" href="checkin.html" style="align-self:start">Weekly check-in →</a>
+      </div>`;
+    }
+
+    function agreementCardHtml(house) {
+      const doc = Commons.agreementDoc.get();
+      if (!doc) return `<a class="card clickable stack" href="agreement.html">
+        <div class="kicker">House agreement</div>
+        <strong class="display-bold">Not drafted yet</strong>
+        <p class="small muted" style="margin:0">One click drafts v1 from your quiz — then the house signs it.</p>
+        <span class="park-btn light sm" style="align-self:start">Draft it →</span></a>`;
+      const signed = house.members.filter((m) => doc.signatures[m]).length;
+      return `<a class="card clickable stack" href="agreement.html">
+        <div class="kicker">House agreement</div>
+        <strong class="display-bold">Version ${doc.version}</strong>
+        <p class="small muted" style="margin:0">${signed} of ${house.members.length} signed${doc.notarized && doc.notarized.version === doc.version ? " · ⛓ notarized on Gnosis" : ""}</p>
+        <span class="park-btn light sm" style="align-self:start">Read & sign →</span></a>`;
+    }
+
+    function splitCardHtml(house) {
+      const n = house.members.length;
+      const atCeiling = n >= 8;
+      return `<a class="card clickable stack" href="split.html" ${atCeiling ? 'style="border-color:var(--red-1)"' : ""}>
+        <div class="kicker">${atCeiling ? "At the social ceiling" : "The split protocol"}</div>
+        <strong class="display-bold">${n} of ~8 people</strong>
+        <p class="small muted" style="margin:0">${atCeiling
+          ? "Past eight, coordination stops being free. Split while you still like each other."
+          : "Houses that plan their divisions survive them. Know the protocol before you need it."}</p>
+        <span class="park-btn light sm" style="align-self:start">${atCeiling ? "Plan the split →" : "How it works →"}</span></a>`;
     }
 
     /* ---------- interactions ---------- */
@@ -238,7 +370,7 @@
           }
           if (act === "vote") {
             const before = Commons.proposals.get(el.dataset.id).status;
-            const p = Commons.proposals.vote(el.dataset.id, "me", el.dataset.val === "1");
+            const p = Commons.proposals.vote(el.dataset.id, el.dataset.voter || "me", el.dataset.val === "1");
             render();
             if (p.status === "passed" && before === "open") {
               Shell.toast(p.kind === "spend" && p.amount ? `Passed — ${U.fmtMoney(p.amount)} moved from the house fund` : "Passed — it's house law now", "green");
@@ -249,6 +381,52 @@
             }
           }
           if (act === "new-proposal") openModal();
+          if (act === "task-form") document.getElementById("task-form").classList.toggle("hidden");
+          if (act === "task-add") {
+            const desc = document.getElementById("t-desc").value.trim();
+            if (!desc) { Shell.toast("Say what the job is"); return; }
+            const due = document.getElementById("t-due").value;
+            const task = Commons.tasks.add({
+              desc, budget: Math.max(0, Number(document.getElementById("t-budget").value) || 0),
+              assignedTo: document.getElementById("t-assignee").value,
+              dueDate: due ? new Date(due + "T18:00:00").toISOString() : new Date(Date.now() + 7 * 864e5).toISOString(),
+            });
+            if (chainReady()) {
+              const cc = Commons.state.choreChain;
+              Rails.commune.createTask(cc.communeId, { budget: task.budget, desc: task.desc, dueDateMs: new Date(task.dueDate).getTime() })
+                .then(({ taskId, hash }) => {
+                  Commons.tasks.setOnchain(task.id, { taskId, tx: hash, network: Rails.netId() });
+                  // marked done locally while the receipt was in flight? finish the chain record too
+                  const cur = Commons.tasks.get(task.id);
+                  if (cur && cur.status === "done") Rails.commune.markTaskDone(cc.communeId, taskId).catch(() => {});
+                  const tf = document.getElementById("task-form");
+                  const typing = tf && !tf.classList.contains("hidden") && document.getElementById("t-desc").value.trim();
+                  if (!typing) render(); // never wipe a form someone is mid-typing in
+                })
+                .catch(() => Shell.toast("On-chain write didn't land — the bounty still stands locally"));
+            }
+            render(); Shell.toast("Bounty posted" + (chainReady() ? " — writing to CommuneOS…" : ""), "green");
+          }
+          if (act === "task-done") {
+            const t = Commons.tasks.markDone(el.dataset.id);
+            if (t && t.onchain && chainReady()) {
+              Rails.commune.markTaskDone(Commons.state.choreChain.communeId, t.onchain.taskId)
+                .then(() => Shell.toast("Completion logged on CommuneOS ⛓", "green"))
+                .catch(() => Shell.toast("Chain log failed — done locally all the same"));
+            }
+            render(); Shell.toast(`Done — ${U.fmtMoney(t.budget)} in labor credit to ${t.assignedTo === "me" ? "you" : firstName(t.assignedTo)}`, "green");
+          }
+          if (act === "task-dispute") {
+            const sel = page.querySelector(`[data-reassign="${el.dataset.id}"]`);
+            const t = Commons.tasks.get(el.dataset.id);
+            Commons.tasks.dispute(el.dataset.id, sel.value);
+            if (t && t.onchain && chainReady()) {
+              Rails.commune.disputeTask(Commons.state.choreChain.communeId, t.onchain.taskId)
+                .then(({ disputeId, hash }) => { Commons.tasks.setOnchain(t.id, Object.assign({}, t.onchain, { disputeId, disputeTx: hash })); })
+                .catch(() => {});
+            }
+            render(); Shell.toast("Dispute opened — the house votes on the proposal board", "green");
+          }
         });
       });
     }

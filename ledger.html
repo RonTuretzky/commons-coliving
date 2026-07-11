@@ -63,6 +63,54 @@
     }
 
     /* ---------- render ---------- */
+    // Labor credits: hours count like money — chores auto-log on mark-done,
+    // bounties pay out here, and anyone can log project hours by hand.
+    function laborHtml() {
+      const house = Commons.houses.mine();
+      if (!house) return "";
+      const rate = Commons.labor.rate();
+      const byMember = Commons.labor.byMember();
+      const rows = house.members.map((id) => {
+        const p = Commons.people.get(id);
+        const hrs = byMember[id] || 0;
+        return `<div class="row between">
+          <span class="row">${Shell.avatarHtml(p, "sm")}<span class="small">${U.esc(p.name)}</span></span>
+          <span class="small"><span class="tnum">${hrs}h</span> · <span class="amount pos">${U.fmtMoney(Math.round(hrs * rate * 100) / 100)}</span></span>
+        </div>`;
+      }).join("");
+      const feed = Commons.labor.all().slice(0, 6).map((l) => `
+        <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:8px">
+          <span class="small">${U.esc(Commons.people.get(l.member) ? Commons.people.get(l.member).name.split(" ")[0] : l.member)} · ${U.esc(l.desc)}</span>
+          <span class="text-caption muted">${l.hours}h · ${U.relDate(l.at)}</span>
+        </div>`).join("");
+      return `<div class="stack">
+        <div class="row between wrap">
+          <div>
+            <div class="kicker">Hours count too</div>
+            <h2 class="text-h3">Labor credits</h2>
+          </div>
+          <span class="pill ink">$${rate}/hour · the Points &amp; Pool knob</span>
+        </div>
+        <p class="small muted" style="max-width:64ch">The Twin Oaks insight: a house runs on hours as much as dollars. Chores log themselves when you mark them done; bounties pay out here; fixing the sink at midnight goes in by hand.</p>
+        <div class="grid grid-2">
+          <div class="card stack">
+            <div class="kicker">The hour ledger</div>
+            ${rows}
+            <p class="text-caption muted">Credit = hours × the house rate. Houses on Points &amp; Pool put this against contributions.</p>
+          </div>
+          <div class="card stack">
+            <div class="kicker">Log hours</div>
+            <div class="grid grid-2">
+              <div class="field"><label for="lb-desc">What was it</label><input class="input" id="lb-desc" maxlength="80" placeholder="Rebuilt the compost bays" /></div>
+              <div class="field"><label for="lb-hours">Hours</label><input class="input" id="lb-hours" type="number" min="0.25" step="0.25" value="1" /></div>
+            </div>
+            <button class="park-btn sm green" data-act="labor-log" style="align-self:start">Log it</button>
+            <div class="stack" style="--gap:4px">${feed}</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
     function render() {
       const house = Commons.houses.mine();
       if (!house) {
@@ -252,6 +300,8 @@
           </div>
         </div>
 
+        ${laborHtml()}
+
         <div class="card ink stack">
           <div class="kicker" style="color:var(--green-0)">Why settling actually happens here</div>
           <p class="small">Settle-ups ride <strong>Gnosis Chain</strong>, where the native token — xDai — is already a dollar:
@@ -373,6 +423,16 @@
           render();
           Shell.toast(`Settled ${money(s.amount)} — ${s.rail.seconds}s, $${s.rail.fee.toFixed(2)} fee`, "green");
         });
+      });
+      const lab = page.querySelector("[data-act='labor-log']");
+      if (lab) lab.addEventListener("click", () => {
+        const desc = page.querySelector("#lb-desc").value.trim();
+        const hours = Number(page.querySelector("#lb-hours").value) || 0;
+        if (!desc) { Shell.toast("Say what the hours went to"); return; }
+        if (hours <= 0) { Shell.toast("Hours have to be more than zero"); return; }
+        Commons.labor.log({ desc, hours, kind: "organizing" });
+        render();
+        Shell.toast(`${hours}h logged — ${U.fmtMoney(Math.round(hours * Commons.labor.rate() * 100) / 100)} in credit`, "green");
       });
       const auto = page.querySelector("[data-act='autosettle']");
       if (auto) auto.addEventListener("click", () => {

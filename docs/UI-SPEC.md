@@ -62,6 +62,16 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 - `Commons.match(a,b)` / `Commons.matchHouse(me,h)` now return `{score, band: 'strong'|'workable'|'stretch', bandLabel, frictions:[{title,script,gap}], conflicts, …}` — **display bands, never raw %** (Shell.matchPill does this)
 - `Commons.rhythmsOf(p)/lensesOf(p)/houseLensesOf(h)` — v2 profiles with deterministic derivation for legacy seeds · `Commons.dimsFromV2(rhythms, lenses)` legacy-dims bridge · `Commons.agreement(profile, house?)` → drafted house-agreement lines
 - `Commons.util`: `fmtMoney, fmtDate, fmtDateLong, relDate, initials, hue, esc, qp(name), clamp`
+- `Commons.tasks` — bounties (CommuneOS TaskManager model): `all()/get(id)/open()/add({desc,budget,assignedTo,dueDate})/markDone(id)` (pays assignee in labor credit) `/dispute(id, newAssignee)` (opens a `kind:'dispute'` proposal; a passing 2/3 vote reassigns) `/setOnchain(id, {taskId,tx,network})`
+- `Commons.labor` — hours ledger: `all()/log({desc,hours,kind,member?})/remove(id)/hoursBy(m)/creditBy(m)/byMember()/rate()/setRate(r)`; chores auto-log `minutes/60` on mark-done, bounties log `budget/rate`
+- `Commons.agreementDoc` — the living agreement: `ensure()` (drafts v1 from the quiz generator) `/get()/sign(memberId)/signedBy(m)/proposeAmendment(lines, note)` (a `kind:'agreement'` proposal — passing applies v+1, resets signatures) `/setNotarized({digest,tx,version,at})`
+- `Commons.health` — the quiz-validation loop: `log()` (check-in history; `rebalance.week()` appends) · `metrics()` → `{choreRate%, checkins4w, lowStreak, disputes, laborHours}`
+- `Commons.clicks` — post-event mutual match: `myPicks(eventId)/toggle(eventId,personId)/mutuals(eventId)/allMutuals()` — picks are private; only reciprocal picks surface
+- `Commons.houses.split(newName, movingIds)` → `{house, movedShare}` — pro-rata fund division; your side keeps the pruned systems
+- `Commons.money.payBill(id)` now also writes the bill to the ledger (equal split across its rotation, `fromBill` tag)
+- `events.add` accepts `recurringMonthly: true`; past recurring dates roll forward on load
+- `Rails.commune.createTask/markTaskDone/disputeTask/voteOnDispute` (CommuneOS on-chain bounties) · `Rails.notarize(text)` → `{digest, hash}` (0-value self-send carrying the keccak256) · `Rails.contentHash(text)`
+- PWA: `manifest.webmanifest` + `sw.js` (network-first HTML, stale-while-revalidate assets), registered by `Shell.render()`
 
 **Copy rule ("systems, not templates"):** the product story is *"run the house on a system that works"* — the word "template" undersells and should be avoided in headings/CTAs (fine in passing). The calculators are first-class features: label them CALCULATOR and cross-link them prominently.
 - `Shell.toast(msg, 'green'?)` · `Shell.avatarHtml(profile, 'sm'|'lg'?)` · `Shell.matchPill(matchResult)`
@@ -92,6 +102,9 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 | templates.html | `templates` | Economic templates gallery + interactive calculators (room-weighted rent splitter, sliding-scale contributions) |
 | meals.html | `meals` | Meal plan presets + interactive cost/quantity calculator, cook rotation, shopping list, batch timeline |
 | chore-builder.html | `chores` | Space-by-space chore schedule calculator with effort estimates; applies a generated rotation to the house |
-| ledger.html | `ledger` | Splitwise-style house ledger: expenses w/ 4 split modes, template-aware defaults, net balances, simplify-debts, one-tap rail settlement, category chart, activity feed |
+| ledger.html | `ledger` | Splitwise-style house ledger: expenses w/ 4 split modes, template-aware defaults, net balances, simplify-debts, one-tap rail settlement, category chart, activity feed, labor-credit hour ledger |
+| gathering.html | `gatherings` | Shareable per-event page (`?id=`): details, RSVP/deposit, copy-link + .ics export, attendees, post-event mutual match |
+| agreement.html | `dashboard` | The living house agreement: versioned text, member signatures, 2/3 amendments, optional Gnosis notarization |
+| split.html | `dashboard` | The split protocol: social-ceiling readout, member picker, pro-rata fund math, two-step confirm |
 
-Note: the app is deliberately web2 — no wallets, tokens, or on-chain anything in UI copy. Money mechanics are "templates + a ledger + votes". Words like *stake*, *on-chain*, *crypto*, *contract* must not appear in visible copy (use *deposit*, *ledger*, *template*).
+Note on chain copy: money mechanics read as "systems + a ledger + votes" first; the Gnosis rails are real but framed pragmatically ("held by the contract, not by anyone", "cheaper than remembering"). No token-speak, no DeFi vocabulary, never the word "commune" in UI copy.

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Split Protocol — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local helpers only — shared files untouched */
+    .mem-tile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--paper-2); border-radius: 10px; cursor: pointer; background: rgba(255,255,255,.6); transition: border-color .15s, background .15s, transform .15s; user-select: none; }
+    .mem-tile:hover { border-color: var(--app-0); transform: translateY(-1px); }
+    .mem-tile.moving { border-color: var(--app); background: var(--paper-0); }
+    .mem-tile input { accent-color: var(--app); width: 16px; height: 16px; flex: none; margin: 0; cursor: pointer; }
+    .mem-tile .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mem-tile .side-tag { font-family: var(--display); font-weight: 500; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-soft); flex: none; }
+    .mem-tile.moving .side-tag { color: var(--app-1); }
+    .step-block { padding-top: 18px; border-top: 1px solid var(--paper-1); }
+    .step-block:first-child { padding-top: 0; border-top: 0; }
+    .share-num { font-family: var(--display); font-weight: 700; font-size: 1.35rem; }
+    #confirm-btn.armed .face { background: var(--red-0); color: var(--red); border: 1px solid var(--red); }
+    @media (max-width: 640px) { .mem-grid { grid-template-columns: 1fr 1fr !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="section">
+      <div class="container narrow stack-lg" id="page" style="padding-top:36px"></div>
+    </section>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("dashboard");
+    Shell.gate();
+    (function () {
+      const U = Commons.util;
+      const esc = U.esc;
+      const page = document.getElementById("page");
+      const qs = (s) => document.querySelector(s);
+
+      const CEILING = 8;
+      const house = Commons.houses.mine();
+
+      /* ---------- no house: nothing to divide ---------- */
+      if (!house) {
+        page.innerHTML = `
+          <div class="card stack center-text" style="padding:48px 24px">
+            <div class="kicker green">The split protocol</div>
+            <h1 class="text-h3">No house to split — that's the good news</h1>
+            <p class="muted">Dividing a house is a move you earn by growing one first. Find a crew, or start your own — the ceiling is a long way off.</p>
+            <div class="row center wrap" style="margin-top:6px">
+              <a class="lifted sm" href="browse.html"><span class="shadow"></span><span class="face">Browse homes</span></a>
+              <a class="park-btn light" href="create.html">Start a house</a>
+            </div>
+          </div>`;
+        return;
+      }
+
+      /* ---------- shared state ---------- */
+      const members = house.members.slice();
+      const total = members.length;
+      const moving = new Set();
+      let armed = false;
+
+      const person = (id) => Commons.people.get(id);
+      const displayName = (id) => (id === "me" ? "You" : person(id).name);
+      const hood = house.hood || house.borough || "the same corner of the map";
+      const defaultName = house.name + " II";
+
+      function readiness() {
+        if (total <= 6) return {
+          pill: `<span class="pill match">No pressure — you have headroom</span>`,
+          bar: `<div class="progress green"><i style="width:${Math.round((total / CEILING) * 100)}%"></i></div>`,
+          sub: `Planning a split at ${total} is early — and early is exactly when the good ones get planned. Nothing on this page commits you to anything until the very last button.`,
+        };
+        if (total <= 8) return {
+          pill: `<span class="pill warn">Worth planning</span>`,
+          bar: `<div class="progress warn"><i style="width:${Math.round((total / CEILING) * 100)}%"></i></div>`,
+          sub: `At ${total} people you're at the size where every decision starts needing a meeting. This is the window where a split is a choice, not a rescue.`,
+        };
+        return {
+          pill: `<span class="pill conflict">Past the ceiling — split while you still like each other</span>`,
+          bar: `<div class="progress"><i style="width:100%;background:var(--red)"></i></div>`,
+          sub: `${total} people is past the point where informal trust carries the load. The kindest thing a big house can do is become two good ones — on purpose, on schedule.`,
+        };
+      }
+
+      /* ---------- main render ---------- */
+      function render() {
+        const r = readiness();
+        page.innerHTML = `
+          <div class="card stack">
+            <div class="kicker">When a house outgrows itself</div>
+            <h1 class="text-h2">The Split Protocol</h1>
+            <p class="muted">Every house has a social ceiling — past about eight people, coordination costs curve up and informal trust stops carrying the load. Hutterite colonies have handled this for centuries: they divide <em>before</em> things fray, and the daughter colony leaves fully provisioned — land, tools, and money already in hand. Communities that plan their divisions survive them; the ones that wait for the blowup don't.</p>
+          </div>
+
+          <div class="card stack">
+            <div class="row between wrap">
+              <span><strong class="display-bold" style="font-size:1.15rem">${total} ${total === 1 ? "person" : "people"}</strong> <span class="small muted">against the ~${CEILING}-person ceiling</span></span>
+              ${r.pill}
+            </div>
+            ${r.bar}
+            <p class="text-caption muted">${r.sub}</p>
+          </div>
+
+          <div class="card stack-lg" id="wizard">
+            <div class="step-block stack">
+              <div class="kicker">Step 1 · Who goes</div>
+              <p class="small muted">Tick everyone who moves to the new house. Everyone unticked stays put. Somebody has to be on each side — that's the whole idea.</p>
+              <div class="grid grid-3 mem-grid" id="mem-grid" style="gap:10px"></div>
+              <div class="row wrap" id="counts"></div>
+            </div>
+
+            <div class="step-block stack">
+              <div class="kicker">Step 2 · The new house</div>
+              <div class="field">
+                <label for="f-newname">Name the daughter house</label>
+                <input id="f-newname" class="input" type="text" maxlength="40" value="${esc(defaultName)}" autocomplete="off" />
+                <div class="help">A name of its own beats a hand-me-down — but "${esc(defaultName)}" works while you argue about it over dinner.</div>
+              </div>
+              <div class="row wrap" style="gap:8px;align-items:center">
+                <span class="small muted">Carried over:</span>
+                <span class="pill paper">📍 ${esc(hood)}</span>
+                <span class="pill pine">${esc(Commons.econ.label(house.poolModel))}</span>
+                <span class="text-caption muted">— same neighborhood, same money system. Everything else starts fresh.</span>
+              </div>
+            </div>
+
+            <div class="step-block stack">
+              <div class="kicker">Step 3 · The math, before you commit</div>
+              <div id="preview" class="stack"></div>
+            </div>
+
+            <div class="step-block">
+              <div class="row between wrap" style="gap:12px">
+                <span class="text-caption muted" id="confirm-reason" style="flex:1;min-width:200px"></span>
+                <button type="button" class="lifted" id="confirm-btn"><span class="shadow"></span><span class="face">Divide the house</span></button>
+              </div>
+            </div>
+          </div>
+
+          ${footerNote()}`;
+
+        renderMembers();
+        renderCounts();
+        renderPreview();
+        updateConfirm();
+        wire();
+      }
+
+      function footerNote() {
+        return `
+          <div class="card flat">
+            <p class="small muted" style="margin:0">A split done on purpose is the opposite of a failure — it's the house working exactly as designed, twice. Both houses stay on the map, one dinner invitation apart: <a href="browse.html">the network keeps you neighbors</a>.</p>
+          </div>`;
+      }
+
+      /* ---------- step 1: member grid ---------- */
+      function renderMembers() {
+        qs("#mem-grid").innerHTML = members.map((id) => {
+          const on = moving.has(id);
+          return `
+            <label class="mem-tile ${on ? "moving" : ""}" data-id="${esc(id)}">
+              <input type="checkbox" data-mem="${esc(id)}" ${on ? "checked" : ""} />
+              ${Shell.avatarHtml(person(id), "sm")}
+              <span class="who small">${esc(displayName(id))}</span>
+              <span class="side-tag">${on ? "moving" : "staying"}</span>
+            </label>`;
+        }).join("");
+      }
+
+      function renderCounts() {
+        const m = moving.size, n = total - m;
+        qs("#counts").innerHTML = `
+          <span class="pill paper">Staying: ${n}</span>
+          <span class="pill open">Moving: ${m}</span>`;
+      }
+
+      /* ---------- step 3: live preview ---------- */
+      function renderPreview() {
+        const t = Commons.money.treasury();
+        const m = moving.size, n = total - m;
+        const movedShare = Math.round((t.balance * m) / total * 100) / 100;
+        const stayShare = Math.round((t.balance - movedShare) * 100) / 100;
+        const newName = (qs("#f-newname") ? qs("#f-newname").value.trim() : defaultName) || defaultName;
+        const iMove = moving.has("me");
+        qs("#preview").innerHTML = `
+          <p class="small" style="margin:0">The house fund holds <strong class="amount">${esc(U.fmtMoney(t.balance))}</strong> today. It divides pro-rata by headcount — no negotiating, no favorites.</p>
+          <div class="grid grid-2" style="gap:12px">
+            <div class="card flat stack" style="--gap:6px">
+              <div class="kicker">${esc(house.name)} keeps</div>
+              <span class="share-num amount">${esc(U.fmtMoney(stayShare))}</span>
+              <span class="text-caption muted">${n} ${n === 1 ? "person" : "people"} staying · ${n}/${total} of the fund</span>
+            </div>
+            <div class="card flat stack" style="--gap:6px">
+              <div class="kicker green">${esc(newName)} takes</div>
+              <span class="share-num amount pos">${esc(U.fmtMoney(movedShare))}</span>
+              <span class="text-caption muted">${m} ${m === 1 ? "person" : "people"} moving · ${m}/${total} of the fund</span>
+            </div>
+          </div>
+          <p class="small muted" style="margin:0">Whichever side you're on keeps the running rotations, pruned to its people; the other side starts clean — new chores, new ledger, same DNA.</p>
+          ${iMove ? `<p class="small" style="margin:0">🧳 <strong>You're moving</strong> — your dashboard follows you to ${esc(newName)}.</p>` : ""}`;
+      }
+
+      /* ---------- confirm: arm, then commit ---------- */
+      function validity() {
+        const m = moving.size, n = total - m;
+        const name = qs("#f-newname").value.trim();
+        if (m < 1) return "Tick at least one person to move — a split needs a moving crew.";
+        if (n < 1) return "At least one person has to stay — otherwise that's not a split, it's a move.";
+        if (!name) return "The daughter house needs a name before it can exist.";
+        return "";
+      }
+
+      function updateConfirm() {
+        const btn = qs("#confirm-btn");
+        const face = btn.querySelector(".face");
+        const reason = validity();
+        btn.disabled = !!reason;
+        btn.classList.toggle("armed", armed && !reason);
+        if (reason) {
+          armed = false;
+          face.textContent = "Divide the house";
+          qs("#confirm-reason").textContent = reason;
+        } else if (armed) {
+          face.textContent = "Yes — split " + house.name;
+          qs("#confirm-reason").textContent = "Click again to make it real — or change anything above to step back.";
+        } else {
+          face.textContent = "Divide the house";
+          qs("#confirm-reason").textContent = "Both sides look right? The button asks twice — the first click just arms it.";
+        }
+      }
+
+      function disarm() { armed = false; updateConfirm(); }
+
+      function commit() {
+        if (validity()) { updateConfirm(); return; }
+        if (!armed) { armed = true; updateConfirm(); return; }
+        const newName = qs("#f-newname").value.trim();
+        const movingIds = Array.from(moving);
+        const m = movingIds.length, n = total - m;
+        const preBalance = Commons.money.treasury().balance;
+        const iMoved = moving.has("me");
+        const res = Commons.houses.split(newName, movingIds);
+        if (!res) {
+          armed = false;
+          updateConfirm();
+          Shell.toast("That split doesn't work — someone has to stay, someone has to go");
+          return;
+        }
+        const stayShare = Math.round((preBalance - res.movedShare) * 100) / 100;
+        Shell.toast("🏡 " + newName + " is born — two healthy houses", "green");
+        renderSuccess(res.house, res.movedShare, stayShare, n, m, iMoved);
+      }
+
+      /* ---------- success ---------- */
+      function renderSuccess(newHouse, movedShare, stayShare, n, m, iMoved) {
+        page.innerHTML = `
+          <div class="center-text">
+            <div class="kicker green">The split protocol</div>
+            <h1 class="text-h2" style="margin:8px 0 10px">Two healthy houses</h1>
+            <p class="lede">${esc(house.name)} did what strong houses do — it divided on purpose, before it had to.</p>
+          </div>
+
+          <div class="grid grid-2" style="gap:14px">
+            <div class="card stack">
+              <div class="row between wrap">
+                <div class="kicker">The mother house</div>
+                ${!iMoved ? `<span class="pill pine">you live here</span>` : ""}
+              </div>
+              <h2 class="text-h3">${esc(house.name)}</h2>
+              <div class="row wrap">
+                <span class="pill paper">${n} ${n === 1 ? "member" : "members"}</span>
+                <span class="pill paper">keeps ${esc(U.fmtMoney(stayShare))}</span>
+              </div>
+              <p class="text-caption muted">Same walls, more air. ${iMoved ? "Its rotations keep running, rebuilt around the people who stayed." : "Your rotations keep running, pruned to the people still here."}</p>
+            </div>
+            <div class="card stack">
+              <div class="row between wrap">
+                <div class="kicker green">The daughter house</div>
+                ${iMoved ? `<span class="pill pine">you live here</span>` : ""}
+              </div>
+              <h2 class="text-h3">${esc(newHouse.name)}</h2>
+              <div class="row wrap">
+                <span class="pill open">${m} ${m === 1 ? "member" : "members"}</span>
+                <span class="pill match">takes ${esc(U.fmtMoney(movedShare))}</span>
+              </div>
+              <p class="text-caption muted">Fully provisioned from day one — its share of the fund in hand, ${esc(hood)} address, same money system. New chores, new ledger, same DNA.</p>
+            </div>
+          </div>
+
+          <div class="card flat">
+            <p class="small muted" style="margin:0">This is the old mother-and-daughter tradition: when a colony reached its working limit, it didn't wait for the fracture — it built the daughter settlement first, stocked it fully, and half the families moved with a blessing instead of a grudge. Both sides started whole. So did yours.</p>
+          </div>
+
+          <div class="row wrap center">
+            <a class="lifted green" href="dashboard.html"><span class="shadow"></span><span class="face">${iMoved ? "Open " + esc(newHouse.name) + "'s dashboard" : "Back to your dashboard"}</span></a>
+            <a class="park-btn light" href="browse.html">See both houses in the gallery</a>
+          </div>
+
+          ${footerNote()}`;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      /* ---------- wiring ---------- */
+      function wire() {
+        qs("#mem-grid").addEventListener("change", (e) => {
+          const box = e.target.closest("[data-mem]");
+          if (!box) return;
+          const id = box.dataset.mem;
+          if (box.checked) moving.add(id); else moving.delete(id);
+          const tile = box.closest(".mem-tile");
+          tile.classList.toggle("moving", box.checked);
+          tile.querySelector(".side-tag").textContent = box.checked ? "moving" : "staying";
+          disarm();
+          renderCounts();
+          renderPreview();
+          updateConfirm();
+        });
+        qs("#f-newname").addEventListener("input", () => {
+          disarm();
+          renderPreview();
+          updateConfirm();
+        });
+        qs("#confirm-btn").addEventListener("click", commit);
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

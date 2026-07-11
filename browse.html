@@ -176,6 +176,15 @@
 
       const founded = h.founded === "forming" ? "Forming now" : `Est. ${esc(h.founded)}`;
 
+      // The five lenses at a glance — 0–3 filled dots per lens, same scale as the quiz
+      const hl = Commons.houseLensesOf(h);
+      const lensDots = Commons.quizV2.LENSES.map((L) => {
+        const v = hl[L.id] ?? 0;
+        const dots = [0, 1, 2].map((i) =>
+          `<i style="width:5px;height:5px;border-radius:50%;display:inline-block;background:${i < v ? "var(--pine-2)" : "var(--paper-1)"}"></i>`).join("");
+        return `<span class="row" style="gap:3px" title="${esc(L.label)}: ${esc(L.levels[v] || "")}">${L.emoji}${dots}</span>`;
+      }).join("");
+
       return `
         <a class="card clickable browse-card" href="house.html?id=${esc(h.id)}">
           <div class="card-band browse-band" style="background:${esc(h.hue)}">${esc(h.name)}</div>
@@ -187,6 +196,7 @@
             ${statusPill}
           </div>
           <div class="row wrap">${Shell.matchPill(m)}</div>
+          <div class="row wrap text-caption" style="gap:10px">${lensDots}</div>
           <p class="small muted clamp-2">${esc(h.blurb)}</p>
           <div class="row between card-foot">
             ${stack}

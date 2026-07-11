@@ -13,7 +13,7 @@ No build step, no backend. Open `index.html`, or:
 python3 -m http.server 8080
 ```
 
-Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn — no server), take the quiz, join or found a house, run it. App pages are auth-gated; a new user starts houseless like a real one. State lives in `localStorage` (`dp-commons-v7`); "Reset this device" is in the account danger zone.
+Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn — no server), take the quiz, join or found a house, run it. App pages are auth-gated; a new user starts houseless like a real one. State lives in `localStorage` (`dp-commons-v9`); backup/restore ships as one-file JSON export/import on the account page; "Reset this device" is in the account danger zone. Installable as a PWA (offline shell via service worker).
 
 ## The tools
 
@@ -27,7 +27,14 @@ Faithful vanilla-CSS port of [decentralpark-ui-kit](https://github.com/decentral
 
 ## Mechanics
 
-Templates + a ledger + votes. Deterministic bill rotation, period-calculated chores (`period = floor((now−start)/freq)`, no stored instances), 2/3-majority proposals with auto-resolution.
+Systems + a ledger + votes. Deterministic bill rotation, period-calculated chores (`period = floor((now−start)/freq)`, no stored instances), 2/3-majority proposals with auto-resolution — and the same vote machinery drives bounty disputes and agreement amendments.
+
+- **Bounties** (`dashboard.html`) — one-off jobs with a budget, the CommuneOS TaskManager model; completion pays labor credit; disputes go to a 2/3 vote that reassigns on pass.
+- **Labor credits** (`ledger.html`) — hours count like money (the Twin Oaks insight): chores auto-log minutes on mark-done, bounties pay `budget/rate` hours, project hours log by hand.
+- **The living agreement** (`agreement.html`) — versioned house agreement drafted from the quiz, member signatures, amendments by 2/3 vote, optional keccak256 notarization on Gnosis.
+- **House health** — check-ins, chore-close rate, disputes and logged hours roll into a dashboard card: the quiz-validation loop, instrumented.
+- **The split protocol** (`split.html`) — past ~8 people a house divides Hutterite-style: pro-rata fund split, rotations pruned, both houses stay in the network.
+- **Gatherings, shareable** (`gathering.html?id=`) — per-event pages with copy-link and real `.ics` export, monthly recurrence that rolls itself forward, and post-event mutual matching (picks stay private until reciprocal).
 
 ## Gnosis rails (real)
 
@@ -40,7 +47,7 @@ Templates + a ledger + votes. Deterministic bill rotation, period-calculated cho
 
 ## E2E tests
 
-37 headless Playwright tests drive every feature against real store state — account creation/sign-out, the full quiz, ledger splits/settle/auto-settle, 2/3 votes executing from the fund, the check-in reallocator, escrow reserve/refund, the steward's draft→approve flow, the wizard, and both calculators.
+60 headless Playwright tests drive every feature against real store state — account creation/sign-out, the full quiz, ledger splits/settle/auto-settle, 2/3 votes executing from the fund, the check-in reallocator, escrow reserve/refund, the steward's draft→approve flow, the wizard, both calculators, bounties (incl. on-chain dual-write + dispute votes), the agreement lifecycle (sign → amend → notarize on anvil), labor credits, the split protocol, mutual match, `.ics` downloads, PWA registration, and JSON backup/restore.
 
 ```bash
 python3 -m http.server 8091 &

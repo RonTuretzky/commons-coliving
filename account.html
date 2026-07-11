@@ -277,6 +277,15 @@
         ${passkeyCardHtml(a)}
         ${walletCardHtml()}
         <div class="card flat stack">
+          <div class="kicker">Your data</div>
+          <p class="small muted" style="margin:0">Local-first means portable: everything on this device — account, house, ledger, quiz — as one JSON file. Move devices, keep a backup, or hand a copy to your house.</p>
+          <div class="row wrap">
+            <button class="park-btn light sm" id="data-export">Download backup</button>
+            <label class="park-btn light sm" style="cursor:pointer">Restore from file<input type="file" id="data-import" accept="application/json,.json" style="display:none"></label>
+            <label class="row text-caption muted" style="gap:6px;cursor:pointer"><input type="checkbox" id="data-inc-key" style="accent-color:var(--pine-2)">include wallet key <span title="The key controls real xDai — only include it in backups you'd trust with cash">⚠</span></label>
+          </div>
+        </div>
+        <div class="card flat stack">
           <div class="kicker" style="color:var(--red)">Danger zone</div>
           <div class="row between wrap">
             <span class="small">Sign out of this device${a.passkey ? " (passkey required to get back in)" : ""}.</span>
@@ -300,6 +309,51 @@
         Commons.account.signOut();
         Shell.toast("Signed out");
         setTimeout(() => location.reload(), 400);
+      });
+      document.getElementById("data-export").addEventListener("click", () => {
+        const payload = {
+          app: "colive.fun", exportedAt: new Date().toISOString(),
+          state: Commons.state,
+          walletKey: (document.getElementById("data-inc-key").checked && window.Rails && Rails.hasWallet())
+            ? Rails.exportKey() : undefined,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "colive-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+        link.click();
+        URL.revokeObjectURL(link.href);
+        Shell.toast(payload.walletKey ? "Backed up — that file holds your wallet key, treat it like cash" : "Backed up", "green");
+      });
+      document.getElementById("data-import").addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        e.target.value = ""; // so re-picking the same file fires change again
+        reader.onload = () => {
+          try {
+            const payload = JSON.parse(reader.result);
+            if (!payload || payload.app !== "colive.fun" || !payload.state || !payload.state.version) {
+              Shell.toast("That's not a colive.fun backup"); return;
+            }
+            const migrated = Commons.migrate(payload.state);
+            if (!migrated) {
+              Shell.toast("Backup is from app version " + payload.state.version + " — this device can't read it"); return;
+            }
+            localStorage.setItem("dp-commons-v" + migrated.version, JSON.stringify(migrated));
+            if (payload.walletKey && window.Rails) {
+              // a wallet key controls real xDai — never silently replace one that exists
+              if (!Rails.hasWallet()) {
+                try { Rails.importKey(payload.walletKey); } catch (_) { /* bad key in file — state still restores */ }
+              } else if (Rails.exportKey() !== payload.walletKey) {
+                Shell.toast("Kept this device's wallet key — the backup holds a different one (forget the wallet first to restore it)");
+              }
+            }
+            Shell.toast("Restored — reloading", "green");
+            setTimeout(() => location.reload(), 600);
+          } catch (_) { Shell.toast("Couldn't read that file"); }
+        };
+        reader.readAsText(file);
       });
       const wipe = document.getElementById("wipe-all");
       if (wipe) wipe.addEventListener("click", () => {

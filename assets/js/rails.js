@@ -129,6 +129,19 @@
     { type: "function", name: "markChoreComplete", stateMutability: "nonpayable",
       inputs: [{ name: "communeId", type: "uint256" }, { name: "choreId", type: "uint256" }, { name: "period", type: "uint256" }], outputs: [] },
     { type: "function", name: "choreScheduler", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+    { type: "function", name: "createTask", stateMutability: "nonpayable",
+      inputs: [
+        { name: "communeId", type: "uint256" }, { name: "budget", type: "uint256" },
+        { name: "description", type: "string" }, { name: "dueDate", type: "uint256" },
+        { name: "assignedTo", type: "address" },
+      ], outputs: [{ name: "taskId", type: "uint256" }] },
+    { type: "function", name: "markTaskDone", stateMutability: "nonpayable",
+      inputs: [{ name: "communeId", type: "uint256" }, { name: "taskId", type: "uint256" }], outputs: [] },
+    { type: "function", name: "disputeTask", stateMutability: "nonpayable",
+      inputs: [{ name: "communeId", type: "uint256" }, { name: "taskId", type: "uint256" }, { name: "newAssignee", type: "address" }],
+      outputs: [{ name: "disputeId", type: "uint256" }] },
+    { type: "function", name: "voteOnDispute", stateMutability: "nonpayable",
+      inputs: [{ name: "communeId", type: "uint256" }, { name: "disputeId", type: "uint256" }, { name: "support", type: "bool" }], outputs: [] },
   ];
   const SCHEDULER_ABI = [
     { type: "function", name: "isChoreComplete", stateMutability: "view",
@@ -158,16 +171,28 @@
     return pk ? V.privateKeyToAccount(pk) : null;
   }
 
-  async function escrowWrite(fn, idStr, value) {
-    const client = wal();
-    if (!client || !escrowAddress()) throw new Error("rails unavailable");
-    const hash = await client.writeContract({
-      address: escrowAddress(), abi: ABI, functionName: fn,
-      args: [idFor(idStr)],
-      ...(value ? { value } : {}),
+  // One wallet, one nonce stream: every write goes through this queue so two
+  // quick clicks can't race the same pending nonce (the second tx would be
+  // rejected or silently replace the first).
+  let txQueue = Promise.resolve();
+  function enqueue(fn) {
+    const run = txQueue.then(fn, fn);
+    txQueue = run.catch(() => {});
+    return run;
+  }
+
+  function escrowWrite(fn, idStr, value) {
+    return enqueue(async () => {
+      const client = wal();
+      if (!client || !escrowAddress()) throw new Error("rails unavailable");
+      const hash = await client.writeContract({
+        address: escrowAddress(), abi: ABI, functionName: fn,
+        args: [idFor(idStr)],
+        ...(value ? { value } : {}),
+      });
+      await pub().waitForTransactionReceipt({ hash });
+      return hash;
     });
-    await pub().waitForTransactionReceipt({ hash });
-    return hash;
   }
 
   const idFor = (s) => V.keccak256(V.stringToBytes(String(s)));
@@ -201,26 +226,30 @@
       return V.formatEther(b);
     },
 
-    async send(to, xdai) {
-      const client = wal();
-      if (!client) throw new Error("no wallet");
-      const hash = await client.sendTransaction({ to, value: V.parseEther(String(xdai)) });
-      await pub().waitForTransactionReceipt({ hash });
-      return hash;
+    send(to, xdai) {
+      return enqueue(async () => {
+        const client = wal();
+        if (!client) throw new Error("no wallet");
+        const hash = await client.sendTransaction({ to, value: V.parseEther(String(xdai)) });
+        await pub().waitForTransactionReceipt({ hash });
+        return hash;
+      });
     },
 
     escrow: {
       available: () => !!escrowAddress() && !!localStorage.getItem(KEY_WALLET),
       address: escrowAddress,
       idFor,
-      async create(idStr, startsAtMs, depositXdai) {
-        const client = wal();
-        const hash = await client.writeContract({
-          address: escrowAddress(), abi: ABI, functionName: "create",
-          args: [idFor(idStr), BigInt(Math.floor(startsAtMs / 1000)), V.parseEther(String(depositXdai))],
+      create(idStr, startsAtMs, depositXdai) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: escrowAddress(), abi: ABI, functionName: "create",
+            args: [idFor(idStr), BigInt(Math.floor(startsAtMs / 1000)), V.parseEther(String(depositXdai))],
+          });
+          await pub().waitForTransactionReceipt({ hash });
+          return hash;
         });
-        await pub().waitForTransactionReceipt({ hash });
-        return hash;
       },
       deposit: (idStr, xdai) => escrowWrite("deposit", idStr, V.parseEther(String(xdai))),
       withdraw: (idStr) => escrowWrite("withdraw", idStr),
@@ -247,34 +276,38 @@
       available: () => !!communeOsAddress() && !!localStorage.getItem(KEY_WALLET),
       address: communeOsAddress,
       // chores: [{onchainId, name, freqDays, startMs}]
-      async create(houseName, chores) {
-        const client = wal();
-        const schedules = chores.map((c) => ({
-          id: BigInt(c.onchainId),
-          title: c.name,
-          frequency: BigInt(Math.max(1, Math.round(c.freqDays * 86400))),
-          startTime: BigInt(Math.floor(c.startMs / 1000)),
-          deleted: false,
-        }));
-        const hash = await client.writeContract({
-          address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "createCommune",
-          args: [houseName, false, 0n, schedules, "colive.fun"],
+      create(houseName, chores) {
+        return enqueue(async () => {
+          const client = wal();
+          const schedules = chores.map((c) => ({
+            id: BigInt(c.onchainId),
+            title: c.name,
+            frequency: BigInt(Math.max(1, Math.round(c.freqDays * 86400))),
+            startTime: BigInt(Math.floor(c.startMs / 1000)),
+            deleted: false,
+          }));
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "createCommune",
+            args: [houseName, false, 0n, schedules, "colive.fun"],
+          });
+          const receipt = await pub().waitForTransactionReceipt({ hash });
+          // CommuneCreated(uint256 indexed communeId, string, address indexed, bool, uint256)
+          const topic = V.keccak256(V.stringToBytes("CommuneCreated(uint256,string,address,bool,uint256)"));
+          const log = receipt.logs.find((l) => l.topics && l.topics[0] === topic);
+          if (!log) throw new Error("no CommuneCreated event");
+          return { communeId: Number(BigInt(log.topics[1])), hash };
         });
-        const receipt = await pub().waitForTransactionReceipt({ hash });
-        // CommuneCreated(uint256 indexed communeId, string, address indexed, bool, uint256)
-        const topic = V.keccak256(V.stringToBytes("CommuneCreated(uint256,string,address,bool,uint256)"));
-        const log = receipt.logs.find((l) => l.topics && l.topics[0] === topic);
-        if (!log) throw new Error("no CommuneCreated event");
-        return { communeId: Number(BigInt(log.topics[1])), hash };
       },
-      async markComplete(communeId, choreId, period) {
-        const client = wal();
-        const hash = await client.writeContract({
-          address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "markChoreComplete",
-          args: [BigInt(communeId), BigInt(choreId), BigInt(period)],
+      markComplete(communeId, choreId, period) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "markChoreComplete",
+            args: [BigInt(communeId), BigInt(choreId), BigInt(period)],
+          });
+          await pub().waitForTransactionReceipt({ hash });
+          return hash;
         });
-        await pub().waitForTransactionReceipt({ hash });
-        return hash;
       },
       async schedulerAddress() {
         return await pub().readContract({ address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "choreScheduler", args: [] });
@@ -286,7 +319,74 @@
           args: [BigInt(communeId), BigInt(choreId), BigInt(period)],
         });
       },
+      // ---- bounties: the CommuneOS TaskManager. Caller AND assignee must be
+      // commune members; the house commune has one on-chain member (this
+      // device's wallet), so on-chain tasks are assigned to it by default.
+      createTask(communeId, { budget, desc, dueDateMs, assignedTo }) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "createTask",
+            args: [BigInt(communeId), BigInt(Math.max(0, Math.round(budget || 0))), desc,
+              BigInt(Math.floor(dueDateMs / 1000)), assignedTo || account().address],
+          });
+          const receipt = await pub().waitForTransactionReceipt({ hash });
+          const topic = V.keccak256(V.stringToBytes("TaskCreated(uint256,uint256,address,uint256,string,uint256)"));
+          const log = receipt.logs.find((l) => l.topics && l.topics[0] === topic);
+          if (!log) throw new Error("no TaskCreated event");
+          return { taskId: Number(BigInt(log.topics[1])), hash };
+        });
+      },
+      markTaskDone(communeId, taskId) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "markTaskDone",
+            args: [BigInt(communeId), BigInt(taskId)],
+          });
+          await pub().waitForTransactionReceipt({ hash });
+          return hash;
+        });
+      },
+      disputeTask(communeId, taskId, newAssignee) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "disputeTask",
+            args: [BigInt(communeId), BigInt(taskId), newAssignee || account().address],
+          });
+          const receipt = await pub().waitForTransactionReceipt({ hash });
+          const topic = V.keccak256(V.stringToBytes("DisputeCreated(uint256,uint256,address)"));
+          const log = receipt.logs.find((l) => l.topics && l.topics[0] === topic);
+          return { disputeId: log ? Number(BigInt(log.topics[1])) : null, hash };
+        });
+      },
+      voteOnDispute(communeId, disputeId, support) {
+        return enqueue(async () => {
+          const client = wal();
+          const hash = await client.writeContract({
+            address: communeOsAddress(), abi: COMMUNE_ABI, functionName: "voteOnDispute",
+            args: [BigInt(communeId), BigInt(disputeId), !!support],
+          });
+          await pub().waitForTransactionReceipt({ hash });
+          return hash;
+        });
+      },
     },
+
+    // Notarize any content hash on Gnosis: a 0-value self-send carrying the
+    // hash as calldata — a timestamped, immutable existence proof for pennies.
+    notarize(text) {
+      return enqueue(async () => {
+        const client = wal();
+        if (!client) throw new Error("no wallet");
+        const digest = V.keccak256(V.stringToBytes(String(text)));
+        const hash = await client.sendTransaction({ to: account().address, value: 0n, data: digest });
+        await pub().waitForTransactionReceipt({ hash });
+        return { digest, hash };
+      });
+    },
+    contentHash: (text) => V.keccak256(V.stringToBytes(String(text))),
 
     hydrateAddresses,
     short: (addr) => (addr ? addr.slice(0, 6) + "…" + addr.slice(-4) : ""),

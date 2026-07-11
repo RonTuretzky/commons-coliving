@@ -157,7 +157,11 @@ Launching a house chains straight into configuration: create → chore calculato
 
 - **Rooms open** — an established house lists a room; seekers see house-level match % and conflict count computed against *all current members*. ("It should be hybrid" — houses seek people as much as people seek houses.)
 - **Event production pooling** — the same pooled-money + escrow + vendor rails serve one-off productions (the wedding-commune case; Airbnb-for-vendors is the same infrastructure as retreat booking). Not MVP, but the data model shouldn't preclude it.
-- **Late stage (explicitly deferred):** inter-house resource sharing, tool libraries, bulk buying / economies of scale, insurance pools, house mergers, multi-house retreats.
+- **Inter-house federation (proposed, not built):** tool libraries, bulk buying, and the wider federation rails — see the design deck at `network-proposal.html`. Insurance pools, house mergers, multi-house retreats stay deferred.
+- **The split protocol (shipped):** the Hutterite move — a house past the ~8-person social ceiling divides on purpose: pro-rata fund split, rotations pruned to each side, both houses stay neighbors in the network.
+- **The living agreement (shipped):** versioned, member-signed, amended through the same 2/3 vote machinery, optionally notarized on Gnosis (keccak256 in a 0-value self-send).
+- **Bounties + labor credits (shipped):** one-off jobs with budgets (CommuneOS TaskManager model, optional on-chain dual-write); completion pays hours into a labor ledger — hours count like money.
+- **Post-event mutual match (shipped):** after a gathering, attendees privately mark who they'd live with; a name surfaces only when it's mutual.
 
 ---
 
@@ -176,7 +180,7 @@ Launching a house chains straight into configuration: create → chore calculato
 
 ## 5. Demo-mode prototype (this repo)
 
-Static, no build step. **Productized, local-first:** a marketing landing funnels into real account creation (name, photo, avatar, optional WebAuthn **passkey** — Touch ID guards the account, no server involved). App pages are auth-gated like any product. A new user starts houseless: quiz → browse the seeded NYC world (7 houses, 15 seekers, events) → **actually join a house** (you enter its roster, chore/bill rotations, contribution sheet, and meal plan) or found one (fresh, empty systems). All state in `localStorage` (`dp-commons-v7`); device reset lives in the account's danger zone. A 29-test Playwright suite drives the entire journey.
+Static, no build step. **Productized, local-first:** a marketing landing funnels into real account creation (name, photo, avatar, optional WebAuthn **passkey** — Touch ID guards the account, no server involved). App pages are auth-gated like any product. A new user starts houseless: quiz → browse the seeded NYC world (7 houses, 15 seekers, events) → **actually join a house** (you enter its roster, chore/bill rotations, contribution sheet, and meal plan) or found one (fresh, empty systems). All state in `localStorage` (`dp-commons-v9`), portable via one-file JSON backup/restore; installable as a PWA; device reset lives in the account's danger zone. A 60-test Playwright suite (incl. an anvil-backed on-chain rig) drives the entire journey.
 
 | Page | Flow covered |
 |---|---|

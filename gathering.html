@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gathering — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    /* page-local tweaks only — shared files untouched */
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; border-top: 1px solid var(--paper-1); padding-top: 14px; }
+    .fact .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--grey-soft); font-family: var(--display); font-weight: 500; }
+    .fact .v { font-size: .95rem; margin-top: 2px; }
+    .escrow-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--paper-main); border: 1px solid var(--paper-2); border-radius: var(--radius-sm); padding: 10px 14px; }
+    .att-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    .att { display: inline-flex; align-items: center; gap: 8px; background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 999px; padding: 5px 14px 5px 5px; text-decoration: none; color: inherit; }
+    .att:hover { border-color: var(--green); text-decoration: none; }
+    .loop-row { border-top: 1px solid var(--paper-1); padding-block: 10px; }
+    .loop-row a { text-decoration: none; color: inherit; }
+    .loop-row a:hover { text-decoration: underline; }
+    .card.mutual { background: var(--green-0); border-color: var(--green); }
+    .share-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .share-row .input { flex: 1; min-width: 220px; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/vendor/viem.js"></script>
+  <script src="assets/js/rails.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("gatherings"); // shareable page — no gate; mutations check for an account below
+
+    const U = Commons.util;
+    const esc = U.esc;
+    const page = document.getElementById("page");
+
+    const TYPE_PILL = {
+      mixer:   { cls: "open",  label: "Mixer" },
+      dinner:  { cls: "paper", label: "Open dinner" },
+      retreat: { cls: "pine",  label: "Catalyst retreat" },
+      workday: { cls: "warn",  label: "Work day" },
+    };
+    function typePill(type) {
+      const t = TYPE_PILL[type] || { cls: "paper", label: type };
+      return `<span class="pill ${t.cls}">${esc(t.label)}</span>`;
+    }
+
+    function currentEvent() {
+      const id = U.qp("id");
+      return id ? Commons.events.get(id) : null;
+    }
+    function isPast(ev) {
+      return !!ev.past || new Date(ev.when) <= new Date();
+    }
+    function shareUrl(ev) {
+      return location.origin + location.pathname + "?id=" + encodeURIComponent(ev.id);
+    }
+    function firstName(p) {
+      return ((p && p.name) || "Someone").split(/\s+/)[0];
+    }
+
+    /* ---------- .ics generation ---------- */
+    function buildIcs(ev) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const stamp = (d) =>
+        d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) +
+        "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + "Z";
+      const clean = (s) => String(s ?? "")
+        .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+      const start = new Date(ev.when);
+      const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+      const lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//colive.fun//EN",
+        "BEGIN:VEVENT",
+        "UID:" + clean(ev.id) + "@colive.fun",
+        "DTSTAMP:" + stamp(new Date()),
+        "DTSTART:" + stamp(start),
+        "DTEND:" + stamp(end),
+        "SUMMARY:" + clean(ev.title),
+        "LOCATION:" + clean(ev.where),
+        "DESCRIPTION:" + clean(ev.desc),
+      ];
+      if (ev.recurringMonthly) lines.push("RRULE:FREQ=MONTHLY");
+      lines.push("END:VEVENT", "END:VCALENDAR");
+      return lines.join("\r\n") + "\r\n";
+    }
+    function downloadIcs(ev) {
+      const blob = new Blob([buildIcs(ev)], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = ((ev.title || "gathering").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "gathering") + ".ics";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    /* ---------- copy link ---------- */
+    function copyShare() {
+      const input = document.getElementById("share-url");
+      if (!input) return;
+      const done = () => Shell.toast("Link copied — go text somebody", "green");
+      const fallback = () => {
+        input.focus(); input.select();
+        try { document.execCommand("copy"); done(); }
+        catch (e) { Shell.toast("Couldn't copy — long-press the link instead"); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(done).catch(fallback);
+      } else fallback();
+    }
+
+    /* ---------- page pieces ---------- */
+    function heroHtml(ev) {
+      const past = isPast(ev);
+      const count = (ev.attendees || []).length;
+      const spots = Math.max(0, (ev.capacity || 0) - count);
+      const pct = U.clamp(Math.round((count / (ev.capacity || 1)) * 100), 0, 100);
+      const host = ev.host ? Commons.houses.get(ev.host) : null;
+      return `
+        <div class="card stack">
+          <div class="row wrap">
+            ${typePill(ev.type)}
+            ${ev.recurringMonthly ? `<span class="pill paper">↻ Repeats monthly</span>` : ""}
+            ${past ? `<span class="pill ink">Already happened</span>` : `<span class="pill open">${esc(U.relDate(ev.when))}</span>`}
+          </div>
+          <h1 class="text-h3">${esc(ev.title)}</h1>
+          <div class="facts">
+            <div class="fact"><div class="k">When</div><div class="v display-bold">${esc(U.fmtDateLong(ev.when))}</div></div>
+            <div class="fact"><div class="k">Where</div><div class="v display-bold">${esc(ev.where)}</div></div>
+            <div class="fact"><div class="k">Price</div><div class="v display-bold">${ev.price > 0 ? esc(U.fmtMoney(ev.price)) + " deposit" : "Free"}</div></div>
+            <div class="fact"><div class="k">Room</div><div class="v display-bold tnum">${count} of ${ev.capacity} ${past ? "went" : "going"}</div></div>
+          </div>
+          ${past ? "" : `
+          <div class="stack" style="--gap: 6px">
+            <div class="progress${pct >= 85 ? " warn" : ""}"><i style="width: ${pct}%"></i></div>
+            <div class="text-caption muted tnum">${spots > 0 ? `${spots} spot${spots === 1 ? "" : "s"} left` : "Full up — un-RSVPs free a spot"}</div>
+          </div>`}
+          ${host ? `<div class="text-caption muted">Hosted by <a href="house.html?id=${encodeURIComponent(host.id)}">${esc(host.name)}</a></div>` : ""}
+          <p class="text-body">${esc(ev.desc)}</p>
+        </div>`;
+    }
+
+    function actionsHtml(ev) {
+      if (isPast(ev)) return "";
+      let inner;
+      if (!Commons.account.active()) {
+        inner = `
+          <div class="stack" style="--gap: 8px">
+            <span><a class="lifted sm" href="account.html"><span class="shadow"></span><span class="face">Create an account to RSVP</span></a></span>
+            <div class="text-caption muted">Takes a minute and lives in this browser — then your RSVP sticks to your name.</div>
+          </div>`;
+      } else {
+        const going = Commons.events.isRsvpd(ev.id);
+        const paid = Commons.events.escrowPaid(ev.id);
+        const railsNote = (ev.price > 0 && window.Rails && Rails.escrow.available())
+          ? ` Prefer it held by code, not custody? The on-chain xDai deposit flow lives on <a href="gatherings.html">the gatherings board</a>.`
+          : "";
+        if (ev.price > 0 && paid) {
+          inner = `
+            <div class="stack" style="--gap: 8px">
+              <div class="row wrap">
+                <span class="pill match">✓ ${esc(U.fmtMoney(paid))} held in escrow — you're in</span>
+                <a class="park-btn light sm" href="gatherings.html">Manage your deposit on the board</a>
+              </div>
+              <div class="text-caption muted">Released to the host when it happens, refunded instantly if it doesn't.</div>
+            </div>`;
+        } else {
+          inner = `
+            <div class="stack" style="--gap: 8px">
+              <div class="row wrap">
+                ${ev.price > 0
+                  ? `<button class="lifted sm green" data-action="reserve" data-amount="${Number(ev.price)}"><span class="shadow"></span><span class="face">Reserve with ${esc(U.fmtMoney(ev.price))} deposit</span></button>`
+                  : going
+                    ? `<button class="park-btn light sm" data-action="unrsvp">You're going ✓ · Un-RSVP</button>`
+                    : `<button class="lifted sm" data-action="rsvp"><span class="shadow"></span><span class="face">RSVP</span></button>`}
+              </div>
+              ${ev.price > 0
+                ? `<div class="text-caption muted">Deposits sit with the platform, not the host — released when it happens, refunded if it doesn't.${railsNote}</div>`
+                : ""}
+            </div>`;
+        }
+      }
+      const escrowBar = ev.escrow ? `
+        <div class="escrow-note">
+          <span class="pill pine">Deposits ${esc(ev.escrow.state)}</span>
+          <span class="small">${esc(ev.escrow.note)}</span>
+          <span class="spacer"></span>
+          <span class="amount pos tnum">${esc(U.fmtMoney(ev.escrow.total))}</span>
+        </div>` : "";
+      return `
+        <div class="card stack">
+          <div class="kicker">Count me in</div>
+          ${inner}
+          ${escrowBar}
+        </div>`;
+    }
+
+    function shareHtml(ev) {
+      return `
+        <div class="card stack">
+          <div class="kicker">Bring people</div>
+          <p class="small muted">This page is the invite — anyone with the link can read it, no account needed.</p>
+          <div class="share-row">
+            <input class="input" id="share-url" readonly value="${esc(shareUrl(ev))}" />
+            <button class="park-btn" data-action="copy">Copy link</button>
+            <button class="park-btn light" data-action="ics">Add to calendar (.ics)</button>
+          </div>
+        </div>`;
+    }
+
+    function attendeesHtml(ev) {
+      const past = isPast(ev);
+      const items = (ev.attendees || []).map((pid) => {
+        const p = Commons.people.get(pid);
+        if (!p) return "";
+        const href = pid === "me" ? "account.html" : "person.html?id=" + encodeURIComponent(pid);
+        return `<a class="att" href="${href}">${Shell.avatarHtml(p, "sm")}<span class="small display-bold">${esc(firstName(p))}${pid === "me" ? " (you)" : ""}</span></a>`;
+      }).join("");
+      return `
+        <div class="card stack">
+          <div class="kicker">${past ? "Who was there" : "Who's going"}</div>
+          ${items
+            ? `<div class="att-grid">${items}</div>`
+            : `<p class="small muted">Nobody on the list yet — be the first name on it.</p>`}
+        </div>`;
+    }
+
+    function loopHtml(ev) {
+      if (!isPast(ev)) return "";
+      if (!Commons.account.active() || !(ev.attendees || []).includes("me")) return "";
+      const picks = Commons.clicks.myPicks(ev.id);
+      const others = (ev.attendees || []).filter((pid) => pid !== "me");
+      const rows = others.map((pid) => {
+        const p = Commons.people.get(pid);
+        if (!p) return "";
+        const on = picks.includes(pid);
+        return `
+          <div class="row between wrap loop-row">
+            <a class="row" style="gap:10px" href="person.html?id=${encodeURIComponent(pid)}">${Shell.avatarHtml(p, "sm")}<span class="small display-bold">${esc(p.name)}</span></a>
+            ${on
+              ? `<button class="park-btn light sm" data-action="pick" data-person="${esc(pid)}">Picked ✓</button>`
+              : `<button class="lifted xs stroke" data-action="pick" data-person="${esc(pid)}"><span class="shadow"></span><span class="face">Would live with</span></button>`}
+          </div>`;
+      }).join("");
+      const mutuals = Commons.clicks.mutuals(ev.id)
+        .map((pid) => Commons.people.get(pid))
+        .filter(Boolean);
+      const mutualBlock = mutuals.length
+        ? `<div class="card flat mutual stack">
+            <div class="kicker">It's mutual</div>
+            <div class="att-grid">
+              ${mutuals.map((p) => `<a class="att" href="person.html?id=${encodeURIComponent(p.id)}">${Shell.avatarHtml(p, "sm")}<span class="small display-bold">${esc(p.name)}</span></a>`).join("")}
+            </div>
+            <p class="small">You picked each other. Don't leave it in the app — message them, or bring them to the next dinner and see how the kitchen feels.</p>
+          </div>`
+        : `<p class="small muted">Mutual picks show up here — quiet until then.</p>`;
+      return `
+        <div class="card stack">
+          <div class="kicker">Close the loop</div>
+          <p class="small">You were in the room. Mark who you'd want to share a home with. Picks are private — a name only surfaces when it's mutual.</p>
+          ${others.length
+            ? `<div class="stack" style="--gap: 0">${rows}</div>`
+            : `<p class="small muted">It was just you on the list — next time, drag a friend along.</p>`}
+          ${mutualBlock}
+        </div>`;
+    }
+
+    function render() {
+      const ev = currentEvent();
+      if (!ev) {
+        page.innerHTML = `
+          <div class="empty stack">
+            <h2 class="text-h3">This gathering isn't on the board</h2>
+            <p class="muted">It may have been cancelled, or the link got scrambled somewhere in the group chat.</p>
+            <span style="align-self:center"><a class="lifted" href="gatherings.html"><span class="shadow"></span><span class="face">See what's coming up</span></a></span>
+          </div>`;
+        return;
+      }
+      page.innerHTML = `
+        <div class="stack-lg">
+          ${heroHtml(ev)}
+          ${actionsHtml(ev)}
+          ${shareHtml(ev)}
+          ${attendeesHtml(ev)}
+          ${loopHtml(ev)}
+          <div class="row wrap">
+            <a class="park-btn light" href="gatherings.html">← All gatherings</a>
+          </div>
+        </div>`;
+    }
+
+    document.addEventListener("click", (evt) => {
+      const btn = evt.target.closest("[data-action]");
+      if (!btn) return;
+      const ev = currentEvent();
+      if (!ev) return;
+      switch (btn.dataset.action) {
+        case "rsvp": {
+          Commons.events.rsvp(ev.id);
+          Shell.toast("You're going — see you there", "green");
+          render();
+          break;
+        }
+        case "unrsvp": {
+          Commons.events.unrsvp(ev.id);
+          Shell.toast("Taken off the list");
+          render();
+          break;
+        }
+        case "reserve": {
+          const amt = Number(btn.dataset.amount) || 0;
+          if (ev.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
+            const face = btn.querySelector(".face"); if (face) face.textContent = "Signing on Gnosis…";
+            btn.disabled = true;
+            Rails.escrow.deposit(ev.id, amt).then((hash) => {
+              Commons.state.escrowTx = Commons.state.escrowTx || {};
+              Commons.state.escrowTx[ev.id] = hash;
+              Commons.events.payEscrow(ev.id, amt);
+              Shell.toast("Deposited on-chain — held by the contract, not by anyone", "green");
+              render();
+            }).catch(() => {
+              btn.disabled = false;
+              if (face) face.textContent = "Reserve with " + U.fmtMoney(amt) + " deposit";
+              Shell.toast("Deposit didn't go through — check your wallet balance and try again");
+            });
+            break;
+          }
+          Commons.events.payEscrow(ev.id, amt);
+          Shell.toast("Held in escrow — not paid to anyone yet", "green");
+          render();
+          break;
+        }
+        case "copy": {
+          copyShare();
+          break;
+        }
+        case "ics": {
+          downloadIcs(ev);
+          Shell.toast("Downloaded — open it and it lands on your calendar", "green");
+          break;
+        }
+        case "pick": {
+          const pid = btn.dataset.person;
+          const picks = Commons.clicks.toggle(ev.id, pid);
+          Shell.toast(picks.includes(pid) ? "Noted — stays private unless it's mutual" : "Pick removed");
+          render();
+          break;
+        }
+      }
+    });
+
+    // when the rails manifest lands, the deposit note may change
+    window.addEventListener("rails:addresses", render);
+
+    render();
+  </script>
+</body>
+</html>

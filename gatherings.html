@@ -61,6 +61,7 @@
           <h3 class="text-h3">People you keep crossing paths with</h3>
           <p class="muted small">Shared containers beat cold intros — this is how houses start.</p>
         </div>
+        <div id="mutual-strip"></div>
         <div class="grid grid-3" id="overlap-grid"></div>
       </div>
     </section>
@@ -118,6 +119,8 @@
           </div>
           <div class="field"><label for="g-desc">Pitch it</label>
             <textarea class="input" id="g-desc" maxlength="240" placeholder="One or two sentences — why should a stranger show up?"></textarea></div>
+          <label class="row small" style="gap:8px;cursor:pointer"><input type="checkbox" id="g-recurring" style="accent-color:var(--pine-2)" />
+            Repeats monthly — the date rolls forward automatically after each edition</label>
           <div class="row wrap">
             <button class="lifted green" id="g-submit"><span class="shadow"></span><span class="face">Put it on the calendar</span></button>
             <button class="park-btn ghost" id="g-cancel">Never mind</button>
@@ -229,8 +232,8 @@
             ${typePill(ev.type)}
             <span class="text-caption muted">${esc(U.fmtDateLong(ev.when))} · ${esc(U.relDate(ev.when))}</span>
           </div>
-          <h3 class="text-h4">${esc(ev.title)}</h3>
-          <div class="text-caption muted">${esc(ev.where)}</div>
+          <h3 class="text-h4"><a href="gathering.html?id=${encodeURIComponent(ev.id)}" style="text-decoration:none;color:inherit">${esc(ev.title)}</a></h3>
+          <div class="text-caption muted">${esc(ev.where)}${ev.recurringMonthly ? " · repeats monthly" : ""} · <a href="gathering.html?id=${encodeURIComponent(ev.id)}">share&nbsp;&amp;&nbsp;.ics ↗</a></div>
           <p class="small">${esc(ev.desc)}</p>
           <div class="stack" style="--gap: 6px">
             <div class="progress${pct >= 85 ? " warn" : ""}"><i style="width: ${pct}%"></i></div>
@@ -254,13 +257,15 @@
             ${typePill(ev.type)}
             <span class="text-caption muted">${esc(U.fmtDate(ev.when))}</span>
           </div>
-          <h3 class="text-h5 display-bold">${esc(ev.title)}</h3>
+          <h3 class="text-h5 display-bold"><a href="gathering.html?id=${encodeURIComponent(ev.id)}" style="text-decoration:none;color:inherit">${esc(ev.title)}</a></h3>
           <p class="small muted">${esc(ev.desc)}</p>
           ${hostedBy(ev)}
           <div class="row wrap" style="margin-top: auto">
             ${avatarStack(ev.attendees || [], 5)}
             <span class="text-caption muted">${count} ${count === 1 ? "person" : "people"} went</span>
           </div>
+          ${(ev.attendees || []).includes("me") && Commons.account.active()
+            ? `<a class="small" href="gathering.html?id=${encodeURIComponent(ev.id)}">Close the loop — mark who you'd live with →</a>` : ""}
         </article>`;
     }
 
@@ -300,9 +305,31 @@
         ? past.map(pastCard).join("")
         : `<div class="empty" style="grid-column: 1 / -1">No gatherings in the archive yet. The first one is always the strangest — go make it.</div>`;
 
+      renderMutuals();
       document.getElementById("overlap-grid").innerHTML = overlap.length
         ? overlap.map(overlapCard).join("")
         : `<div class="empty" style="grid-column: 1 / -1">RSVP to a mixer and this space fills itself — familiar faces come from shared rooms.</div>`;
+    }
+
+    // Mutual picks from past gatherings — private until reciprocal.
+    function renderMutuals() {
+      const wrap = document.getElementById("mutual-strip");
+      if (!wrap) return;
+      if (!Commons.account.active()) { wrap.innerHTML = ""; return; }
+      const mutuals = Commons.clicks.allMutuals();
+      if (!mutuals.length) { wrap.innerHTML = ""; return; }
+      wrap.innerHTML = `<div class="card stack" style="border-left:4px solid var(--pine-2)">
+        <div class="kicker">It's mutual</div>
+        <p class="small muted" style="margin:0">You picked each other after a gathering. That's a signal — act on it.</p>
+        <div class="row wrap">
+          ${mutuals.map(({ eventId, personId }) => {
+            const p = Commons.people.get(personId); const e = Commons.events.get(eventId);
+            if (!p) return "";
+            return `<a class="row" href="person.html?id=${encodeURIComponent(p.id)}" style="gap:8px;text-decoration:none;color:var(--ink)">
+              ${Shell.avatarHtml(p, "sm")}<span class="small"><strong>${esc(p.name)}</strong>${e ? ` <span class="muted">· ${esc(e.title)}</span>` : ""}</span></a>`;
+          }).join("")}
+        </div>
+      </div>`;
     }
 
     document.addEventListener("click", (evt) => {
@@ -453,10 +480,12 @@
           title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
           capacity: Number(document.getElementById("g-cap").value) || 20,
           price,
+          recurringMonthly: document.getElementById("g-recurring").checked || undefined,
           desc: document.getElementById("g-desc").value.trim() || "Come through — details in the group chat.",
         });
         form.classList.add("hidden");
         document.getElementById("g-title").value = ""; document.getElementById("g-desc").value = "";
+        document.getElementById("g-recurring").checked = false;
         render(); renderMine();
         window.scrollTo({ top: 0, behavior: "smooth" });
         if (price > 0 && window.Rails && Rails.enabled && Rails.escrow.available()) {

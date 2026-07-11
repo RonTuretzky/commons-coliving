@@ -1,6 +1,7 @@
 // Commons e2e suite — the productized user journey, asserted against real store state.
 import { chromium } from 'playwright';
 import { spawn, execSync } from 'child_process';
+import { readFileSync } from 'fs';
 
 const BASE = process.env.BASE_URL || 'http://localhost:8091';
 let browser, ctx, page;
@@ -87,7 +88,7 @@ async function freshChain(url) {
 }
 
 /* ---------- 0. public pages load clean ---------- */
-const PUBLIC = ['index.html', 'browse.html', 'house.html?id=h-redhook', 'person.html?id=p-maya', 'gatherings.html', 'templates.html', 'quiz.html', 'account.html', 'chore-builder.html', 'meals.html'];
+const PUBLIC = ['index.html', 'browse.html', 'house.html?id=h-redhook', 'person.html?id=p-maya', 'gatherings.html', 'gathering.html?id=e-retreat-catskills', 'templates.html', 'quiz.html', 'account.html', 'chore-builder.html', 'meals.html'];
 await fresh('index.html');
 for (const p of PUBLIC) {
   await test('public page loads clean: ' + p, async () => {
@@ -108,8 +109,31 @@ await test('landing: signed-out hero funnels to signup', async () => {
   assert(cta.includes('Get started'), 'no signup CTA: ' + cta);
 });
 
+await test('pwa: manifest linked, sw served, registration attempted', async () => {
+  await go('index.html');
+  assert((await ev(() => !!document.querySelector('link[rel="manifest"]'))), 'manifest link not injected');
+  const m = await ev(async () => (await fetch('manifest.webmanifest')).status);
+  assert(m === 200, 'manifest not served: ' + m);
+  const sw = await ev(async () => { const r = await fetch('sw.js'); return { s: r.status, t: await r.text() }; });
+  assert(sw.s === 200 && sw.t.includes('colive-v'), 'sw.js not served');
+  await page.waitForTimeout(600);
+  assert((await ev(async () => !!(await navigator.serviceWorker.getRegistration()))), 'sw not registered on localhost');
+});
+
+await test('gathering page: unknown id gets a friendly dead-end', async () => {
+  await go('gathering.html?id=e-nope');
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(body.includes("isn't on the board"), 'no friendly missing state');
+});
+
+await test('browse: house cards carry five-lens dots', async () => {
+  await go('browse.html');
+  const titles = await ev(() => Array.from(document.querySelectorAll('main [title]')).map((el) => el.title).join('|'));
+  assert(titles.includes('Governance') && titles.includes('Property'), 'no lens dots on house cards');
+});
+
 /* ---------- 1. auth gates redirect ---------- */
-const GATED = ['dashboard.html', 'ledger.html', 'chores.html', 'checkin.html', 'steward.html', 'create.html'];
+const GATED = ['dashboard.html', 'ledger.html', 'chores.html', 'checkin.html', 'steward.html', 'create.html', 'agreement.html', 'split.html'];
 for (const p of GATED) {
   await test('gate redirects when signed out: ' + p, async () => {
     await go(p);
@@ -139,6 +163,25 @@ await test('quick quiz: 12 questions → estimated profiles + upsell', async () 
   assert(body.includes('estimated'), 'no estimated labels');
   assert(body.includes('Want the real instrument'), 'no full-quiz upsell');
   assert(body.includes('house agreement'), 'no drafted agreement in quick mode');
+});
+
+await test('migration: a v8 world upcasts to v9 losslessly', async () => {
+  await fresh('index.html');
+  await ev(() => {
+    const s = JSON.parse(JSON.stringify(window.Commons.state));
+    delete s.tasks; delete s.labor; delete s.laborRate; delete s.agreementDoc; delete s.checkinLog; delete s.clicks;
+    s.version = 8;
+    s.me.name = 'V8 Veteran';
+    localStorage.setItem('dp-commons-v8', JSON.stringify(s));
+    localStorage.removeItem('dp-commons-v9');
+  });
+  await go('index.html');
+  const st = await ev(() => ({
+    v: window.Commons.state.version, name: window.Commons.me().name,
+    tasks: Array.isArray(window.Commons.state.tasks), labor: Array.isArray(window.Commons.state.labor),
+    clicks: typeof window.Commons.state.clicks === 'object',
+  }));
+  assert(st.v === 9 && st.name === 'V8 Veteran' && st.tasks && st.labor && st.clicks, 'upcast failed: ' + JSON.stringify(st));
 });
 
 /* ---------- 2. THE JOURNEY (one continuous context, like a real user) ---------- */
@@ -233,7 +276,7 @@ await test('dashboard: contribution + vote mechanics at 7 members', async () => 
   assert((await ev(() => window.Commons.money.contributions().find((c) => c.member === 'me').paid)), 'contribution not paid');
   const threshold = await ev(() => window.Commons.proposals.threshold());
   assert(threshold === 5, 'threshold should be 5 of 7, got ' + threshold);
-  await page.locator("[data-act='vote'][data-val='1'][data-id='pr-freezer']").click();
+  await page.locator("[data-act='vote'][data-val='1'][data-id='pr-freezer']:not([data-voter])").click();
   await page.waitForTimeout(300);
   let p = await ev(() => window.Commons.proposals.get('pr-freezer'));
   assert(p.votes['me'] === true && p.status === 'open', 'my vote should leave it at 4 of 5');
@@ -284,6 +327,145 @@ await test('meals: save plan includes me in rotation', async () => {
   await page.waitForTimeout(300);
   const plan = await ev(() => window.Commons.meals.plan());
   assert(plan.presetId === 'sunday-batch' && plan.rotation.includes('me'), 'plan wrong: ' + JSON.stringify(plan));
+});
+
+await test('labor credits: chores auto-log hours; manual log via ledger', async () => {
+  assert((await ev(() => window.Commons.state.labor.some((l) => l.fromChore))), 'mark-done did not auto-log hours');
+  await go('ledger.html');
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(body.includes('Labor credits'), 'no labor section on ledger');
+  const before = await ev(() => window.Commons.labor.hoursBy('me'));
+  await page.fill('#lb-desc', 'Rebuilt the compost bays');
+  await page.fill('#lb-hours', '2.5');
+  await page.locator("[data-act='labor-log']").click();
+  await page.waitForTimeout(300);
+  const after = await ev(() => window.Commons.labor.hoursBy('me'));
+  assert(Math.abs(after - before - 2.5) < 0.01, 'manual hours not logged: ' + before + ' -> ' + after);
+  assert((await ev(() => window.Commons.labor.creditBy('me'))) === Math.round(after * 15 * 100) / 100, 'credit math off');
+});
+
+await test('bill → ledger: paying a bill writes the split expense', async () => {
+  await go('dashboard.html');
+  const x = await ev(() => {
+    const b = window.Commons.money.bills()[0];
+    window.Commons.money.payBill(b.id);
+    return { bill: b, exp: window.Commons.ledger.all().find((e) => e.fromBill === b.id) };
+  });
+  assert(x.exp, 'no ledger expense from bill');
+  assert(x.exp.amount === x.bill.amount && x.exp.category === 'utilities', 'bill expense wrong: ' + JSON.stringify(x.exp).slice(0, 120));
+  assert(x.exp.split.participants.length === x.bill.rotation.length, 'split not across the rotation');
+  await go('ledger.html');
+  assert((await ev((name) => document.getElementById('page').textContent.includes(name), x.bill.name)), 'bill expense not in the feed');
+});
+
+await test('bounties: post → mark done pays labor credit', async () => {
+  await go('dashboard.html');
+  assert((await ev(() => document.getElementById('page').textContent.includes('Bounties'))), 'no bounty board');
+  await page.locator("[data-act='task-form']").first().click();
+  await page.fill('#t-desc', 'E2E: fix the cellar hinge');
+  await page.fill('#t-budget', '30');
+  await page.selectOption('#t-assignee', 'me');
+  await page.locator("[data-act='task-add']").click();
+  await page.waitForTimeout(400);
+  const t = await ev(() => window.Commons.tasks.all().find((x) => x.desc.includes('cellar hinge')));
+  assert(t && t.status === 'open' && t.budget === 30, 'bounty not stored');
+  await page.locator(`[data-act='task-done'][data-id='${t.id}']`).click();
+  await page.waitForTimeout(400);
+  assert((await ev((id) => window.Commons.tasks.get(id).status, t.id)) === 'done', 'bounty not done');
+  const lab = await ev((id) => window.Commons.state.labor.find((l) => l.fromTask === id), t.id);
+  assert(lab && Math.abs(lab.hours - 2) < 0.01, 'bounty did not pay 30/15=2h labor credit: ' + JSON.stringify(lab));
+});
+
+await test('bounty dispute: 2/3 vote reassigns the task', async () => {
+  await go('dashboard.html');
+  await page.selectOption("[data-reassign='t-railing']", 'p-june');
+  await page.locator("[data-act='task-dispute'][data-id='t-railing']").click();
+  await page.waitForTimeout(400);
+  assert((await ev(() => window.Commons.tasks.get('t-railing').status)) === 'disputed', 'task not disputed');
+  const pr = await ev(() => window.Commons.proposals.all().find((x) => x.kind === 'dispute' && x.taskId === 't-railing'));
+  assert(pr && pr.status === 'open' && pr.newAssignee === 'p-june', 'dispute proposal wrong');
+  // the rest of the house votes through the pass-the-phone buttons — pure UI, no store calls
+  for (const m of ['p-theo', 'p-zora', 'p-eli', 'p-priya']) {
+    await page.locator(`[data-act='vote'][data-id='${pr.id}'][data-voter='${m}'][data-val='1']`).click();
+    await page.waitForTimeout(250);
+  }
+  const t = await ev(() => window.Commons.tasks.get('t-railing'));
+  assert(t.assignedTo === 'p-june' && t.status === 'open', 'vote did not reassign: ' + JSON.stringify({ a: t.assignedTo, s: t.status }));
+});
+
+await test('agreement: draft v1 → sign → amend by 2/3 vote → v2', async () => {
+  await go('agreement.html');
+  const doc = await ev(() => window.Commons.agreementDoc.get());
+  assert(doc && doc.version === 1 && doc.lines.length >= 5, 'v1 not drafted');
+  await page.locator("[data-act='sign'][data-member='me']").click();
+  await page.waitForTimeout(300);
+  assert((await ev(() => window.Commons.agreementDoc.signedBy('me'))), 'my signature not recorded');
+  await page.fill('#am-text', doc.lines.concat(['Amendment: the stoop is common ground — keep it clear.']).join('\n'));
+  await page.fill('#am-note', 'e2e amendment');
+  await page.locator("[data-act='propose']").click();
+  await page.waitForTimeout(400);
+  const pr = await ev(() => window.Commons.proposals.all().find((x) => x.kind === 'agreement' && x.status === 'open'));
+  assert(pr, 'amendment proposal missing');
+  await ev((id) => { ['p-theo', 'p-zora', 'p-eli', 'p-priya'].forEach((m) => window.Commons.proposals.vote(id, m, true)); }, pr.id);
+  const d2 = await ev(() => window.Commons.agreementDoc.get());
+  assert(d2.version === 2 && d2.lines.some((l) => l.includes('stoop is common ground')), 'amendment not applied');
+  assert(Object.keys(d2.signatures).length === 0 && d2.history.length === 1, 'signatures/history wrong after amendment');
+  await go('agreement.html');
+  assert((await ev(() => document.getElementById('page').textContent.includes('v2'))), 'page not showing v2');
+});
+
+await test('house health: dashboard card reflects the check-in loop', async () => {
+  await go('dashboard.html');
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(body.includes('House health'), 'no health card');
+  const m = await ev(() => window.Commons.health.metrics());
+  assert(typeof m.choreRate === 'number' && m.checkins4w >= 1, 'metrics wrong: ' + JSON.stringify(m));
+  assert(body.includes(m.choreRate + '%'), 'chore rate not rendered');
+});
+
+await test('gathering page: share url, rsvp, and a real .ics download', async () => {
+  await go('gathering.html?id=e-retreat-catskills');
+  const share = await ev(() => document.getElementById('share-url')?.value || '');
+  assert(share.includes('gathering.html?id=e-retreat-catskills'), 'share url wrong: ' + share);
+  const body = await ev(() => document.getElementById('page').textContent);
+  assert(body.includes('Catskills Catalyst Weekend') && body.includes('Big Indian'), 'gathering facts missing');
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator("[data-action='ics']").click(),
+  ]);
+  assert(dl.suggestedFilename().endsWith('.ics'), 'not an ics download: ' + dl.suggestedFilename());
+  const ics = readFileSync(await dl.path(), 'utf8');
+  assert(ics.startsWith('BEGIN:VCALENDAR') && ics.includes('SUMMARY:Catskills Catalyst Weekend') && ics.includes('DTSTART:'), 'ics malformed');
+});
+
+await test('mutual match: private picks reveal only when reciprocal', async () => {
+  await ev(() => { const e = window.Commons.events.get('e-mixer-prospect'); if (!e.attendees.includes('me')) e.attendees.push('me'); window.Commons.save(); });
+  await go('gathering.html?id=e-mixer-prospect');
+  const body0 = await ev(() => document.getElementById('page').textContent);
+  assert(/close the loop/i.test(body0), 'no mutual module on attended past event');
+  // p-sofia never picked me — no reveal
+  await page.locator("[data-action='pick'][data-person='p-sofia']").click();
+  await page.waitForTimeout(300);
+  assert((await ev(() => window.Commons.clicks.mutuals('e-mixer-prospect').length)) === 0, 'non-reciprocal pick leaked');
+  // p-maya picked me in the seed — reveal fires
+  await page.locator("[data-action='pick'][data-person='p-maya']").click();
+  await page.waitForTimeout(400);
+  assert((await ev(() => window.Commons.clicks.mutuals('e-mixer-prospect'))).includes('p-maya'), 'mutual not detected');
+  assert((await ev(() => document.getElementById('page').textContent.includes("It's mutual"))), 'mutual reveal not rendered');
+  await go('gatherings.html');
+  assert((await ev(() => (document.getElementById('mutual-strip')?.textContent || '').includes('Maya'))), 'mutual strip missing on gatherings');
+});
+
+await test('recurring gatherings: past monthly dates roll forward on load', async () => {
+  await ev(() => {
+    window.Commons.events.add({ title: 'E2E Monthly Potluck', type: 'dinner', when: new Date(Date.now() - 40 * 864e5).toISOString(),
+      where: 'The Stoop', price: 0, capacity: 20, desc: 'rolls', recurringMonthly: true });
+  });
+  await go('gatherings.html'); // fresh load re-runs rollRecurring
+  const when = await ev(() => window.Commons.events.all().find((x) => x.title === 'E2E Monthly Potluck').when);
+  assert(new Date(when) > new Date(), 'recurring date did not roll forward: ' + when);
+  assert((await ev(() => document.getElementById('page') ? true : document.body.textContent.includes('repeats monthly'))), 'recurring chip missing');
+  await ev(() => { const e = window.Commons.events.all().find((x) => x.title === 'E2E Monthly Potluck'); window.Commons.events.cancel(e.id); });
 });
 
 await test('gatherings: rsvp, escrow reserve → refund', async () => {
@@ -344,6 +526,27 @@ await test('steward: personalized greeting + ledger + slammed + draft→approve'
   await page.locator('[data-approve]').first().click();
   await page.waitForTimeout(400);
   assert((await ev(() => window.Commons.steward.maintenance().some((m) => m.status === 'scheduled'))), 'draft→approve broken');
+});
+
+await test('split protocol: pro-rata fund division, pruned rotations', async () => {
+  await go('split.html');
+  const balBefore = await ev(() => window.Commons.money.treasury().balance);
+  const nBefore = await ev(() => window.Commons.houses.mine().members.length);
+  await page.locator("[data-mem='p-marcus']").check();
+  await page.locator("[data-mem='p-june']").check();
+  await page.fill('#f-newname', 'Cypress Annex');
+  await page.locator('#confirm-btn').click(); // arm
+  await page.waitForTimeout(250);
+  await page.locator('#confirm-btn').click(); // execute
+  await page.waitForTimeout(500);
+  const annex = await ev(() => window.Commons.houses.all().find((h) => h.name === 'Cypress Annex'));
+  assert(annex && annex.members.length === 2, 'daughter house not created');
+  assert((await ev(() => window.Commons.houses.mine().members.length)) === nBefore - 2, 'mother house roster wrong');
+  const expectedMoved = Math.round((balBefore * 2) / nBefore * 100) / 100;
+  const balAfter = await ev(() => window.Commons.money.treasury().balance);
+  assert(Math.abs(balAfter - (balBefore - expectedMoved)) < 0.02, 'fund split not pro-rata: ' + balBefore + ' -> ' + balAfter);
+  assert((await ev(() => window.Commons.chores.all().every((c) => !c.rotation.includes('p-marcus') && !c.rotation.includes('p-june')))), 'rotations not pruned');
+  assert((await ev(() => window.Commons.money.bills().every((b) => !b.rotation.includes('p-marcus')))), 'bill rotations not pruned');
 });
 
 await test('sign out → gate closes → passkey sign-in reopens', async () => {
@@ -411,6 +614,41 @@ await test('setup wizard: launch → chores → meals → dashboard complete', a
   assert(page.url().includes('dashboard.html'), 'did not finish on dashboard: ' + page.url());
   assert((await ev(() => window.Commons.meals.plan()?.presetId)) === 'dinner-club', 'plan not saved in setup');
   assert(!(await ev(() => document.getElementById('page').textContent.includes('Finish setting up'))), 'setup nudge still showing after completion');
+});
+
+await test('solo house: your own vote decides — nothing wedges', async () => {
+  await go('agreement.html');
+  await page.waitForTimeout(400);
+  assert((await ev(() => window.Commons.agreementDoc.get().version)) === 1, 'fresh house should draft v1');
+  const lines = await ev(() => window.Commons.agreementDoc.get().lines.join('\n'));
+  await page.fill('#am-text', lines + '\nSolo amendment: the hallway stays clear.');
+  await page.locator("[data-act='propose']").click();
+  await page.waitForTimeout(400);
+  const doc = await ev(() => window.Commons.agreementDoc.get());
+  assert(doc.version === 2 && doc.lines.some((l) => l.includes('hallway stays clear')), 'solo amendment did not auto-pass: v' + doc.version);
+  await go('dashboard.html');
+  await page.locator("[data-act='task-form']").first().click();
+  await page.fill('#t-desc', 'Solo bounty');
+  await page.locator("[data-act='task-add']").click();
+  await page.waitForTimeout(300);
+  assert((await ev(() => window.Commons.tasks.all().some((x) => x.desc === 'Solo bounty'))), 'solo bounty not stored');
+  assert((await ev(() => document.querySelectorAll("[data-act='task-dispute']").length)) === 0, 'dispute control rendered in a solo house');
+});
+
+await test('backup: export downloads real JSON; import restores it', async () => {
+  await go('account.html');
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#data-export').click(),
+  ]);
+  const payload = JSON.parse(readFileSync(await dl.path(), 'utf8'));
+  assert(payload.app === 'colive.fun' && payload.state && payload.state.version === (await ev(() => window.Commons.state.version)), 'export payload wrong');
+  assert(payload.state.account.name === 'Ron T', 'export missing the account');
+  // tamper, then restore through the UI
+  payload.state.account.name = 'Restored Ron';
+  await page.setInputFiles('#data-import', { name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
+  await page.waitForTimeout(1200); // toast + reload
+  assert((await ev(() => window.Commons.account.get().name)) === 'Restored Ron', 'import did not restore state');
 });
 
 /* ---------- on-chain rails (anvil) ---------- */
@@ -497,6 +735,31 @@ if (CHAIN && communeAddr) {
       return await Rails.commune.isComplete(cc2.communeId, cc2.ids[c.id], period);
     }, cc);
     assert(done === true, 'completion not recorded on CommuneOS');
+  });
+
+  await test('rails: bounty dual-writes to the CommuneOS TaskManager', async () => {
+    await go('dashboard.html');
+    assert((await ev(() => document.getElementById('page').textContent.includes('dual-writing'))), 'chain-ready pill missing');
+    await page.locator("[data-act='task-form']").first().click();
+    await page.fill('#t-desc', 'Chain bounty: seal the window');
+    await page.fill('#t-budget', '45');
+    await page.locator("[data-act='task-add']").click();
+    await page.waitForTimeout(3000); // createTask tx
+    const t = await ev(() => window.Commons.tasks.all().find((x) => x.desc.includes('seal the window')));
+    assert(t && t.onchain && typeof t.onchain.taskId === 'number' && t.onchain.tx, 'task not on-chain: ' + JSON.stringify(t && t.onchain));
+    await page.locator(`[data-act='task-done'][data-id='${t.id}']`).click();
+    await page.waitForTimeout(3000); // markTaskDone tx
+    assert((await ev((id) => window.Commons.tasks.get(id).status, t.id)) === 'done', 'chain bounty not marked done');
+  });
+
+  await test('rails: notarize the house agreement on-chain', async () => {
+    await go('agreement.html');
+    await page.waitForTimeout(500);
+    await page.locator("[data-act='notarize']").click();
+    await page.waitForTimeout(3000); // self-send tx
+    const doc = await ev(() => window.Commons.agreementDoc.get());
+    assert(doc.notarized && doc.notarized.tx && doc.notarized.digest.startsWith('0x') && doc.notarized.version === doc.version,
+      'notarization not recorded: ' + JSON.stringify(doc.notarized));
   });
 }
 
