@@ -230,6 +230,7 @@ await test('directory: a published house is browsable by a not-signed-in visitor
   // Ada's house has rooms open and is online → it must appear in the public directory
   const dir = await ev(A.page, async () => (await fetch('/api/directory', { credentials: 'same-origin' })).json());
   assert(dir.houses.some((h) => h.name === 'Cloud Nine'), 'house not in directory: ' + JSON.stringify(dir.houses.map((h) => h.name)));
+  assert((dir.people || []).some((p) => p.name === 'Ada Cloudwright'), 'discoverable person not in directory: ' + JSON.stringify((dir.people || []).map((p) => p.name)));
   // a brand-new context (never logged in) opens browse and sees it
   const V = await device();
   await V.page.goto(BASE + '/browse.html');
@@ -241,6 +242,10 @@ await test('directory: a published house is browsable by a not-signed-in visitor
   }));
   assert(!view.loggedIn && view.onBrowse, 'visitor got bounced off browse: ' + JSON.stringify(view));
   assert(view.sees, 'visitor cannot see the published house on browse');
+  // the People tab shows discoverable people to the visitor too
+  await ev(V.page, () => { const t = document.querySelector('[data-tab="people"]'); if (t) t.click(); });
+  await V.page.waitForTimeout(500);
+  assert((await ev(V.page, () => document.querySelector('main').innerText.includes('Ada Cloudwright'))), 'visitor cannot see discoverable people');
   await V.ctx.close();
 }, null);
 

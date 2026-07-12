@@ -91,6 +91,7 @@
 
     _lastPersonal: {},   // key -> JSON string at last push/pull
     _lastHouse: {},
+    _lastProfile: "",    // JSON of the public directory profile at last push
     _applying: false,
     _pushTimer: null,
     _loop: null,
@@ -121,7 +122,7 @@
           window.Commons.account.setSession(me.user);  // mirror the server identity locally
           this._loadVersions();
           if (localStorage.getItem("dp-cloud-dirty")) { this._lastPersonal = {}; this._lastHouse = {}; }
-          else { this._snapshotPersonal(); this._snapshotHouse(); }
+          else { this._snapshotPersonal(); this._snapshotHouse(); this._snapshotProfile(); }
           this._startLoop();                           // pullNow reconciles with the server (the truth)
         } catch (e) {
           // no valid server session → we are NOT logged in, whatever localStorage thinks
@@ -164,6 +165,7 @@
       window.Commons.account.setSession(r.user);
       // the server is the source of truth — pull the whole world down
       await this._hydrate();
+      this._snapshotProfile();
       this._startLoop();
       window.dispatchEvent(new CustomEvent("cloud:change"));
       return { user: r.user };
@@ -211,9 +213,10 @@
 
     async updateProfile(patch) {
       if (!this.user) return;
-      const r = await this.api("/api/me", { method: "PUT", body: JSON.stringify(patch) });
+      const body = patch || this._publicProfile();
+      const r = await this.api("/api/me", { method: "PUT", body: JSON.stringify(body) });
       this.user = r.user;
-      window.Commons.account.setSession(r.user);
+      this._snapshotProfile();
     },
 
     /* ----- house sharing ----- */
@@ -340,6 +343,20 @@
       if (localStorage.getItem("dp-cloud-dirty")) await this.push().catch(() => {});
     },
 
+    // the subset of identity that's public in the directory (account fields +
+    // the quiz-derived dims/values/seeking + the discoverable toggle)
+    _publicProfile() {
+      const a = window.Commons.account.get();
+      if (!a) return null;
+      const me = S().me;
+      return {
+        name: a.name, borough: a.borough, budget: a.budget, hue: a.hue,
+        bio: a.bio || "", photo: a.photo || null, socials: a.socials || {},
+        seeking: me.seeking || "room", dims: me.dims || null, values: me.values || [],
+        discoverable: a.discoverable !== false,
+      };
+    },
+    _snapshotProfile() { try { this._lastProfile = JSON.stringify(this._publicProfile()); } catch (e) { this._lastProfile = ""; } },
     _snapshotPersonal() {
       const st = S();
       this._lastPersonal = {};
@@ -371,6 +388,19 @@
           Object.assign(this._lastPersonal, sent);
         } catch (e) { ok = false; }
       }
+      // keep the PUBLIC directory profile (users table) in step with my identity
+      // + quiz — this is what other people see when they browse
+      try {
+        const prof = this._publicProfile();
+        if (prof) {
+          const j = JSON.stringify(prof);
+          if (force || this._lastProfile !== j) {
+            const r = await this.api("/api/me", { method: "PUT", body: JSON.stringify(prof) });
+            this.user = r.user;
+            this._lastProfile = j;
+          }
+        }
+      } catch (e) { ok = false; }
       if (this.houseSynced()) {
         const doc = this.houseDocFromLocal();
         if (doc) {

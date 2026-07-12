@@ -151,8 +151,22 @@ const profileFields = (body) => {
     if (!ok) delete out.photo; // canvas output is ~30KB; reject non-images and anything huge
   }
   if ("socials" in body) out.socials = sanitizeSocials(body.socials);
+  if ("seeking" in body && ["room", "founding", "has-house"].includes(body.seeking)) out.seeking = body.seeking;
+  if ("discoverable" in body) out.discoverable = !!body.discoverable;
+  if ("dims" in body) out.dims = sanitizeDims(body.dims);
+  if ("values" in body && Array.isArray(body.values)) {
+    out.values = body.values.filter((v) => typeof v === "string").map((v) => v.slice(0, 40)).slice(0, 10);
+  }
   return out;
 };
+
+const DIM_KEYS = ["hearth", "order", "voice", "mission", "porch", "pool"];
+function sanitizeDims(d) {
+  if (!d || typeof d !== "object") return null;
+  const out = {};
+  DIM_KEYS.forEach((k) => { const n = Math.round(Number(d[k])); out[k] = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 50; });
+  return out;
+}
 
 // Socials are rendered as links on profiles — sanitize hard. Handles are
 // stripped to safe chars; the website must be an http(s) URL.
@@ -176,17 +190,19 @@ function sanitizeSocials(v) {
 
 const publicUser = (u) => u && ({
   id: u.id, username: u.username, name: u.name, email: u.email, borough: u.borough, budget: u.budget,
-  hue: u.hue, bio: u.bio, photo: u.photo, socials: u.socials || {}, createdAt: u.createdAt,
+  hue: u.hue, bio: u.bio, photo: u.photo, socials: u.socials || {},
+  seeking: u.seeking || "room", dims: u.dims || null, values: u.values || [], discoverable: u.discoverable !== false,
+  createdAt: u.createdAt,
 });
 
 /* the person record housemates see for a cloud member — mirrors the seeded
    person shape so every existing page renders it without special cases */
 const personFor = (u) => ({
-  id: u.id, name: u.name, age: null, borough: u.borough || "NYC", budget: u.budget || 1400,
-  dims: { hearth: 50, order: 50, voice: 50, mission: 50, porch: 50, pool: 50 },
-  values: [], hard: [], flags: [],
-  blurb: u.bio || "Cloud member — profile syncs from their device.",
-  seeking: "has-house", events: [],
+  id: u.id, username: u.username || undefined, name: u.name, age: null, borough: u.borough || "NYC", budget: u.budget || 1400,
+  dims: u.dims || { hearth: 50, order: 50, voice: 50, mission: 50, porch: 50, pool: 50 },
+  values: u.values || [], hard: [], flags: [],
+  blurb: u.bio || "New here — profile fills in with the quiz.",
+  seeking: u.seeking || "has-house", events: [],
   hue: u.hue || undefined, photo: u.photo || undefined, socials: u.socials || {},
 });
 
@@ -213,18 +229,23 @@ function addMemberToDoc(doc, user) {
   return doc;
 }
 
+const safeColor = (c) => (typeof c === "string" && HUE_RE.test(c)) ? c : "#0d9488";
+
 // A public, safe summary of a shared house for the browse directory — house
-// meta + member profile cards, never the private ledger/chores/votes.
-function publicHouseSummary(id, doc) {
+// meta + member cards, never the private ledger/chores/votes. Only members who
+// are CURRENTLY discoverable are exposed (from their fresh user record), so an
+// opt-out is honored even for someone living in a listed house.
+function publicHouseSummary(id, doc, discById) {
   const h = doc && doc.house;
   if (!h || !Array.isArray(h.members)) return null;
   const listed = (h.roomsOpen || 0) > 0 || h.listed === true;
+  const housePeople = h.members.map((mid) => discById.get(mid)).filter(Boolean).map((u) => personFor(u));
   return {
     id, name: h.name, borough: h.borough, hood: h.hood, rent: h.rent || 0,
-    roomsOpen: h.roomsOpen || 0, hue: h.hue, blurb: h.blurb || h.vibe || "",
+    roomsOpen: h.roomsOpen || 0, hue: safeColor(h.hue), blurb: h.blurb || h.vibe || "",
     mission: h.mission || "", founded: h.founded, poolModel: h.poolModel,
     networked: h.networked, lenses: h.lenses, hasLocation: h.hasLocation !== false,
-    members: h.members, housePeople: doc.housePeople || [], listed,
+    members: housePeople.map((p) => p.id), memberCount: h.members.length, housePeople, listed,
   };
 }
 
@@ -233,11 +254,15 @@ function publicHouseSummary(id, doc) {
 const routes = {
   "GET /api/health": async (req, res) => send(res, 200, { ok: true, storage: db.kind, rpId: RP_ID }),
 
-  // public: the browsable directory of houses seeking members (no auth needed)
+  // public: the browsable directory — houses seeking members AND discoverable
+  // people, so both sides of the match can find each other (no auth needed)
   "GET /api/directory": async (req, res) => {
     const all = await db.allHouses();
-    const houses = all.map((x) => publicHouseSummary(x.id, x.doc)).filter((h) => h && h.listed);
-    send(res, 200, { houses });
+    const discoverable = await db.listDiscoverable();
+    const discById = new Map(discoverable.map((u) => [u.id, u]));
+    const houses = all.map((x) => publicHouseSummary(x.id, x.doc, discById)).filter((h) => h && h.listed);
+    const people = discoverable.map((u) => personFor(u));
+    send(res, 200, { houses, people });
   },
 
   "POST /api/auth/register": async (req, res) => {

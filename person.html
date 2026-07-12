@@ -14,10 +14,25 @@
 
   <script src="assets/js/store.js"></script>
   <script src="assets/js/shell.js"></script>
+  <script src="assets/js/sync.js" data-cloud-sync="1"></script>
   <script>
     Shell.render("");
     const U = Commons.util;
     const page = document.getElementById("page");
+
+    // directory-resolved people (cloud uids aren't in the local store unless they
+    // share your house) — fetched so a profile link from browse actually works
+    const DIRP = {};
+    async function loadDirectoryPerson() {
+      try {
+        const res = await fetch("/api/directory", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.people || []).forEach((p) => { if (p && p.id) DIRP[p.id] = p; });
+        (data.houses || []).forEach((h) => (h.housePeople || []).forEach((p) => { if (p && p.id) DIRP[p.id] = p; }));
+      } catch (e) { /* offline — local only */ }
+    }
+    const resolvePerson = (id) => Commons.people.get(id) || DIRP[id] || null;
 
     function houseOf(personId) {
       return Commons.houses.all().find((h) => h.members.includes(personId)) || null;
@@ -66,7 +81,7 @@
       const id = U.qp("id");
       const me = Commons.me();
       const isMe = !id || id === "me";
-      const p = isMe ? me : Commons.people.get(id);
+      const p = isMe ? me : resolvePerson(id);
 
       if (!p) {
         page.innerHTML = `<div class="empty stack">
@@ -153,7 +168,9 @@
       });
     }
 
-    render();
+    async function boot() { await loadDirectoryPerson(); render(); }
+    window.addEventListener("cloud:ready", boot);
+    boot();
   </script>
 </body>
 </html>

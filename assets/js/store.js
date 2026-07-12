@@ -1189,10 +1189,21 @@
           name: user.name || user.username, email: user.email || null,
           borough: user.borough || "Bed-Stuy", budget: user.budget || 1500,
           hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null,
-          socials: user.socials || {},
+          socials: user.socials || {}, discoverable: user.discoverable !== false,
           signedOut: false, createdAt: user.createdAt || new Date().toISOString(),
         };
         this._applyIdentity();
+        // quiz-derived + discovery bits come from the server on a fresh device —
+        // but NEVER clobber local edits that haven't been pushed yet (e.g. a quiz
+        // just taken on this device, still dirty), and never blank real data with
+        // an empty server value.
+        let dirty = false;
+        try { dirty = !!localStorage.getItem("dp-cloud-dirty"); } catch (e) {}
+        if (!dirty) {
+          if (user.seeking) state.me.seeking = user.seeking;
+          if (user.dims && typeof user.dims === "object") state.me.dims = user.dims;
+          if (Array.isArray(user.values) && user.values.length) state.me.values = user.values;
+        }
         save(); return state.account;
       },
       clearSession() {

@@ -66,9 +66,13 @@
         if (!res.ok) return;
         const data = await res.json();
         const mineId = Commons.houses.mine() && Commons.houses.mine().id;
+        const myUid = (window.CloudSync && CloudSync.user) ? CloudSync.user.id : null; // I show as local "me"
         DIR.houses = (data.houses || []).filter((h) => h.id !== mineId); // my own house comes from local state
         DIR.peopleById = {};
-        (data.houses || []).forEach((h) => (h.housePeople || []).forEach((p) => { if (p && p.id) DIR.peopleById[p.id] = p; }));
+        // people in listed houses…
+        (data.houses || []).forEach((h) => (h.housePeople || []).forEach((p) => { if (p && p.id && p.id !== myUid) DIR.peopleById[p.id] = p; }));
+        // …and standalone discoverable seekers (the other side of the match)
+        (data.people || []).forEach((p) => { if (p && p.id && p.id !== myUid) DIR.peopleById[p.id] = p; });
       } catch (e) { /* offline / no server — browse what's local */ }
     }
     // resolve a member id to a profile: my local people first, then the directory

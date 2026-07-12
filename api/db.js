@@ -36,6 +36,9 @@ function memoryDriver() {
       for (const u of users.values()) if (u.username === username) return u;
       return null;
     },
+    async listDiscoverable() {
+      return [...users.values()].filter((u) => u.username && u.discoverable !== false);
+    },
     async updateUser(id, patch) {
       const u = users.get(id);
       if (!u) return null;
@@ -152,12 +155,20 @@ function pgDriver(databaseUrl) {
       bio TEXT,
       photo TEXT,
       socials JSONB,
+      seeking TEXT,
+      dims JSONB,
+      pvalues JSONB,
+      discoverable BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
-    -- migrate an existing users table (passkey era) to hosted username+password
+    -- migrate an existing users table (passkey era) to hosted username+password + discovery
     ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS socials JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS seeking TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS dims JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pvalues JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS discoverable BOOLEAN NOT NULL DEFAULT true;
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON users (username);
     CREATE TABLE IF NOT EXISTS credentials (
       cred_id TEXT PRIMARY KEY,
@@ -203,7 +214,9 @@ function pgDriver(databaseUrl) {
   const userFromRow = (r) => r && {
     id: r.id, username: r.username, passwordHash: r.password_hash,
     name: r.name, email: r.email, borough: r.borough, budget: r.budget,
-    hue: r.hue, bio: r.bio, photo: r.photo, socials: r.socials || {}, createdAt: r.created_at,
+    hue: r.hue, bio: r.bio, photo: r.photo, socials: r.socials || {},
+    seeking: r.seeking || "room", dims: r.dims || null, values: r.pvalues || [],
+    discoverable: r.discoverable !== false, createdAt: r.created_at,
   };
 
   return {
@@ -225,9 +238,9 @@ function pgDriver(databaseUrl) {
     async createUser(f) {
       const id = "u-" + uuid();
       const r = await pool.query(
-        `INSERT INTO users (id, username, password_hash, name, email, borough, budget, hue, bio, photo, socials)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb) RETURNING *`,
-        [id, f.username || null, f.passwordHash || null, f.name, f.email || null, f.borough || null, f.budget || null, f.hue || null, f.bio || null, f.photo || null, JSON.stringify(f.socials || {})]);
+        `INSERT INTO users (id, username, password_hash, name, email, borough, budget, hue, bio, photo, socials, seeking, dims, pvalues, discoverable)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14::jsonb,$15) RETURNING *`,
+        [id, f.username || null, f.passwordHash || null, f.name, f.email || null, f.borough || null, f.budget || null, f.hue || null, f.bio || null, f.photo || null, JSON.stringify(f.socials || {}), f.seeking || "room", f.dims ? JSON.stringify(f.dims) : null, JSON.stringify(f.values || []), f.discoverable !== false]);
       return userFromRow(row(r));
     },
     async getUser(id) {
@@ -236,11 +249,20 @@ function pgDriver(databaseUrl) {
     async getUserByUsername(username) {
       return userFromRow(row(await pool.query(`SELECT * FROM users WHERE username=$1`, [username])));
     },
+    async listDiscoverable() {
+      const r = await pool.query(`SELECT * FROM users WHERE username IS NOT NULL AND discoverable IS NOT false ORDER BY created_at DESC LIMIT 500`);
+      return r.rows.map(userFromRow);
+    },
     async updateUser(id, patch) {
-      const cols = ["name", "email", "borough", "budget", "hue", "bio", "photo", "socials"].filter((k) => k in patch);
+      const COLMAP = { values: "pvalues" }; // client key -> column
+      const JSONB = new Set(["socials", "dims", "values"]);
+      const cols = ["name", "email", "borough", "budget", "hue", "bio", "photo", "socials", "seeking", "dims", "values", "discoverable"].filter((k) => k in patch);
       if (!cols.length) return this.getUser(id);
-      const sets = cols.map((c, i) => (c === "socials" ? `socials=$${i + 2}::jsonb` : `${c}=$${i + 2}`)).join(", ");
-      const vals = cols.map((c) => (c === "socials" ? JSON.stringify(patch[c] || {}) : patch[c]));
+      const sets = cols.map((c, i) => {
+        const col = COLMAP[c] || c;
+        return JSONB.has(c) ? `${col}=$${i + 2}::jsonb` : `${col}=$${i + 2}`;
+      }).join(", ");
+      const vals = cols.map((c) => (JSONB.has(c) ? JSON.stringify(patch[c] ?? (c === "dims" ? null : c === "values" ? [] : {})) : patch[c]));
       const r = await pool.query(`UPDATE users SET ${sets} WHERE id=$1 RETURNING *`, [id, ...vals]);
       return userFromRow(row(r));
     },

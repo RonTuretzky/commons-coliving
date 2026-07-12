@@ -49,8 +49,8 @@
       const a = Commons.account.get();
       const me = Commons.me();
       draft = a
-        ? { username: a.username || "", name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null, socials: Object.assign({}, a.socials) }
-        : { username: "", password: "", name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null, socials: {} };
+        ? { username: a.username || "", name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null, socials: Object.assign({}, a.socials), seeking: me.seeking || "room", discoverable: a.discoverable !== false }
+        : { username: "", password: "", name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null, socials: {}, seeking: "room", discoverable: true };
     }
     function avatarPreview() {
       if (draft.photo) return `<span class="avatar lg" style="background-image:url('${draft.photo}');background-size:cover;background-position:center;color:transparent">.</span>`;
@@ -104,6 +104,21 @@
             <input class="input" id="a-web" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.website || "")}" placeholder="🔗 Website or link" />
           </div>
           <div class="help">Handles only (no need for @). Shown on your profile so housemates can find you.</div>
+        </div>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="a-seeking">Looking for</label>
+            <select class="input" id="a-seeking">
+              <option value="room" ${draft.seeking === "room" ? "selected" : ""}>A room in a house</option>
+              <option value="founding" ${draft.seeking === "founding" ? "selected" : ""}>Founding a new house</option>
+              <option value="has-house" ${draft.seeking === "has-house" ? "selected" : ""}>Settled — I have a house</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Discovery</label>
+            <label class="row small" style="gap:8px;cursor:pointer;padding-top:8px"><input type="checkbox" id="a-discoverable" ${draft.discoverable ? "checked" : ""} style="accent-color:var(--pine-2)" /> List me in the public directory</label>
+            <div class="help">Off = you can still join houses by invite, but you won't show up in browse.</div>
+          </div>
         </div>`;
     }
     function wireProfileFields() {
@@ -113,6 +128,8 @@
       if (q("#a-email")) q("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
       const soc = (id, key) => { const el = q(id); if (el) el.addEventListener("input", (e) => { draft.socials[key] = e.target.value; }); };
       soc("#a-ig", "instagram"); soc("#a-x", "x"); soc("#a-tg", "telegram"); soc("#a-web", "website");
+      if (q("#a-seeking")) q("#a-seeking").addEventListener("change", (e) => { draft.seeking = e.target.value; });
+      if (q("#a-discoverable")) q("#a-discoverable").addEventListener("change", (e) => { draft.discoverable = e.target.checked; });
       if (q("#a-borough")) q("#a-borough").addEventListener("change", (e) => { draft.borough = e.target.value; });
       if (q("#a-budget")) q("#a-budget").addEventListener("input", (e) => { draft.budget = Number(e.target.value); q("#a-budget-val").textContent = U.fmtMoney(draft.budget); });
       page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => { draft.hue = b.dataset.hue; refreshAvatar(); }));
@@ -130,7 +147,7 @@
       // re-render only the profile-fields region without losing typed values
       const wrap = document.getElementById("profile-fields");
       if (!wrap) return;
-      const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget, socials: draft.socials };
+      const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget, socials: draft.socials, seeking: draft.seeking, discoverable: draft.discoverable };
       wrap.innerHTML = profileFieldsHtml();
       Object.assign(draft, keep);
       wireProfileFields();
@@ -241,7 +258,7 @@
             await CloudSync.register({ username, password, profile: {
               name: (draft.name || "").trim() || username, borough: draft.borough, budget: draft.budget,
               hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo,
-              socials: draft.socials,
+              socials: draft.socials, seeking: draft.seeking, discoverable: draft.discoverable,
             } });
           } else {
             await CloudSync.signIn({ username, password });
@@ -298,9 +315,10 @@
       wireProfileFields();
       wireWallet();
       document.getElementById("a-save").addEventListener("click", async () => {
-        const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo, socials: draft.socials };
+        const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo, socials: draft.socials, discoverable: draft.discoverable };
+        Commons.setMe({ seeking: draft.seeking });
         Commons.account.update(fields);
-        try { await CloudSync.updateProfile(fields); } catch (e) { /* will retry on next sync */ }
+        try { await CloudSync.updateProfile(); } catch (e) { /* the debounced sync will retry */ }
         Shell.toast("Saved", "green");
         setTimeout(() => location.reload(), 400);
       });
