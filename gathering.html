@@ -86,23 +86,6 @@
     function firstName(p) {
       return ((p && p.name) || "Someone").split(/\s+/)[0];
     }
-    // the plain-text blob we drop on the clipboard for a cross-post (Luma/Partiful
-    // have no query-param prefill, so the host pastes these details in)
-    function crosspostDetails(ev) {
-      return [
-        ev.title,
-        `${U.fmtDateLong(ev.when)} · ${U.fmtTime(ev.when)} · ${ev.where}`,
-        "",
-        ev.desc || "",
-        "",
-        "RSVP: " + shareUrl(ev),
-      ].join("\n").trim();
-    }
-    function copyText(text, label) {
-      const done = () => Shell.toast("Details copied — paste them into " + label, "green");
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
-      else done();
-    }
 
     /* ---------- .ics generation ---------- */
     function buildIcs(ev) {
@@ -257,22 +240,6 @@
         </div>`;
     }
 
-    // host-only: cross-post this invite to Luma / Partiful. Neither offers a
-    // query-param prefill, so we open the composer and drop the details on the
-    // clipboard for a one-paste create.
-    function crosspostHtml(ev) {
-      if (isPast(ev) || !ev.hostedByMe) return "";
-      return `
-        <div class="card stack">
-          <div class="kicker">Cross-post the invite</div>
-          <p class="small muted">Put this gathering on Luma or Partiful too — people can RSVP wherever they already are. We copy the details to your clipboard so you just paste.</p>
-          <div class="row wrap">
-            <button class="park-btn" data-action="xpost-partiful">Create on Partiful ↗</button>
-            <button class="park-btn" data-action="xpost-luma-open">Create on Luma ↗</button>
-          </div>
-        </div>`;
-    }
-
     function attendeesHtml(ev) {
       const past = isPast(ev);
       const items = (ev.attendees || []).map((pid) => {
@@ -346,7 +313,6 @@
           ${heroHtml(ev)}
           ${actionsHtml(ev)}
           ${shareHtml(ev)}
-          ${crosspostHtml(ev)}
           ${attendeesHtml(ev)}
           ${loopHtml(ev)}
           <div class="row wrap">
@@ -417,17 +383,6 @@
           const picks = Commons.clicks.toggle(ev.id, pid);
           Shell.toast(picks.includes(pid) ? "Noted — stays private unless it's mutual" : "Pick removed");
           render();
-          break;
-        }
-        case "xpost-partiful": {
-          // open the composer inside the click gesture (avoids popup blocking), then copy
-          window.open("https://partiful.com/create", "_blank", "noopener");
-          copyText(crosspostDetails(ev), "Partiful");
-          break;
-        }
-        case "xpost-luma-open": {
-          window.open("https://luma.com/create", "_blank", "noopener");
-          copyText(crosspostDetails(ev), "Luma");
           break;
         }
       }
