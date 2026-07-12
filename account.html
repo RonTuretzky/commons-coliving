@@ -49,8 +49,8 @@
       const a = Commons.account.get();
       const me = Commons.me();
       draft = a
-        ? { username: a.username || "", name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null }
-        : { username: "", password: "", name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null };
+        ? { username: a.username || "", name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null, socials: Object.assign({}, a.socials) }
+        : { username: "", password: "", name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null, socials: {} };
     }
     function avatarPreview() {
       if (draft.photo) return `<span class="avatar lg" style="background-image:url('${draft.photo}');background-size:cover;background-position:center;color:transparent">.</span>`;
@@ -94,6 +94,16 @@
         <div class="field">
           <label for="a-email">Contact email (optional)</label>
           <input class="input" id="a-email" type="email" value="${U.esc(draft.email)}" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label>Socials (optional)</label>
+          <div class="grid grid-2">
+            <input class="input" id="a-ig" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.instagram || "")}" placeholder="📷 Instagram @handle" />
+            <input class="input" id="a-x" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.x || "")}" placeholder="𝕏 @handle" />
+            <input class="input" id="a-tg" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.telegram || "")}" placeholder="✈️ Telegram @handle" />
+            <input class="input" id="a-web" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.website || "")}" placeholder="🔗 Website or link" />
+          </div>
+          <div class="help">Handles only (no need for @). Shown on your profile so housemates can find you.</div>
         </div>`;
     }
     function wireProfileFields() {
@@ -101,6 +111,8 @@
       if (q("#a-name")) q("#a-name").addEventListener("input", (e) => { draft.name = e.target.value; });
       if (q("#a-bio")) q("#a-bio").addEventListener("input", (e) => { draft.bio = e.target.value; });
       if (q("#a-email")) q("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
+      const soc = (id, key) => { const el = q(id); if (el) el.addEventListener("input", (e) => { draft.socials[key] = e.target.value; }); };
+      soc("#a-ig", "instagram"); soc("#a-x", "x"); soc("#a-tg", "telegram"); soc("#a-web", "website");
       if (q("#a-borough")) q("#a-borough").addEventListener("change", (e) => { draft.borough = e.target.value; });
       if (q("#a-budget")) q("#a-budget").addEventListener("input", (e) => { draft.budget = Number(e.target.value); q("#a-budget-val").textContent = U.fmtMoney(draft.budget); });
       page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => { draft.hue = b.dataset.hue; refreshAvatar(); }));
@@ -118,7 +130,7 @@
       // re-render only the profile-fields region without losing typed values
       const wrap = document.getElementById("profile-fields");
       if (!wrap) return;
-      const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget };
+      const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget, socials: draft.socials };
       wrap.innerHTML = profileFieldsHtml();
       Object.assign(draft, keep);
       wireProfileFields();
@@ -229,6 +241,7 @@
             await CloudSync.register({ username, password, profile: {
               name: (draft.name || "").trim() || username, borough: draft.borough, budget: draft.budget,
               hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo,
+              socials: draft.socials,
             } });
           } else {
             await CloudSync.signIn({ username, password });
@@ -285,7 +298,7 @@
       wireProfileFields();
       wireWallet();
       document.getElementById("a-save").addEventListener("click", async () => {
-        const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo };
+        const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo, socials: draft.socials };
         Commons.account.update(fields);
         try { await CloudSync.updateProfile(fields); } catch (e) { /* will retry on next sync */ }
         Shell.toast("Saved", "green");

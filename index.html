@@ -132,7 +132,7 @@
           <a class="park-btn outline" href="steward.html" style="align-self:start">Meet the steward →</a>
         </div>
         <div class="card ink chat" style="gap:12px">
-          <div class="bubble steward" style="max-width:92%">Heads up: <strong>kitchen reset</strong> is yours this week — due Sunday. Zora covered you last rotation, just saying. 🍳</div>
+          <div class="bubble steward" style="max-width:92%">Heads up: <strong>kitchen reset</strong> is yours this week — due Sunday. Someone covered you last rotation, just saying. 🍳</div>
           <div class="bubble me" style="max-width:92%">the bathroom sink is draining slow again</div>
           <div class="bubble steward" style="max-width:92%">Logged it. Try the enzyme treatment under the sink first (20 min, free). If it's still slow tomorrow I have three plumbers your neighbors actually like — want me to draft a request?</div>
         </div>
@@ -294,14 +294,14 @@
     // of the ledger (the real numbers appear once you form or join a house).
     (function () {
       const preview = ["Jul", "Aug", "Sep", "Oct"].map((m, i) =>
-        `<span class="chip soft">${m} · ${["ER", "JD", "TA", "ZK"][i]}</span>`).join(" ");
+        `<span class="chip soft">${m} · housemate ${i + 1}</span>`).join(" ");
       document.getElementById("money-demo").insertAdjacentHTML("beforeend", `
         <div class="row between wrap">
           <span>House fund</span><span class="amount pos" style="font-size:1.6rem">${U.fmtMoney(2340)} <span class="small muted">USD</span></span>
         </div>
         <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:12px">
-          <span>Con Edison · ${U.fmtMoney(214)}</span>
-          <span class="row">${Shell.avatarHtml({ id: "ex", name: "Eli R", hue: "#0d9488" }, "sm")} <span class="small">Eli pays this month</span></span>
+          <span>Electric bill · ${U.fmtMoney(180)}</span>
+          <span class="small muted">one housemate pays this month</span>
         </div>
         <div class="row wrap" style="gap:8px">${preview}</div>
         <p class="text-caption muted">The rotation is deterministic — decided the day the house forms, then nobody thinks about it again.</p>`);

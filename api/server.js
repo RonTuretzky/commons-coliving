@@ -150,12 +150,33 @@ const profileFields = (body) => {
     const ok = typeof out.photo === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(out.photo) && out.photo.length <= 400_000;
     if (!ok) delete out.photo; // canvas output is ~30KB; reject non-images and anything huge
   }
+  if ("socials" in body) out.socials = sanitizeSocials(body.socials);
   return out;
 };
 
+// Socials are rendered as links on profiles — sanitize hard. Handles are
+// stripped to safe chars; the website must be an http(s) URL.
+const HANDLE_RE = /^[A-Za-z0-9_.]{1,40}$/;
+function sanitizeSocials(v) {
+  const out = {};
+  if (!v || typeof v !== "object") return out;
+  ["instagram", "x", "telegram", "farcaster"].forEach((k) => {
+    if (typeof v[k] === "string") {
+      const h = v[k].trim().replace(/^@+/, "").slice(0, 40);
+      if (h && HANDLE_RE.test(h)) out[k] = h;
+    }
+  });
+  if (typeof v.website === "string") {
+    let w = v.website.trim().slice(0, 200);
+    if (w && !/^https?:\/\//i.test(w)) w = "https://" + w;
+    try { const u = new URL(w); if (u.protocol === "http:" || u.protocol === "https:") out.website = u.href; } catch (e) { /* drop */ }
+  }
+  return out;
+}
+
 const publicUser = (u) => u && ({
   id: u.id, username: u.username, name: u.name, email: u.email, borough: u.borough, budget: u.budget,
-  hue: u.hue, bio: u.bio, photo: u.photo, createdAt: u.createdAt,
+  hue: u.hue, bio: u.bio, photo: u.photo, socials: u.socials || {}, createdAt: u.createdAt,
 });
 
 /* the person record housemates see for a cloud member — mirrors the seeded
@@ -166,7 +187,7 @@ const personFor = (u) => ({
   values: [], hard: [], flags: [],
   blurb: u.bio || "Cloud member — profile syncs from their device.",
   seeking: "has-house", events: [],
-  hue: u.hue || undefined, photo: u.photo || undefined,
+  hue: u.hue || undefined, photo: u.photo || undefined, socials: u.socials || {},
 });
 
 /* mirrors Commons.houses.join(): a new member enters every running system */

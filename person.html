@@ -46,6 +46,22 @@
         </div>`).join("");
     }
 
+    function socialsHtml(soc) {
+      if (!soc || typeof soc !== "object") return "";
+      const handle = (h) => String(h).replace(/^@+/, "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 40);
+      const links = [];
+      if (soc.instagram) { const h = handle(soc.instagram); if (h) links.push(`<a class="park-btn ghost sm" target="_blank" rel="noopener" href="https://instagram.com/${h}">📷 @${U.esc(h)}</a>`); }
+      if (soc.x) { const h = handle(soc.x); if (h) links.push(`<a class="park-btn ghost sm" target="_blank" rel="noopener" href="https://x.com/${h}">𝕏 @${U.esc(h)}</a>`); }
+      if (soc.telegram) { const h = handle(soc.telegram); if (h) links.push(`<a class="park-btn ghost sm" target="_blank" rel="noopener" href="https://t.me/${h}">✈️ @${U.esc(h)}</a>`); }
+      if (soc.farcaster) { const h = handle(soc.farcaster); if (h) links.push(`<a class="park-btn ghost sm" target="_blank" rel="noopener" href="https://farcaster.xyz/${h}">🟪 @${U.esc(h)}</a>`); }
+      if (soc.website) {
+        let w = String(soc.website).trim();
+        if (w && !/^https?:\/\//i.test(w)) w = "https://" + w;
+        try { const u = new URL(w); if (u.protocol === "http:" || u.protocol === "https:") links.push(`<a class="park-btn ghost sm" target="_blank" rel="noopener" href="${U.esc(u.href)}">🔗 ${U.esc(u.hostname.replace(/^www\./, ""))}</a>`); } catch (e) { /* drop */ }
+      }
+      return links.length ? `<div class="row wrap" style="gap:8px;margin-top:6px">${links.join("")}</div>` : "";
+    }
+
     function render() {
       const id = U.qp("id");
       const me = Commons.me();
@@ -80,6 +96,7 @@
               ${isMe && Commons.account.active() && Commons.account.get().email
                 ? `<p class="small muted">✉️ ${U.esc(Commons.account.get().email)} <span class="text-caption">— housemates can reach you here</span></p>` : ""}
               <div class="row wrap">${seekingPill(p)}</div>
+              ${socialsHtml(p.socials)}
             </div>
           </div>
           <div class="row wrap" style="gap:10px;border-top:1px solid var(--paper-1);padding-top:14px">

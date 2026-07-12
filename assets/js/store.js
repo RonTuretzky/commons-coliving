@@ -490,7 +490,7 @@
       values: [],
       hard: [], flags: [],
       blurb: "New here — the quiz fills this in.",
-      seeking: "room", events: [],
+      seeking: "room", events: [], socials: {},
     };
   }
 
@@ -1129,7 +1129,7 @@
         const a = state.account;
         Object.assign(state.me, {
           name: a.name, borough: a.borough, budget: a.budget, hue: a.hue,
-          blurb: a.bio || state.me.blurb,
+          blurb: a.bio || state.me.blurb, socials: a.socials || {},
         });
         if (a.photo) state.me.photo = a.photo; else delete state.me.photo;
       },
@@ -1189,6 +1189,7 @@
           name: user.name || user.username, email: user.email || null,
           borough: user.borough || "Bed-Stuy", budget: user.budget || 1500,
           hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null,
+          socials: user.socials || {},
           signedOut: false, createdAt: user.createdAt || new Date().toISOString(),
         };
         this._applyIdentity();
