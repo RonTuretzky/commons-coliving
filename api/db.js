@@ -197,8 +197,13 @@ function pgDriver(databaseUrl) {
     async init() {
       const client = await pool.connect(); // on('connect') has already SET search_path
       try {
-        await client.query("CREATE SCHEMA IF NOT EXISTS colive");
-        await client.query("SET search_path TO colive, public");
+        // prefer an app-owned schema; fall back to public if the user can't create one
+        try {
+          await client.query("CREATE SCHEMA IF NOT EXISTS colive");
+          await client.query("SET search_path TO colive, public");
+        } catch (e) {
+          await client.query("SET search_path TO public");
+        }
         await client.query(SCHEMA);
       } finally { client.release(); }
     },
