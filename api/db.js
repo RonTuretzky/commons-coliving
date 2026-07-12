@@ -119,10 +119,14 @@ function memoryDriver() {
 
 function pgDriver(databaseUrl) {
   const { Pool } = require("pg");
-  const needsSsl = /ondigitalocean|sslmode=require/.test(databaseUrl);
+  // DigitalOcean managed Postgres serves a self-signed CA. Strip any sslmode from
+  // the URL (newer pg treats sslmode=require as verify-full, which rejects it) and
+  // set ssl explicitly so we encrypt but don't verify the chain.
+  const wantsSsl = /ondigitalocean|sslmode=/.test(databaseUrl);
+  const cleanUrl = databaseUrl.replace(/([?&])sslmode=[^&]*/g, "$1").replace(/[?&]$/, "");
   const pool = new Pool({
-    connectionString: databaseUrl,
-    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+    connectionString: cleanUrl,
+    ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
     max: 5,
   });
 
