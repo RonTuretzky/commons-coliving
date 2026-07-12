@@ -32,6 +32,10 @@ function memoryDriver() {
       return u;
     },
     async getUser(id) { return users.get(id) || null; },
+    async getUserByUsername(username) {
+      for (const u of users.values()) if (u.username === username) return u;
+      return null;
+    },
     async updateUser(id, patch) {
       const u = users.get(id);
       if (!u) return null;
@@ -137,6 +141,8 @@ function pgDriver(databaseUrl) {
   const SCHEMA = `
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      username TEXT UNIQUE,
+      password_hash TEXT,
       name TEXT NOT NULL,
       email TEXT,
       borough TEXT,
@@ -146,6 +152,10 @@ function pgDriver(databaseUrl) {
       photo TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- migrate an existing users table (passkey era) to hosted username+password
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON users (username);
     CREATE TABLE IF NOT EXISTS credentials (
       cred_id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
@@ -188,7 +198,8 @@ function pgDriver(databaseUrl) {
 
   const row = (r) => (r.rows.length ? r.rows[0] : null);
   const userFromRow = (r) => r && {
-    id: r.id, name: r.name, email: r.email, borough: r.borough, budget: r.budget,
+    id: r.id, username: r.username, passwordHash: r.password_hash,
+    name: r.name, email: r.email, borough: r.borough, budget: r.budget,
     hue: r.hue, bio: r.bio, photo: r.photo, createdAt: r.created_at,
   };
 
@@ -211,13 +222,16 @@ function pgDriver(databaseUrl) {
     async createUser(f) {
       const id = "u-" + uuid();
       const r = await pool.query(
-        `INSERT INTO users (id, name, email, borough, budget, hue, bio, photo)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [id, f.name, f.email || null, f.borough || null, f.budget || null, f.hue || null, f.bio || null, f.photo || null]);
+        `INSERT INTO users (id, username, password_hash, name, email, borough, budget, hue, bio, photo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [id, f.username || null, f.passwordHash || null, f.name, f.email || null, f.borough || null, f.budget || null, f.hue || null, f.bio || null, f.photo || null]);
       return userFromRow(row(r));
     },
     async getUser(id) {
       return userFromRow(row(await pool.query(`SELECT * FROM users WHERE id=$1`, [id])));
+    },
+    async getUserByUsername(username) {
+      return userFromRow(row(await pool.query(`SELECT * FROM users WHERE username=$1`, [username])));
     },
     async updateUser(id, patch) {
       const cols = ["name", "email", "borough", "budget", "hue", "bio", "photo"].filter((k) => k in patch);

@@ -1,6 +1,6 @@
 # colive.fun — find your people, share a home
 
-**A Decentral Park solidarity app** (the pine one), live at [colive.fun](https://colive.fun). Formerly "Commons" — the internal JS namespace is still `window.Commons`. A prototype of the full co-living pipeline: quiz-based matching → mixers & catalyst retreats (escrowed deposits) → house formation → house operations (house fund, rotating bills, 2/3 votes, chores on rails, an AI steward) → **house tools** (economic templates, a chore-schedule calculator with real effort estimates, a meal-prep calculator).
+**A Decentral Park solidarity app** (the pine one), live at [colive.fun](https://colive.fun). **Hosted:** accounts are username + password on the server — sign in from any browser (including incognito) and your world is there. Formerly "Commons" — the internal JS namespace is still `window.Commons`. A prototype of the full co-living pipeline: quiz-based matching → mixers & catalyst retreats (escrowed deposits) → house formation → house operations (house fund, rotating bills, 2/3 votes, chores on rails, an AI steward) → **house tools** (economic templates, a chore-schedule calculator with real effort estimates, a meal-prep calculator).
 
 - **[PRD.md](PRD.md)** — the one big PRD: thesis, personas, all user flows, economic templates, MVP sequencing.
 - **[docs/UI-SPEC.md](docs/UI-SPEC.md)** — build conventions and the demo-store API.
@@ -13,7 +13,7 @@ No build step, no backend. Open `index.html`, or:
 python3 -m http.server 8080
 ```
 
-Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn), take the quiz, join or found a house, run it. **The shipped app is empty** — no fake people, houses, or ledgers; real users populate it (and share houses via the backend). A seeded NYC demo world stays available as an opt-in fixture (`Commons.__seedDemo()`, used by the test suite and sales previews), never auto-loaded for a real user. App pages are auth-gated; a new user starts houseless. State lives in `localStorage` (`dp-commons-v9`); backup/restore is one-file JSON export/import on the account page. Installable as a PWA (offline shell via service worker), with an optional backend for cross-device sync and shared houses (see below).
+Productized and server-backed: create an account (username + password), take the quiz, join or found a house, run it. The client keeps a working cache in `localStorage`, but the **server is the source of truth** — sign out and the device is wiped; sign in anywhere and it's restored. **The shipped app is empty** — no fake people, houses, or ledgers; real users populate it (and share houses via the backend). A seeded NYC demo world stays available as an opt-in fixture (`Commons.__seedDemo()`, used by the test suite and sales previews), never auto-loaded for a real user. App pages are auth-gated; a new user starts houseless. State lives in `localStorage` (`dp-commons-v9`); backup/restore is one-file JSON export/import on the account page. Installable as a PWA (offline shell via service worker), with an optional backend for cross-device sync and shared houses (see below).
 
 ## The tools
 
@@ -40,7 +40,7 @@ Systems + a ledger + votes. Deterministic bill rotation, period-calculated chore
 
 An optional Node service at `/api` (same origin, DigitalOcean App Platform) with managed Postgres:
 
-- **Accounts are passkeys** — WebAuthn, server-verified (`@simplewebauthn/server`), no passwords anywhere. One Touch ID gesture creates the account; the same passkey signs you in on any device and restores your whole world.
+- **Accounts are username + password** — hashed server-side with scrypt (node built-in, no deps), httpOnly session cookie. Sign in from any browser/device/incognito and the server restores your whole world.
 - **State syncs as you go** — the client pushes only changed top-level keys (per-key last-writer-wins); the server merges with jsonb `doc || changes`. Local-first stays the truth on-device; offline keeps working and back-fills when the API returns.
 - **Houses are shared** — "Put the house online" on the dashboard, mint a 7-day invite link, and each housemate joins from their own phone: same rotations, ledger, votes, signatures, live within seconds (8s poll). House docs are canonical (member ids are real user ids); each device translates its own id ↔ `'me'` at the sync boundary (`assets/js/sync.js`), so the entire store and every page work unchanged.
 - **Run it**: `cd api && npm install && STORAGE=memory STATIC_DIR=.. RP_ID=localhost ORIGINS=http://localhost:8080 node server.js` — one process serves the site and the API, exactly like production routing.

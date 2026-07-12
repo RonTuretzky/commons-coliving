@@ -1,13 +1,14 @@
-/* colive.fun API — passkey auth, cross-device state sync, shared houses.
+/* colive.fun API — hosted accounts, cross-device state sync, shared houses.
    Runs as a DigitalOcean App Platform service routed at /api (same origin as
    the static site, so plain httpOnly cookies do sessions and CORS never
    exists). In dev/tests it also serves the static site itself (STATIC_DIR).
 
    Design notes:
-   - Auth is passkey-only (WebAuthn, server-verified). No passwords anywhere.
-   - State sync is per-top-level-key last-writer-wins: clients push only the
-     keys that changed; the server merges (`doc || changes`), so two house
-     members only conflict when they touch the same key at the same moment.
+   - Auth is username + password (server-hashed with scrypt). The SERVER is the
+     source of truth for identity and state — sign in from any browser (incl.
+     incognito) and your world is there.
+   - State sync merges per top-level key; the house doc merges per element so
+     concurrent edits (votes, expenses, signatures) converge (see merge.js).
    - House docs are canonical: member ids are real user ids. Each client
      translates its own id <-> 'me' at the sync layer (assets/js/sync.js). */
 
@@ -15,15 +16,10 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const {
-  generateRegistrationOptions, verifyRegistrationResponse,
-  generateAuthenticationOptions, verifyAuthenticationResponse,
-} = require("@simplewebauthn/server");
 const { makeDb } = require("./db");
 
 const PORT = Number(process.env.PORT || 8080);
 const RP_ID = process.env.RP_ID || "colive.fun";
-const RP_NAME = "colive.fun";
 const ORIGINS = (process.env.ORIGINS || "https://colive.fun,https://www.colive.fun").split(",").map((s) => s.trim());
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const STATIC_DIR = process.env.STATIC_DIR || null;
@@ -35,9 +31,6 @@ const db = makeDb();
 /* ---------------- small utilities ---------------- */
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
-const hmac = (s) => crypto.createHmac("sha256", SECRET).update(s).digest("base64url");
-const b64 = (buf) => Buffer.from(buf).toString("base64");
-const fromB64 = (s) => new Uint8Array(Buffer.from(s, "base64"));
 
 function parseCookies(req) {
   const out = {};
@@ -56,33 +49,25 @@ function setCookie(res, name, value, maxAgeSec) {
   res.setHeader("Set-Cookie", list);
 }
 
-// stateless signed challenge: value.timestamp.hmac, 5 minute window.
-// Single-use: once a ceremony verifies against a challenge, it is burned so a
-// captured request can't be replayed within the HMAC lifetime.
-const usedChallenges = new Map(); // challenge -> expiresAt
-function sweepChallenges() {
-  const now = Date.now();
-  for (const [c, exp] of usedChallenges) if (exp < now) usedChallenges.delete(c);
+// Password hashing with scrypt (node built-in — no dependency). Stored as
+// scrypt$N$r$p$salt$hash; verification is constant-time.
+const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const dk = crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, maxmem: 64 * 1024 * 1024 });
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64")}$${dk.toString("base64")}`;
 }
-function issueChallenge(res, challenge) {
-  const ts = Date.now().toString();
-  setCookie(res, "colive_chal", `${challenge}.${ts}.${hmac(challenge + ts)}`, 300);
+function verifyPassword(password, stored) {
+  try {
+    const [scheme, N, r, p, saltB64, hashB64] = String(stored).split("$");
+    if (scheme !== "scrypt") return false;
+    const salt = Buffer.from(saltB64, "base64");
+    const expected = Buffer.from(hashB64, "base64");
+    const dk = crypto.scryptSync(password, salt, expected.length, { N: Number(N), r: Number(r), p: Number(p), maxmem: 64 * 1024 * 1024 });
+    return dk.length === expected.length && crypto.timingSafeEqual(dk, expected);
+  } catch (e) { return false; }
 }
-function readChallenge(req) {
-  const raw = parseCookies(req).colive_chal;
-  if (!raw) return null;
-  const [challenge, ts, sig] = raw.split(".");
-  if (!challenge || !ts || !sig) return null;
-  if (Date.now() - Number(ts) > 5 * 60 * 1000) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(hmac(challenge + ts)))) return null;
-  if (usedChallenges.has(challenge)) return null; // already consumed
-  return challenge;
-}
-function burnChallenge(res, challenge) {
-  sweepChallenges();
-  usedChallenges.set(challenge, Date.now() + 6 * 60 * 1000);
-  setCookie(res, "colive_chal", "", 0); // clear the cookie too
-}
+const USERNAME_RE = /^[a-z0-9_.-]{3,30}$/;
 
 async function issueSession(res, userId) {
   const token = crypto.randomBytes(32).toString("hex");
@@ -169,7 +154,7 @@ const profileFields = (body) => {
 };
 
 const publicUser = (u) => u && ({
-  id: u.id, name: u.name, email: u.email, borough: u.borough, budget: u.budget,
+  id: u.id, username: u.username, name: u.name, email: u.email, borough: u.borough, budget: u.budget,
   hue: u.hue, bio: u.bio, photo: u.photo, createdAt: u.createdAt,
 });
 
@@ -212,88 +197,33 @@ function addMemberToDoc(doc, user) {
 const routes = {
   "GET /api/health": async (req, res) => send(res, 200, { ok: true, storage: db.kind, rpId: RP_ID }),
 
-  "POST /api/auth/register-options": async (req, res) => {
-    if (rateLimited(req)) return send(res, 429, { error: "slow down" });
+  "POST /api/auth/register": async (req, res) => {
+    if (rateLimited(req, 30)) return send(res, 429, { error: "slow down" });
     const body = await readBody(req);
-    const name = String(body.name || "").trim().slice(0, 80);
-    if (!name) return send(res, 400, { error: "name required" });
-    const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID, userName: name, userDisplayName: name,
-      attestationType: "none",
-      authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
-    });
-    issueChallenge(res, options.challenge);
-    send(res, 200, { options });
-  },
-
-  "POST /api/auth/register-verify": async (req, res) => {
-    if (rateLimited(req)) return send(res, 429, { error: "slow down" });
-    const body = await readBody(req);
-    const expectedChallenge = readChallenge(req);
-    if (!expectedChallenge) return send(res, 400, { error: "challenge expired — try again" });
-    if (!body.credential) return send(res, 400, { error: "credential required" });
-    let verification;
-    try {
-      verification = await verifyRegistrationResponse({
-        response: body.credential,
-        expectedChallenge,
-        expectedOrigin: ORIGINS,
-        expectedRPID: RP_ID,
-        requireUserVerification: false,
-      });
-    } catch (e) { return send(res, 400, { error: "verification failed: " + e.message }); }
-    if (!verification.verified) return send(res, 400, { error: "not verified" });
-    burnChallenge(res, expectedChallenge);
-
-    const cred = verification.registrationInfo.credential;
-    const existing = await db.getCredential(cred.id);
-    if (existing) return send(res, 409, { error: "this passkey already has an account — sign in instead" });
-
+    const username = String(body.username || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    if (!USERNAME_RE.test(username)) return send(res, 400, { error: "username must be 3–30 characters: letters, numbers, . _ -" });
+    if (password.length < 8) return send(res, 400, { error: "password must be at least 8 characters" });
+    if (await db.getUserByUsername(username)) return send(res, 409, { error: "that username is taken — pick another or sign in" });
     const profile = profileFields(body.profile || {});
-    if (!profile.name) return send(res, 400, { error: "profile.name required" });
+    if (!profile.name) profile.name = username;
+    profile.username = username;
+    profile.passwordHash = hashPassword(password);
     const user = await db.createUser(profile);
-    await db.createCredential({
-      credId: cred.id, userId: user.id, publicKey: b64(cred.publicKey),
-      counter: cred.counter, transports: (cred.transports || []).join(","),
-    });
     await issueSession(res, user.id);
     send(res, 200, { user: publicUser(user) });
   },
 
-  "POST /api/auth/login-options": async (req, res) => {
-    if (rateLimited(req)) return send(res, 429, { error: "slow down" });
-    // usernameless: discoverable credentials — the browser offers the account picker
-    const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: "preferred" });
-    issueChallenge(res, options.challenge);
-    send(res, 200, { options });
-  },
-
-  "POST /api/auth/login-verify": async (req, res) => {
-    if (rateLimited(req)) return send(res, 429, { error: "slow down" });
+  "POST /api/auth/login": async (req, res) => {
+    if (rateLimited(req, 30)) return send(res, 429, { error: "slow down" });
     const body = await readBody(req);
-    const expectedChallenge = readChallenge(req);
-    if (!expectedChallenge) return send(res, 400, { error: "challenge expired — try again" });
-    if (!body.credential || !body.credential.id) return send(res, 400, { error: "credential required" });
-    const stored = await db.getCredential(body.credential.id);
-    if (!stored) return send(res, 404, { error: "no account for this passkey — create one first" });
-    let verification;
-    try {
-      verification = await verifyAuthenticationResponse({
-        response: body.credential,
-        expectedChallenge,
-        expectedOrigin: ORIGINS,
-        expectedRPID: RP_ID,
-        requireUserVerification: false,
-        credential: {
-          id: stored.credId, publicKey: fromB64(stored.publicKey),
-          counter: stored.counter, transports: stored.transports ? stored.transports.split(",") : undefined,
-        },
-      });
-    } catch (e) { return send(res, 400, { error: "verification failed: " + e.message }); }
-    if (!verification.verified) return send(res, 400, { error: "not verified" });
-    burnChallenge(res, expectedChallenge);
-    await db.setCredentialCounter(stored.credId, verification.authenticationInfo.newCounter);
-    const user = await db.getUser(stored.userId);
+    const username = String(body.username || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    if (!username || !password) return send(res, 400, { error: "username and password required" });
+    const user = await db.getUserByUsername(username);
+    // constant-ish work whether or not the user exists (don't leak which)
+    const ok = user && user.passwordHash && verifyPassword(password, user.passwordHash);
+    if (!ok) return send(res, 401, { error: "wrong username or password" });
     await issueSession(res, user.id);
     send(res, 200, { user: publicUser(user) });
   },

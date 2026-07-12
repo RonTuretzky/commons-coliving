@@ -1,20 +1,19 @@
 /* ============================================================
-   colive.fun cloud sync — the optional backend layer.
-   Local-first stays the truth on-device; when the API is reachable
-   and you hold a cloud account (a server-verified passkey), this
-   module keeps two documents in sync:
+   colive.fun — the backend client (assets/js/sync.js).
+   The SERVER is the source of truth. You sign in with a username +
+   password from any browser (incl. incognito) and your world is
+   fetched from the server; the local store is just the working cache.
 
-   - personal state  : your whole world, per-key LWW → PUT /api/state
-   - the house doc   : the house-scoped keys, shared by every member
-                       → PUT /api/house
+   - personal state  : your whole world, per-key merge → PUT /api/state
+   - the house doc   : the house-scoped keys, shared by every member,
+                       merged per element → PUT /api/house
 
    House docs are canonical: member ids are real user ids (u-…).
    On this device you are 'me'; translate() swaps 'me' ↔ your uid in
-   every id position on the way in and out, so the entire existing
-   store and every page keep working untouched.
+   every id position on the way in and out, so the entire store and
+   every page keep working untouched.
 
-   Loaded on every page by shell.js; degrades to a no-op when the
-   API is absent (python -m http.server, offline, etc).
+   Loaded on every page by shell.js.
    ============================================================ */
 (function () {
   const HOUSE_KEYS = [
@@ -28,50 +27,6 @@
   const LOCAL_ONLY = ["cloudSync", "cloudHouse"];
 
   const S = () => window.Commons.state;
-
-  /* ---------- webauthn plumbing ---------- */
-  const b64uToBuf = (s) => Uint8Array.from(
-    atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")),
-    (c) => c.charCodeAt(0));
-  const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-  async function createCredential(options) {
-    const publicKey = Object.assign({}, options, {
-      challenge: b64uToBuf(options.challenge),
-      user: Object.assign({}, options.user, { id: b64uToBuf(options.user.id) }),
-      excludeCredentials: (options.excludeCredentials || []).map((c) => Object.assign({}, c, { id: b64uToBuf(c.id) })),
-    });
-    const cred = await navigator.credentials.create({ publicKey });
-    const r = cred.response;
-    return {
-      id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
-      clientExtensionResults: cred.getClientExtensionResults(),
-      response: {
-        attestationObject: bufToB64u(r.attestationObject),
-        clientDataJSON: bufToB64u(r.clientDataJSON),
-        transports: r.getTransports ? r.getTransports() : [],
-      },
-    };
-  }
-  async function getCredential(options) {
-    const publicKey = Object.assign({}, options, {
-      challenge: b64uToBuf(options.challenge),
-      allowCredentials: (options.allowCredentials || []).map((c) => Object.assign({}, c, { id: b64uToBuf(c.id) })),
-    });
-    const cred = await navigator.credentials.get({ publicKey });
-    const r = cred.response;
-    return {
-      id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
-      clientExtensionResults: cred.getClientExtensionResults(),
-      response: {
-        authenticatorData: bufToB64u(r.authenticatorData),
-        clientDataJSON: bufToB64u(r.clientDataJSON),
-        signature: bufToB64u(r.signature),
-        userHandle: r.userHandle ? bufToB64u(r.userHandle) : null,
-      },
-    };
-  }
 
   /* ---------- identity translation ('me' <-> my uid) ---------- */
   function translate(doc, from, to) {
@@ -153,24 +108,28 @@
     async init() {
       try {
         const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 2500);
+        const timer = setTimeout(() => ctl.abort(), 3000);
         const res = await fetch("/api/health", { signal: ctl.signal });
         clearTimeout(timer);
         this.available = res.ok && (await res.json()).ok === true;
       } catch (e) { this.available = false; }
       if (this.available) {
         try {
-          const me = await this.api("/api/me");
+          const me = await this.api("/api/me");        // 200 only if the session cookie is valid
           this.user = me.user;
           this.houseId = me.houseId;
+          window.Commons.account.setSession(me.user);  // mirror the server identity locally
           this._loadVersions();
-          // with pending offline edits, start from an empty baseline so the
-          // recovery push (inside the loop's first flush) sends everything;
-          // otherwise trust the current world as already-synced
           if (localStorage.getItem("dp-cloud-dirty")) { this._lastPersonal = {}; this._lastHouse = {}; }
           else { this._snapshotPersonal(); this._snapshotHouse(); }
-          this._startLoop();
-        } catch (e) { /* not signed in — fine */ }
+          this._startLoop();                           // pullNow reconciles with the server (the truth)
+        } catch (e) {
+          // no valid server session → we are NOT logged in, whatever localStorage thinks
+          if (e.status === 401 && window.Commons.account.active()) {
+            window.Commons.account.clearSession();
+            window.dispatchEvent(new CustomEvent("cloud:signedout"));
+          }
+        }
       }
       window.dispatchEvent(new CustomEvent("cloud:ready"));
     },
@@ -181,32 +140,37 @@
       return !!(this.user && this.houseId && cs && cs.localId === S().myHouseId);
     },
 
-    /* ----- auth ----- */
-    async register(profile) {
-      const { options } = await this.api("/api/auth/register-options", {
-        method: "POST", body: JSON.stringify({ name: profile.name }),
-      });
-      const credential = await createCredential(options);
-      const r = await this.api("/api/auth/register-verify", {
-        method: "POST", body: JSON.stringify({ credential, profile }),
+    /* ----- auth (username + password, server-hashed) ----- */
+    async register({ username, password, profile }) {
+      const r = await this.api("/api/auth/register", {
+        method: "POST", body: JSON.stringify({ username, password, profile: profile || {} }),
       });
       this.user = r.user;
-      this._lastPersonal = {}; // force a full first push
+      this.houseId = null;
+      window.Commons.account.setSession(r.user);
+      this._lastPersonal = {}; // force a full first push of this device's fresh world
       await this.push(true);
       this._persistVersions();
       this._startLoop();
       window.dispatchEvent(new CustomEvent("cloud:change"));
-      return { user: r.user, credId: credential.id };
+      return { user: r.user };
     },
 
-    async signIn() {
-      const { options } = await this.api("/api/auth/login-options", { method: "POST", body: "{}" });
-      const credential = await getCredential(options);
-      const r = await this.api("/api/auth/login-verify", {
-        method: "POST", body: JSON.stringify({ credential }),
+    async signIn({ username, password }) {
+      const r = await this.api("/api/auth/login", {
+        method: "POST", body: JSON.stringify({ username, password }),
       });
       this.user = r.user;
-      // fresh device (or stale world): the server copy wins wholesale
+      window.Commons.account.setSession(r.user);
+      // the server is the source of truth — pull the whole world down
+      await this._hydrate();
+      this._startLoop();
+      window.dispatchEvent(new CustomEvent("cloud:change"));
+      return { user: r.user };
+    },
+
+    // Replace the local world with the server's copy (used on sign-in / new device).
+    async _hydrate() {
       try {
         const remote = await this.api("/api/state");
         const migrated = remote.doc && window.Commons.migrate(remote.doc);
@@ -218,10 +182,9 @@
           this._applying = false;
           this.stateVersion = remote.version || 0;
         }
-      } catch (e) { /* no cloud state yet — this device's world becomes it */ }
+      } catch (e) { /* brand-new account: no server state yet — this device's empty world becomes it */ }
       const me = await this.api("/api/me");
       this.houseId = me.houseId;
-      // if I'm already in a cloud house, adopt it and mark it synced on this device
       if (me.houseId) {
         try {
           const h = await this.api("/api/house");
@@ -232,16 +195,17 @@
       }
       this._snapshotPersonal();
       this._persistVersions();
-      this._startLoop();
-      window.dispatchEvent(new CustomEvent("cloud:change"));
-      return { user: r.user, credId: credential.id };
     },
 
     async signOut() {
       try { await this.api("/api/auth/logout", { method: "POST", body: "{}" }); } catch (e) { /* best effort */ }
       this.user = null;
       this.houseId = null;
+      this.stateVersion = 0;
+      this.houseVersion = 0;
       if (this._loop) { clearInterval(this._loop); this._loop = null; }
+      try { localStorage.removeItem("dp-cloud-dirty"); } catch (e) {}
+      window.Commons.account.clearSession(); // clears the local mirror + wipes this device's cached world
       window.dispatchEvent(new CustomEvent("cloud:change"));
     },
 
@@ -249,6 +213,7 @@
       if (!this.user) return;
       const r = await this.api("/api/me", { method: "PUT", body: JSON.stringify(patch) });
       this.user = r.user;
+      window.Commons.account.setSession(r.user);
     },
 
     /* ----- house sharing ----- */

@@ -35,79 +35,37 @@
       }
       const C = window.CloudSync;
       if (!C || C.available === null) {
-        page.innerHTML = shellCard(`<h1 class="text-h3">Checking the cloud…</h1>
-          <p class="lede">One second — reaching the sync server.</p>`);
+        page.innerHTML = shellCard(`<h1 class="text-h3">Connecting…</h1><p class="lede">One second — reaching the server.</p>`);
         return;
       }
       if (C.available === false) {
         page.innerHTML = shellCard(`
-          <h1 class="text-h3">The cloud is unreachable</h1>
-          <p class="lede">House invites need the sync server. Check your connection and reload — the invite stays good for 7 days.</p>`);
-        return;
-      }
-
-      const account = Commons.account.get();
-      const active = Commons.account.active();
-
-      if (!active) {
-        localStorage.setItem("dp-pending-join", code);
-        page.innerHTML = shellCard(`
-          <div class="kicker">You're invited</div>
-          <h1 class="text-h3">Someone wants to share a home with you</h1>
-          <p class="lede">First, a face and a name — thirty seconds. Then this invite drops you straight into the house:
-          its chores, its ledger, its votes, on your own phone.</p>
-          <div class="row center wrap">
-            <a class="lifted" id="join-create" href="account.html"><span class="shadow"></span><span class="face">Create your account</span></a>
-            ${account ? `` : `<button class="park-btn light" id="cloud-signin">I already have one — passkey sign-in</button>`}
-          </div>`);
-        const si = document.getElementById("cloud-signin");
-        if (si) si.addEventListener("click", async () => {
-          try {
-            const { user, credId } = await CloudSync.signIn();
-            if (!Commons.account.get()) {
-              Commons.account.create({ name: user.name, email: user.email, borough: user.borough || "Bed-Stuy",
-                budget: user.budget || 1400, hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null });
-              Commons.account.setPasskey(credId);
-            } else { Commons.account.signIn(); }
-            render();
-          } catch (e) { Shell.toast("Sign-in didn't complete: " + (e.message || "try again")); }
-        });
+          <h1 class="text-h3">The server is unreachable</h1>
+          <p class="lede">House invites need the server. Check your connection and reload — the invite stays good for 7 days.</p>`);
         return;
       }
 
       if (!C.user) {
+        // stash the code and send them to sign in / create an account, then come back
+        localStorage.setItem("dp-pending-join", code);
         page.innerHTML = shellCard(`
           <div class="kicker">You're invited</div>
-          <h1 class="text-h3">One passkey and you're in</h1>
-          <p class="lede">Joining a shared house means a cloud account — your passkey, verified by the server,
-          so the house knows it's really you on every device.</p>
+          <h1 class="text-h3">Someone wants to share a home with you</h1>
+          <p class="lede">Sign in — or create an account in thirty seconds — and this invite drops you straight into the house:
+          its chores, its ledger, its votes, from your own device.</p>
           <div class="row center wrap">
-            <button class="lifted" id="cloud-register"><span class="shadow"></span><span class="face">Back my account with a passkey</span></button>
-            <button class="park-btn light" id="cloud-signin">I have one — sign in</button>
+            <a class="lifted" href="account.html?new=1"><span class="shadow"></span><span class="face">Create an account</span></a>
+            <a class="park-btn light" href="account.html">I already have one — sign in</a>
           </div>`);
-        document.getElementById("cloud-register").addEventListener("click", async () => {
-          const a = Commons.account.get();
-          try {
-            const { credId } = await CloudSync.register({
-              name: a.name, email: a.email, borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio, photo: a.photo,
-            });
-            if (!a.passkey) Commons.account.setPasskey(credId);
-            render();
-          } catch (e) { Shell.toast("Cloud signup didn't complete: " + (e.message || "try again")); }
-        });
-        document.getElementById("cloud-signin").addEventListener("click", async () => {
-          try { await CloudSync.signIn(); render(); }
-          catch (e) { Shell.toast("Sign-in didn't complete: " + (e.message || "try again")); }
-        });
         return;
       }
 
-      // signed in locally + cloud: accept
+      // signed in: accept
       page.innerHTML = shellCard(`
         <div class="kicker">You're invited</div>
-        <h1 class="text-h3">Ready when you are</h1>
+        <h1 class="text-h3">Ready when you are, ${U.esc((C.user.name || "").split(/\s+/)[0] || "friend")}</h1>
         <p class="lede">Accepting puts you in every running system — the roster, the chore and bill rotations,
-        the contribution sheet, the meal plan. Your housemates' devices will know you the moment you tap.</p>
+        the contribution sheet, the meal plan. Your housemates will see you the moment you tap.</p>
         <div class="row center wrap">
           <button class="lifted green" id="accept"><span class="shadow"></span><span class="face">Join the house</span></button>
         </div>`);

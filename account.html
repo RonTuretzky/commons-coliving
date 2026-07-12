@@ -22,46 +22,21 @@
     const page = document.getElementById("page");
     const HUES = ["#0d9488", "#16a34a", "#0284c7", "#166534", "#075985", "#513c35"];
     const BOROUGHS = ["Bed-Stuy", "Bushwick", "Crown Heights", "Greenpoint", "Gowanus", "Red Hook", "Ridgewood", "Sunset Park", "Bay Ridge", "Beacon, NY"];
-    const webauthnOk = !!window.PublicKeyCredential;
 
+    let mode = U.qp("new") ? "register" : "signin";   // "signin" | "register"
     let draft = null;
 
-    /* ---------- passkey (WebAuthn, device-bound — no server involved) ---------- */
-    const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-
-    async function passkeyCreate(name) {
-      const cred = await navigator.credentials.create({ publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: "colive.fun" },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: name, displayName: name },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-        authenticatorSelection: { userVerification: "preferred", residentKey: "preferred" },
-        timeout: 60000,
-      }});
-      return b64(cred.rawId);
-    }
-    async function passkeyVerify(credId) {
-      await navigator.credentials.get({ publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        allowCredentials: [{ type: "public-key", id: unb64(credId) }],
-        userVerification: "preferred",
-        timeout: 60000,
-      }});
-      return true;
-    }
-
-    /* ---------- photo: downscale to a 192px square data URL ---------- */
+    /* ---------- avatar photo (downscaled to a small data URL) ---------- */
     function readPhoto(file) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
         img.onload = () => {
-          const S = 192;
+          const SZ = 192;
           const c = document.createElement("canvas");
-          c.width = S; c.height = S;
+          c.width = SZ; c.height = SZ;
           const side = Math.min(img.width, img.height);
-          c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+          c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SZ, SZ);
           URL.revokeObjectURL(url);
           resolve(c.toDataURL("image/jpeg", 0.82));
         };
@@ -74,21 +49,20 @@
       const a = Commons.account.get();
       const me = Commons.me();
       draft = a
-        ? { name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null }
-        : { name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null };
+        ? { username: a.username || "", name: a.name, email: a.email || "", borough: a.borough, budget: a.budget, hue: a.hue, bio: a.bio || "", photo: a.photo || null }
+        : { username: "", password: "", name: "", email: "", borough: me.borough || "Bed-Stuy", budget: me.budget || 1500, hue: HUES[0], bio: "", photo: null };
     }
-
     function avatarPreview() {
       if (draft.photo) return `<span class="avatar lg" style="background-image:url('${draft.photo}');background-size:cover;background-position:center;color:transparent">.</span>`;
-      return `<span class="avatar lg" style="background:${draft.hue}">${U.esc(U.initials(draft.name || "You"))}</span>`;
+      return `<span class="avatar lg" style="background:${draft.hue}">${U.esc(U.initials(draft.name || draft.username || "You"))}</span>`;
     }
 
-    function formHtml(isNew) {
+    /* ---------- profile fields (shared by register + edit) ---------- */
+    function profileFieldsHtml() {
       const hueSwatches = HUES.map((h) =>
         `<button type="button" class="avatar sm" data-hue="${h}" style="background:${h};cursor:pointer;border:${draft.hue === h && !draft.photo ? "3px solid var(--ink)" : "2px solid var(--paper-0)"}">${U.esc(U.initials(draft.name || "You"))}</button>`
       ).join("");
       return `
-      <div class="card stack">
         <div class="row wrap" style="gap:16px">
           <span id="ava-preview">${avatarPreview()}</span>
           <div class="stack" style="--gap:6px;flex:1;min-width:220px">
@@ -96,13 +70,11 @@
               <input id="a-photo" type="file" accept="image/*" style="display:none" />
             </label>
             ${draft.photo ? `<button type="button" class="park-btn ghost sm" id="a-photo-clear" style="align-self:start">Remove photo</button>` : `<div class="row wrap" style="gap:8px">${hueSwatches}</div>`}
-            <span class="text-caption muted">${draft.photo ? "" : "…or pick a color and let your initials do the work."}</span>
           </div>
         </div>
         <div class="field">
-          <label for="a-name">Name</label>
+          <label for="a-name">Display name</label>
           <input class="input" id="a-name" value="${U.esc(draft.name)}" placeholder="The name housemates will see" />
-          <div class="help">Shows on your profile, the chore board, the ledger — everywhere your avatar goes.</div>
         </div>
         <div class="grid grid-2">
           <div class="field">
@@ -117,26 +89,48 @@
         </div>
         <div class="field">
           <label for="a-bio">One-liner (optional)</label>
-          <input class="input" id="a-bio" value="${U.esc(draft.bio)}" placeholder="e.g. Big-dinner person, early riser, has strong compost opinions." />
+          <input class="input" id="a-bio" value="${U.esc(draft.bio)}" placeholder="e.g. Big-dinner person, early riser, strong compost opinions." />
         </div>
         <div class="field">
           <label for="a-email">Contact email (optional)</label>
           <input class="input" id="a-email" type="email" value="${U.esc(draft.email)}" placeholder="you@example.com" />
-          <div class="help">Shows on your profile so housemates can reach you off-app. Stored on this device, like everything here.</div>
-        </div>
-        <div class="row wrap">
-          <button class="lifted" id="a-save"><span class="shadow"></span><span class="face">${isNew ? "Create my account" : "Save changes"}</span></button>
-        </div>
-      </div>`;
+        </div>`;
+    }
+    function wireProfileFields() {
+      const q = (id) => page.querySelector(id);
+      if (q("#a-name")) q("#a-name").addEventListener("input", (e) => { draft.name = e.target.value; });
+      if (q("#a-bio")) q("#a-bio").addEventListener("input", (e) => { draft.bio = e.target.value; });
+      if (q("#a-email")) q("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
+      if (q("#a-borough")) q("#a-borough").addEventListener("change", (e) => { draft.borough = e.target.value; });
+      if (q("#a-budget")) q("#a-budget").addEventListener("input", (e) => { draft.budget = Number(e.target.value); q("#a-budget-val").textContent = U.fmtMoney(draft.budget); });
+      page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => { draft.hue = b.dataset.hue; refreshAvatar(); }));
+      const photo = q("#a-photo");
+      if (photo) photo.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        try { draft.photo = await readPhoto(file); refreshAvatar(); Shell.toast("Looking sharp", "green"); }
+        catch (err) { Shell.toast("Couldn't read that image — try another"); }
+      });
+      const clear = q("#a-photo-clear");
+      if (clear) clear.addEventListener("click", () => { draft.photo = null; refreshAvatar(); });
+    }
+    function refreshAvatar() {
+      // re-render only the profile-fields region without losing typed values
+      const wrap = document.getElementById("profile-fields");
+      if (!wrap) return;
+      const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget };
+      wrap.innerHTML = profileFieldsHtml();
+      Object.assign(draft, keep);
+      wireProfileFields();
     }
 
+    /* ---------- wallet (Gnosis, device-local key) ---------- */
     function walletCardHtml() {
       if (!window.Rails || !Rails.enabled) return "";
       if (!Rails.hasWallet()) {
         return `<div class="card stack">
           <div class="kicker">Wallet · Gnosis Chain</div>
-          <p class="small">A real address on Gnosis Chain, generated on this device — it's how gathering deposits
-          get held by code instead of by us. The key never leaves your browser.</p>
+          <p class="small">A real address on Gnosis Chain, generated on this device — it's how gathering deposits get held by code instead of by us. The key stays in this browser.</p>
           <button class="park-btn secondary sm" id="w-create" style="align-self:start">⛓ Create my wallet</button>
         </div>`;
       }
@@ -153,8 +147,7 @@
         </div>
         <p class="small">Balance: <strong class="amount tnum" id="w-balance">…</strong> <span class="muted">xDai</span>
           <button class="park-btn ghost sm" id="w-refresh">refresh</button></p>
-        <p class="text-caption muted">xDai is a dollar-pegged native token — sending it costs a fraction of a cent.
-        Fund this address from any Gnosis wallet to make deposits real.</p>
+        <p class="text-caption muted">The wallet key lives in this browser (not on the server). Reveal it to back it up.</p>
         <div class="row wrap">
           <button class="park-btn light sm" id="w-export">Reveal private key</button>
           <span id="w-key-slot"></span>
@@ -164,16 +157,12 @@
     function wireWallet() {
       const mk = document.getElementById("w-create");
       if (mk) mk.addEventListener("click", () => {
-        const addr = Rails.ensureWallet();
-        Commons.account.update({ wallet: addr });
+        Rails.ensureWallet();
         Shell.toast("Wallet created — a real Gnosis address, born on this device", "green");
         setTimeout(() => location.reload(), 500);
       });
       const cp = document.getElementById("w-copy");
-      if (cp) cp.addEventListener("click", () => {
-        navigator.clipboard && navigator.clipboard.writeText(Rails.address());
-        Shell.toast("Address copied");
-      });
+      if (cp) cp.addEventListener("click", () => { navigator.clipboard && navigator.clipboard.writeText(Rails.address()); Shell.toast("Address copied"); });
       const refreshBal = async () => {
         const el = document.getElementById("w-balance");
         if (!el) return;
@@ -184,80 +173,84 @@
       if (rf) { rf.addEventListener("click", refreshBal); refreshBal(); }
       const ex = document.getElementById("w-export");
       if (ex) ex.addEventListener("click", () => {
-        if (!ex.dataset.armed) {
-          ex.dataset.armed = "1"; ex.textContent = "Really reveal it?";
-          Shell.toast("Anyone with this key owns the wallet — tap again if you're alone");
-          return;
-        }
+        if (!ex.dataset.armed) { ex.dataset.armed = "1"; ex.textContent = "Really reveal it?"; Shell.toast("Anyone with this key owns the wallet — tap again if you're alone"); return; }
         document.getElementById("w-key-slot").innerHTML =
           `<code style="background:#fff3f2;border:1px solid var(--red-1);padding:6px 10px;border-radius:8px;font-size:.75rem;word-break:break-all">${U.esc(Rails.exportKey())}</code>`;
         ex.textContent = "Reveal private key"; delete ex.dataset.armed;
       });
     }
 
-    function passkeyCardHtml(a) {
-      if (!webauthnOk) return "";
-      return `
-      <div class="card stack">
-        <div class="kicker">Passkey</div>
-        ${a.passkey
-          ? `<p class="small">🔐 This account is guarded by your device — Touch ID, Face ID, or your screen lock. Signing back in takes a fingerprint, not a password.</p>
-             <p class="text-caption muted">Added ${U.fmtDate(a.passkey.addedAt)}. The key never leaves this device; there's nothing to leak.</p>
-             <button class="park-btn light sm" id="pk-remove" style="align-self:start">Remove passkey</button>`
-          : `<p class="small">Add a passkey and signing back in takes Touch ID instead of trust. The key is created by your device, for this site, and never leaves the machine.</p>
-             <button class="park-btn secondary sm" id="pk-add" style="align-self:start">🔐 Add a passkey</button>`}
-      </div>`;
+    /* ---------- render ---------- */
+    function loadingView() {
+      page.innerHTML = `<div class="card center-text stack"><div class="kicker">colive.fun</div><p class="lede">Connecting…</p></div>`;
     }
 
-    function render() {
-      const a = Commons.account.get();
+    function authView() {
       startDraft();
-
-      if (!a) {
-        page.innerHTML = `
-        <div class="stack-lg">
-          <div>
-            <div class="kicker">Get started</div>
-            <h1 class="text-h2">Make it yours</h1>
-            <p class="lede">Your account is your name on the door — your profile, your quiz results, your
-            chores, your side of the ledger. Thirty seconds, then the quiz does the matchmaking.</p>
+      const isReg = mode === "register";
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div>
+          <div class="kicker">${isReg ? "Create your account" : "Welcome back"}</div>
+          <h1 class="text-h2">${isReg ? "Pick a username, and you're in" : "Sign in"}</h1>
+          <p class="lede">${isReg
+            ? "Your account lives on colive.fun's servers — sign in from any device or browser and your world is there."
+            : "One username and password. Works anywhere you open colive.fun."}</p>
+        </div>
+        <div class="card stack">
+          <div class="field">
+            <label for="a-username">Username</label>
+            <input class="input" id="a-username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${U.esc(draft.username)}" placeholder="lowercase, letters/numbers/._-" />
           </div>
-          ${formHtml(true)}
-          <div id="cloud-slot" style="display:none"></div>
-          <p class="text-caption muted">Local-first by design: your account lives in this browser. With the cloud online,
-          your passkey backs it on the server too — sign in from any device, share a house with real housemates.</p>
-        </div>`;
-        wireForm(true);
-        renderCloudSlot();
-        return;
-      }
-
-      if (a.signedOut) {
-        page.innerHTML = `
-        <div class="card center-text stack-lg" style="padding:clamp(32px,6vw,56px)">
-          ${Shell.avatarHtml({ id: "me", name: a.name, hue: a.hue, photo: a.photo }, "lg")}
-          <div>
-            <h1 class="text-h3">Welcome back, ${U.esc(a.name.split(/\s+/)[0])}</h1>
-            <p class="lede">${a.passkey ? "Your passkey is the key — one touch and you're home." : "One tap and you're home."}</p>
+          <div class="field">
+            <label for="a-password">Password</label>
+            <input class="input" id="a-password" type="password" autocomplete="${isReg ? "new-password" : "current-password"}" placeholder="${isReg ? "at least 8 characters" : "your password"}" />
           </div>
-          <div class="row center wrap">
-            <button class="lifted" id="signin"><span class="shadow"></span><span class="face">${a.passkey ? "🔐 Sign in with passkey" : "Sign in"}</span></button>
+          ${isReg ? `<div id="profile-fields" class="stack">${profileFieldsHtml()}</div>` : ""}
+          <div class="row wrap">
+            <button class="lifted green" id="a-submit"><span class="shadow"></span><span class="face">${isReg ? "Create account" : "Sign in"}</span></button>
+            <button class="park-btn ghost" id="a-toggle">${isReg ? "I already have an account" : "Create a new account"}</button>
           </div>
-          <p class="text-caption muted">Not you? <button class="park-btn ghost sm" id="acct-delete">Delete this account from the device</button></p>
-        </div>`;
-        document.getElementById("signin").addEventListener("click", async () => {
-          if (a.passkey && webauthnOk) {
-            try { await passkeyVerify(a.passkey.credId); }
-            catch (e) { Shell.toast("Passkey check didn't complete — try again"); return; }
+          <p class="text-caption muted" id="a-msg"></p>
+        </div>
+      </div>`;
+      if (isReg) wireProfileFields();
+      document.getElementById("a-toggle").addEventListener("click", () => { mode = isReg ? "signin" : "register"; authView(); });
+      document.getElementById("a-username").addEventListener("input", (e) => { draft.username = e.target.value; });
+      const submit = document.getElementById("a-submit");
+      const doSubmit = async () => {
+        const username = (document.getElementById("a-username").value || "").trim().toLowerCase();
+        const password = document.getElementById("a-password").value || "";
+        const msg = document.getElementById("a-msg");
+        if (!username || !password) { msg.textContent = "Username and password, please."; return; }
+        submit.disabled = true; const face = submit.querySelector(".face"); const orig = face.textContent; face.textContent = "…";
+        try {
+          if (isReg) {
+            await CloudSync.register({ username, password, profile: {
+              name: (draft.name || "").trim() || username, borough: draft.borough, budget: draft.budget,
+              hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo,
+            } });
+          } else {
+            await CloudSync.signIn({ username, password });
           }
-          Commons.account.signIn();
-          Shell.toast(`Welcome home, ${a.name.split(/\s+/)[0]}`, "green");
-          setTimeout(() => location.reload(), 400);
-        });
-        wireDelete();
-        return;
-      }
+          const pendingJoin = localStorage.getItem("dp-pending-join");
+          Shell.toast(isReg ? "Account created — welcome" : "Welcome back", "green");
+          setTimeout(() => {
+            location.href = pendingJoin ? "join.html?code=" + encodeURIComponent(pendingJoin)
+              : (Commons.me().quizDone || Commons.houses.mine() ? "dashboard.html" : "quiz.html");
+          }, 500);
+        } catch (e) {
+          submit.disabled = false; face.textContent = orig;
+          msg.textContent = (e && e.message) || "Something went wrong — try again.";
+        }
+      };
+      submit.addEventListener("click", doSubmit);
+      document.getElementById("a-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doSubmit(); });
+    }
 
+    function accountView() {
+      startDraft();
+      const a = Commons.account.get();
       const me = Commons.me();
       const house = Commons.houses.mine();
       page.innerHTML = `
@@ -266,7 +259,7 @@
           <div>
             <div class="kicker">Your account</div>
             <h1 class="text-h2">${U.esc(a.name)}</h1>
-            <p class="small muted">Member since ${U.fmtDate(a.createdAt)} · ${U.esc(a.borough)}${house ? ` · lives at <a href="house.html?id=${house.id}">${U.esc(house.name)}</a>` : " · not in a house yet"}</p>
+            <p class="small muted">@${U.esc(a.username || "you")} · member since ${U.fmtDate(a.createdAt)}${house ? ` · lives at <a href="house.html?id=${house.id}">${U.esc(house.name)}</a>` : " · not in a house yet"}</p>
           </div>
           ${Shell.avatarHtml(me, "lg")}
         </div>
@@ -275,292 +268,53 @@
           <a class="park-btn light sm" href="quiz.html">${me.quizDone ? "Retake the quiz" : "Take the quiz"}</a>
           ${house ? `<a class="park-btn light sm" href="checkin.html">Weekly check-in</a>` : `<a class="park-btn light sm" href="browse.html">Find your house</a>`}
         </div>
-        ${formHtml(false)}
-        ${passkeyCardHtml(a)}
-        ${walletCardHtml()}
-        <div class="card flat stack" id="cloud-slot" style="display:none"></div>
-        <div class="card flat stack">
-          <div class="kicker">Your data</div>
-          <p class="small muted" style="margin:0">Local-first means portable: everything on this device — account, house, ledger, quiz — as one JSON file. Move devices, keep a backup, or hand a copy to your house.</p>
-          <div class="row wrap">
-            <button class="park-btn light sm" id="data-export">Download backup</button>
-            <label class="park-btn light sm" style="cursor:pointer">Restore from file<input type="file" id="data-import" accept="application/json,.json" style="display:none"></label>
-            <label class="row text-caption muted" style="gap:6px;cursor:pointer"><input type="checkbox" id="data-inc-key" style="accent-color:var(--pine-2)">include wallet key <span title="The key controls real xDai — only include it in backups you'd trust with cash">⚠</span></label>
-          </div>
+        <div class="card stack">
+          <div class="kicker">Profile</div>
+          <div id="profile-fields" class="stack">${profileFieldsHtml()}</div>
+          <div class="row"><button class="lifted" id="a-save"><span class="shadow"></span><span class="face">Save changes</span></button></div>
         </div>
+        ${walletCardHtml()}
         <div class="card flat stack">
-          <div class="kicker" style="color:var(--red)">Danger zone</div>
+          <div class="kicker" style="color:var(--red)">Sign out</div>
           <div class="row between wrap">
-            <span class="small">Sign out of this device${a.passkey ? " (passkey required to get back in)" : ""}.</span>
-            <button class="park-btn light sm" id="a-signout">Sign out</button>
-          </div>
-          <div class="row between wrap">
-            <span class="small">Delete the account and start this device over.</span>
-            <button class="park-btn destructive sm" id="acct-delete">Delete account</button>
-          </div>
-          <div class="row between wrap">
-            <span class="small">Wipe everything — account, houses, ledger, the lot.</span>
-            <button class="park-btn destructive sm" id="wipe-all">Reset this device</button>
+            <span class="small">Sign out on this device. Your account and everything in it stay safe on the server — sign back in any time, anywhere.</span>
+            <button class="park-btn destructive sm" id="a-signout">Sign out</button>
           </div>
         </div>
       </div>`;
-      wireForm(false);
-      wirePasskey(a);
+      wireProfileFields();
       wireWallet();
-      wireDelete();
-      document.getElementById("a-signout").addEventListener("click", () => {
-        Commons.account.signOut();
+      document.getElementById("a-save").addEventListener("click", async () => {
+        const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo };
+        Commons.account.update(fields);
+        try { await CloudSync.updateProfile(fields); } catch (e) { /* will retry on next sync */ }
+        Shell.toast("Saved", "green");
+        setTimeout(() => location.reload(), 400);
+      });
+      document.getElementById("a-signout").addEventListener("click", async () => {
+        await CloudSync.signOut();
         Shell.toast("Signed out");
-        setTimeout(() => location.reload(), 400);
-      });
-      document.getElementById("data-export").addEventListener("click", () => {
-        const payload = {
-          app: "colive.fun", exportedAt: new Date().toISOString(),
-          state: Commons.state,
-          walletKey: (document.getElementById("data-inc-key").checked && window.Rails && Rails.hasWallet())
-            ? Rails.exportKey() : undefined,
-        };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "colive-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-        link.click();
-        URL.revokeObjectURL(link.href);
-        Shell.toast(payload.walletKey ? "Backed up — that file holds your wallet key, treat it like cash" : "Backed up", "green");
-      });
-      document.getElementById("data-import").addEventListener("change", (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        e.target.value = ""; // so re-picking the same file fires change again
-        reader.onload = () => {
-          try {
-            const payload = JSON.parse(reader.result);
-            if (!payload || payload.app !== "colive.fun" || !payload.state || !payload.state.version) {
-              Shell.toast("That's not a colive.fun backup"); return;
-            }
-            const migrated = Commons.migrate(payload.state);
-            if (!migrated) {
-              Shell.toast("Backup is from app version " + payload.state.version + " — this device can't read it"); return;
-            }
-            localStorage.setItem("dp-commons-v" + migrated.version, JSON.stringify(migrated));
-            if (payload.walletKey && window.Rails) {
-              // a wallet key controls real xDai — never silently replace one that exists
-              if (!Rails.hasWallet()) {
-                try { Rails.importKey(payload.walletKey); } catch (_) { /* bad key in file — state still restores */ }
-              } else if (Rails.exportKey() !== payload.walletKey) {
-                Shell.toast("Kept this device's wallet key — the backup holds a different one (forget the wallet first to restore it)");
-              }
-            }
-            Shell.toast("Restored — reloading", "green");
-            setTimeout(() => location.reload(), 600);
-          } catch (_) { Shell.toast("Couldn't read that file"); }
-        };
-        reader.readAsText(file);
-      });
-      const wipe = document.getElementById("wipe-all");
-      if (wipe) wipe.addEventListener("click", () => {
-        if (wipe.dataset.armed) { Commons.reset(); localStorage.removeItem("dp-ledger-autosettle"); location.href = "index.html"; return; }
-        wipe.dataset.armed = "1"; wipe.textContent = "Really wipe it all?";
-        Shell.toast("Tap again to confirm — this clears everything");
+        setTimeout(() => { location.href = "account.html"; }, 400);
       });
     }
 
-    function wireForm(isNew) {
-      page.querySelector("#a-name").addEventListener("input", (e) => { draft.name = e.target.value; });
-      page.querySelector("#a-bio").addEventListener("input", (e) => { draft.bio = e.target.value; });
-      page.querySelector("#a-email").addEventListener("input", (e) => { draft.email = e.target.value; });
-      page.querySelector("#a-borough").addEventListener("change", (e) => { draft.borough = e.target.value; });
-      page.querySelector("#a-budget").addEventListener("input", (e) => {
-        draft.budget = Number(e.target.value);
-        page.querySelector("#a-budget-val").textContent = U.fmtMoney(draft.budget);
-      });
-      page.querySelectorAll("[data-hue]").forEach((b) => b.addEventListener("click", () => {
-        draft.hue = b.dataset.hue; draft.photo = draft.photo; refreshAvatarUi();
-      }));
-      page.querySelector("#a-photo").addEventListener("change", async (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        try {
-          draft.photo = await readPhoto(file);
-          refreshAvatarUi();
-          Shell.toast("Looking sharp", "green");
-        } catch (err) { Shell.toast("Couldn't read that image — try another"); }
-      });
-      const clear = page.querySelector("#a-photo-clear");
-      if (clear) clear.addEventListener("click", () => { draft.photo = null; refreshAvatarUi(); });
-
-      function refreshAvatarUi() {
-        // re-render just the form card, keep field values
-        const keep = { name: draft.name, bio: draft.bio, email: draft.email, borough: draft.borough, budget: draft.budget };
-        const card = page.querySelector("#ava-preview").closest(".card");
-        const tmp = document.createElement("div");
-        tmp.innerHTML = formHtml(isNew);
-        card.replaceWith(tmp.firstElementChild);
-        Object.assign(draft, keep);
-        wireForm(isNew);
+    function route() {
+      if (!window.CloudSync || CloudSync.available === null) { loadingView(); return; }
+      if (CloudSync.available === false) {
+        page.innerHTML = `<div class="card center-text stack"><div class="kicker" style="color:var(--red)">Can't reach the server</div>
+          <p class="lede">colive.fun needs its server to sign you in. Check your connection and reload.</p></div>`;
+        return;
       }
-
-      page.querySelector("#a-save").addEventListener("click", async () => {
-        const name = draft.name.trim();
-        if (!name) { Shell.toast("A name is the whole point"); return; }
-        if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email.trim())) { Shell.toast("That email doesn't look right"); return; }
-        const fields = { name, email: draft.email.trim() || null, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: draft.bio.trim(), photo: draft.photo };
-        if (isNew) {
-          Commons.account.create(fields);
-          if (window.Rails && Rails.enabled) {
-            try { Commons.account.update({ wallet: Rails.ensureWallet() }); } catch (e) { /* wallet optional */ }
-          }
-          // offer a passkey right away, then onboard to the quiz.
-          // With the cloud reachable, the same passkey creates the server
-          // account too — one gesture, real account, any device.
-          if (webauthnOk && window.CloudSync && CloudSync.available) {
-            try {
-              const { credId } = await CloudSync.register(fields);
-              Commons.account.setPasskey(credId);
-              Shell.toast("Account created — passkey-backed and synced to the cloud", "green");
-            } catch (e) {
-              try {
-                const credId = await passkeyCreate(name);
-                Commons.account.setPasskey(credId);
-                Shell.toast("Account + passkey created (cloud declined — local only for now)", "green");
-              } catch (e2) { Shell.toast("Account created — you can add a passkey any time", "green"); }
-            }
-          } else if (webauthnOk) {
-            try {
-              const credId = await passkeyCreate(name);
-              Commons.account.setPasskey(credId);
-              Shell.toast("Account + passkey created — welcome", "green");
-            } catch (e) {
-              Shell.toast("Account created — you can add a passkey any time", "green");
-            }
-          } else {
-            Shell.toast(`Welcome, ${name.split(/\s+/)[0]}`, "green");
-          }
-          const pendingJoin = localStorage.getItem("dp-pending-join");
-          setTimeout(() => {
-            location.href = pendingJoin ? "join.html?code=" + encodeURIComponent(pendingJoin)
-              : (Commons.me().quizDone ? "browse.html" : "quiz.html");
-          }, 700);
-        } else {
-          Commons.account.update(fields);
-          if (window.CloudSync && CloudSync.user) {
-            CloudSync.updateProfile(fields).catch(() => {}); // housemates see the new name/photo
-          }
-          Shell.toast("Saved", "green");
-          setTimeout(() => location.reload(), 400);
-        }
-      });
+      if (CloudSync.user) { accountView(); return; }
+      // not signed in — default to register for a first-timer, sign-in if they have an account here before
+      authView();
     }
 
-    function wirePasskey(a) {
-      const add = document.getElementById("pk-add");
-      if (add) add.addEventListener("click", async () => {
-        try {
-          const credId = await passkeyCreate(a.name);
-          Commons.account.setPasskey(credId);
-          Shell.toast("Passkey added — your device is the key now", "green");
-          setTimeout(() => location.reload(), 400);
-        } catch (e) { Shell.toast("Passkey setup didn't complete — no changes made"); }
-      });
-      const rm = document.getElementById("pk-remove");
-      if (rm) rm.addEventListener("click", async () => {
-        try { await passkeyVerify(a.passkey.credId); }
-        catch (e) { Shell.toast("Passkey check didn't complete"); return; }
-        Commons.account.setPasskey(null);
-        Shell.toast("Passkey removed");
-        setTimeout(() => location.reload(), 400);
-      });
-    }
-
-    function wireDelete() {
-      const del = document.getElementById("acct-delete");
-      if (del) del.addEventListener("click", () => {
-        if (del.dataset.armed) {
-          Commons.account.remove();
-          Shell.toast("Account deleted from this device");
-          setTimeout(() => location.reload(), 500);
-          return;
-        }
-        del.dataset.armed = "1"; del.textContent = "Really delete?";
-        Shell.toast("Tap again to confirm");
-      });
-    }
-
-    /* ---------- cloud sync card (progressive: hidden until the API answers) ---------- */
-    async function renderCloudSlot() {
-      const slot = document.getElementById("cloud-slot");
-      if (!slot || !window.CloudSync) return;
-      const C = window.CloudSync;
-      if (C.available === null) return; // cloud:ready will re-run us
-      if (C.available === false) { slot.style.display = "none"; return; }
-      slot.style.display = "";
-      const a = Commons.account.get();
-      if (C.user) {
-        slot.innerHTML = `
-          <div class="kicker">Cloud sync</div>
-          <div class="row between wrap">
-            <span class="small"><span class="pill match">● Synced</span> Signed in as <strong>${U.esc(C.user.name)}</strong> —
-              your world backs up as you go, and your passkey opens it from any device.</span>
-            <button class="park-btn light sm" id="cloud-signout">Sign out of cloud</button>
-          </div>
-          ${C.houseId ? `<p class="text-caption muted" style="margin:0">Your house is shared — housemates' devices see the same rotations, ledger, and votes.</p>` : ""}`;
-        document.getElementById("cloud-signout").addEventListener("click", async () => {
-          await C.signOut();
-          Shell.toast("Signed out of cloud — this device keeps its local copy");
-          renderCloudSlot();
-        });
-      } else if (a && !a.signedOut) {
-        slot.innerHTML = `
-          <div class="kicker">Cloud sync</div>
-          <div class="row between wrap">
-            <span class="small">Back this account with the cloud: one passkey, and your world follows you across devices.</span>
-            <span class="row wrap">
-              <button class="lifted xs" id="cloud-register"><span class="shadow"></span><span class="face">Create cloud account</span></button>
-              <button class="park-btn light sm" id="cloud-signin">I have one — sign in</button>
-            </span>
-          </div>`;
-        document.getElementById("cloud-register").addEventListener("click", async () => {
-          try {
-            const { credId } = await C.register({
-              name: a.name, email: a.email, borough: a.borough, budget: a.budget,
-              hue: a.hue, bio: a.bio, photo: a.photo,
-            });
-            if (!a.passkey) Commons.account.setPasskey(credId);
-            Shell.toast("Cloud account created — synced", "green");
-            renderCloudSlot();
-          } catch (e) { Shell.toast("Cloud signup didn't complete: " + (e.message || "try again")); }
-        });
-        document.getElementById("cloud-signin").addEventListener("click", cloudSignIn);
-      } else {
-        slot.innerHTML = `
-          <div class="card center-text stack" style="margin-top:8px">
-            <p class="small muted" style="margin:0">Already on colive.fun from another device?</p>
-            <span><button class="park-btn light" id="cloud-signin">🔐 Sign in with your passkey</button></span>
-          </div>`;
-        document.getElementById("cloud-signin").addEventListener("click", cloudSignIn);
-      }
-    }
-    async function cloudSignIn() {
-      try {
-        const { user, credId } = await CloudSync.signIn();
-        const acct = Commons.account.get();
-        if (!acct) {
-          Commons.account.create({ name: user.name, email: user.email, borough: user.borough || "Bed-Stuy",
-            budget: user.budget || 1400, hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null });
-          Commons.account.setPasskey(credId);
-        } else if (acct.signedOut) {
-          Commons.account.signIn();
-        }
-        Shell.toast(`Welcome back, ${user.name.split(/\s+/)[0]} — world restored`, "green");
-        setTimeout(() => location.reload(), 600);
-      } catch (e) { Shell.toast("Passkey sign-in didn't complete: " + (e.message || "try again")); }
-    }
-    window.addEventListener("cloud:ready", renderCloudSlot);
-    window.addEventListener("cloud:change", renderCloudSlot);
-
-    render();
-    renderCloudSlot();
+    loadingView();
+    window.addEventListener("cloud:ready", route);
+    window.addEventListener("cloud:change", route);
+    // if CloudSync already resolved before listeners attached
+    if (window.CloudSync && CloudSync.available !== null) route();
   </script>
 </body>
 </html>

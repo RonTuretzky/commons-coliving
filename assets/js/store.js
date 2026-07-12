@@ -1179,6 +1179,26 @@
         this._demoIdentity();
         save();
       },
+      // Hosted mode: the account is a mirror of the server user. The backend
+      // client (sync.js) calls these on sign-in / sign-out; the server is the
+      // source of truth for who you are and what your world is.
+      setSession(user) {
+        if (!user) return null;
+        state.account = {
+          id: user.id, username: user.username || null,
+          name: user.name || user.username, email: user.email || null,
+          borough: user.borough || "Bed-Stuy", budget: user.budget || 1500,
+          hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null,
+          signedOut: false, createdAt: user.createdAt || new Date().toISOString(),
+        };
+        this._applyIdentity();
+        save(); return state.account;
+      },
+      clearSession() {
+        // sign-out wipes this device — hosted means nothing lives here without a session
+        state = seedState();
+        save();
+      },
     },
 
     people: {

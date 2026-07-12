@@ -169,6 +169,11 @@
   // PWA: manifest + service worker, injected here so every page gets both
   // without repeating <head> boilerplate. Chrome processes dynamic manifests.
   function installSync() {
+    // if the server says the session is gone (expired/signed-out elsewhere),
+    // drop to the front door — the app is hosted, no session means no app
+    window.addEventListener("cloud:signedout", () => {
+      if (!/account\.html$/.test(location.pathname)) location.replace("account.html");
+    });
     if (window.CloudSync || document.querySelector('script[data-cloud-sync]')) return;
     const sc = document.createElement("script");
     sc.src = "assets/js/sync.js";
