@@ -129,6 +129,10 @@ function pgDriver(databaseUrl) {
     ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
     max: 5,
   });
+  // Postgres 15+ locks down the public schema (the app user can't CREATE there).
+  // Use a schema the app user owns; set it on every pooled connection.
+  pool.on("connect", (c) => { c.query("SET search_path TO colive, public").catch(() => {}); });
+  pool.on("error", () => { /* keep the pool alive on idle-client errors */ });
 
   const SCHEMA = `
     CREATE TABLE IF NOT EXISTS users (
@@ -190,7 +194,14 @@ function pgDriver(databaseUrl) {
 
   return {
     kind: "pg",
-    async init() { await pool.query(SCHEMA); },
+    async init() {
+      const client = await pool.connect(); // on('connect') has already SET search_path
+      try {
+        await client.query("CREATE SCHEMA IF NOT EXISTS colive");
+        await client.query("SET search_path TO colive, public");
+        await client.query(SCHEMA);
+      } finally { client.release(); }
+    },
 
     async createUser(f) {
       const id = "u-" + uuid();
