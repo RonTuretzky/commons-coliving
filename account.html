@@ -223,10 +223,12 @@
             chores, your side of the ledger. Thirty seconds, then the quiz does the matchmaking.</p>
           </div>
           ${formHtml(true)}
-          <p class="text-caption muted">Local-first by design: your account lives in this browser, and adding a passkey
-          (next step) locks it to your device. Nothing leaves the machine.</p>
+          <div id="cloud-slot" style="display:none"></div>
+          <p class="text-caption muted">Local-first by design: your account lives in this browser. With the cloud online,
+          your passkey backs it on the server too — sign in from any device, share a house with real housemates.</p>
         </div>`;
         wireForm(true);
+        renderCloudSlot();
         return;
       }
 
@@ -276,6 +278,7 @@
         ${formHtml(false)}
         ${passkeyCardHtml(a)}
         ${walletCardHtml()}
+        <div class="card flat stack" id="cloud-slot" style="display:none"></div>
         <div class="card flat stack">
           <div class="kicker">Your data</div>
           <p class="small muted" style="margin:0">Local-first means portable: everything on this device — account, house, ledger, quiz — as one JSON file. Move devices, keep a backup, or hand a copy to your house.</p>
@@ -408,8 +411,22 @@
           if (window.Rails && Rails.enabled) {
             try { Commons.account.update({ wallet: Rails.ensureWallet() }); } catch (e) { /* wallet optional */ }
           }
-          // offer a passkey right away, then onboard to the quiz
-          if (webauthnOk) {
+          // offer a passkey right away, then onboard to the quiz.
+          // With the cloud reachable, the same passkey creates the server
+          // account too — one gesture, real account, any device.
+          if (webauthnOk && window.CloudSync && CloudSync.available) {
+            try {
+              const { credId } = await CloudSync.register(fields);
+              Commons.account.setPasskey(credId);
+              Shell.toast("Account created — passkey-backed and synced to the cloud", "green");
+            } catch (e) {
+              try {
+                const credId = await passkeyCreate(name);
+                Commons.account.setPasskey(credId);
+                Shell.toast("Account + passkey created (cloud declined — local only for now)", "green");
+              } catch (e2) { Shell.toast("Account created — you can add a passkey any time", "green"); }
+            }
+          } else if (webauthnOk) {
             try {
               const credId = await passkeyCreate(name);
               Commons.account.setPasskey(credId);
@@ -420,9 +437,16 @@
           } else {
             Shell.toast(`Welcome, ${name.split(/\s+/)[0]}`, "green");
           }
-          setTimeout(() => { location.href = Commons.me().quizDone ? "browse.html" : "quiz.html"; }, 700);
+          const pendingJoin = localStorage.getItem("dp-pending-join");
+          setTimeout(() => {
+            location.href = pendingJoin ? "join.html?code=" + encodeURIComponent(pendingJoin)
+              : (Commons.me().quizDone ? "browse.html" : "quiz.html");
+          }, 700);
         } else {
           Commons.account.update(fields);
+          if (window.CloudSync && CloudSync.user) {
+            CloudSync.updateProfile(fields).catch(() => {}); // housemates see the new name/photo
+          }
           Shell.toast("Saved", "green");
           setTimeout(() => location.reload(), 400);
         }
@@ -463,7 +487,80 @@
       });
     }
 
+    /* ---------- cloud sync card (progressive: hidden until the API answers) ---------- */
+    async function renderCloudSlot() {
+      const slot = document.getElementById("cloud-slot");
+      if (!slot || !window.CloudSync) return;
+      const C = window.CloudSync;
+      if (C.available === null) return; // cloud:ready will re-run us
+      if (C.available === false) { slot.style.display = "none"; return; }
+      slot.style.display = "";
+      const a = Commons.account.get();
+      if (C.user) {
+        slot.innerHTML = `
+          <div class="kicker">Cloud sync</div>
+          <div class="row between wrap">
+            <span class="small"><span class="pill match">● Synced</span> Signed in as <strong>${U.esc(C.user.name)}</strong> —
+              your world backs up as you go, and your passkey opens it from any device.</span>
+            <button class="park-btn light sm" id="cloud-signout">Sign out of cloud</button>
+          </div>
+          ${C.houseId ? `<p class="text-caption muted" style="margin:0">Your house is shared — housemates' devices see the same rotations, ledger, and votes.</p>` : ""}`;
+        document.getElementById("cloud-signout").addEventListener("click", async () => {
+          await C.signOut();
+          Shell.toast("Signed out of cloud — this device keeps its local copy");
+          renderCloudSlot();
+        });
+      } else if (a && !a.signedOut) {
+        slot.innerHTML = `
+          <div class="kicker">Cloud sync</div>
+          <div class="row between wrap">
+            <span class="small">Back this account with the cloud: one passkey, and your world follows you across devices.</span>
+            <span class="row wrap">
+              <button class="lifted xs" id="cloud-register"><span class="shadow"></span><span class="face">Create cloud account</span></button>
+              <button class="park-btn light sm" id="cloud-signin">I have one — sign in</button>
+            </span>
+          </div>`;
+        document.getElementById("cloud-register").addEventListener("click", async () => {
+          try {
+            const { credId } = await C.register({
+              name: a.name, email: a.email, borough: a.borough, budget: a.budget,
+              hue: a.hue, bio: a.bio, photo: a.photo,
+            });
+            if (!a.passkey) Commons.account.setPasskey(credId);
+            Shell.toast("Cloud account created — synced", "green");
+            renderCloudSlot();
+          } catch (e) { Shell.toast("Cloud signup didn't complete: " + (e.message || "try again")); }
+        });
+        document.getElementById("cloud-signin").addEventListener("click", cloudSignIn);
+      } else {
+        slot.innerHTML = `
+          <div class="card center-text stack" style="margin-top:8px">
+            <p class="small muted" style="margin:0">Already on colive.fun from another device?</p>
+            <span><button class="park-btn light" id="cloud-signin">🔐 Sign in with your passkey</button></span>
+          </div>`;
+        document.getElementById("cloud-signin").addEventListener("click", cloudSignIn);
+      }
+    }
+    async function cloudSignIn() {
+      try {
+        const { user, credId } = await CloudSync.signIn();
+        const acct = Commons.account.get();
+        if (!acct) {
+          Commons.account.create({ name: user.name, email: user.email, borough: user.borough || "Bed-Stuy",
+            budget: user.budget || 1400, hue: user.hue || "#0d9488", bio: user.bio || "", photo: user.photo || null });
+          Commons.account.setPasskey(credId);
+        } else if (acct.signedOut) {
+          Commons.account.signIn();
+        }
+        Shell.toast(`Welcome back, ${user.name.split(/\s+/)[0]} — world restored`, "green");
+        setTimeout(() => location.reload(), 600);
+      } catch (e) { Shell.toast("Passkey sign-in didn't complete: " + (e.message || "try again")); }
+    }
+    window.addEventListener("cloud:ready", renderCloudSlot);
+    window.addEventListener("cloud:change", renderCloudSlot);
+
     render();
+    renderCloudSlot();
   </script>
 </body>
 </html>

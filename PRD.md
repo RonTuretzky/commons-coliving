@@ -173,7 +173,7 @@ Launching a house chains straight into configuration: create → chore calculato
 |---|---|---|
 | **1. Move the Overton window** | Quiz, browse, profiles, house pages, mixers RSVP; calculators work fully client-side | Money flows simulated |
 | **2. First money** | Retreat deposits held by the platform (Stripe + a clear refund policy) | House funds simulated |
-| **3. House ops** | Real accounts + house ledgers (bill rotation, contributions, 2/3 votes) on a boring backend (Postgres, not a chain) | Steward is rule-based |
+| **3. House ops** | **SHIPPED 2026-07:** real passkey accounts + cross-device sync + shared houses on a boring backend (Node + Postgres on App Platform, `/api`) | Steward is rule-based |
 | **4. Steward+** | LLM steward w/ vendor actions (drafts only; humans send) | — |
 
 ---

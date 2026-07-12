@@ -71,7 +71,9 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 - `Commons.money.payBill(id)` now also writes the bill to the ledger (equal split across its rotation, `fromBill` tag)
 - `events.add` accepts `recurringMonthly: true`; past recurring dates roll forward on load
 - `Rails.commune.createTask/markTaskDone/disputeTask/voteOnDispute` (CommuneOS on-chain bounties) · `Rails.notarize(text)` → `{digest, hash}` (0-value self-send carrying the keccak256) · `Rails.contentHash(text)`
-- PWA: `manifest.webmanifest` + `sw.js` (network-first HTML, stale-while-revalidate assets), registered by `Shell.render()`
+- PWA: `manifest.webmanifest` + `sw.js` (network-first HTML/JS/CSS, stale-while-revalidate fonts/images, `/api/*` never cached), registered by `Shell.render()`
+- `window.CloudSync` (assets/js/sync.js, loaded by Shell on every page; no-op without the API): `available` (null=probing) · `user` · `register(profile)/signIn()/signOut()` (WebAuthn against /api) · `houseOnline()/invite()/join(code)` · `pullNow()/houseSynced()` · events `cloud:ready`, `cloud:change`, `sync:update` (re-render on this) · house docs canonical (uid ↔ `'me'` translation at the boundary)
+- Backend: `api/server.js` (+ db.js: memory/pg drivers) — passkey auth, sessions (httpOnly cookie), `/api/state` + `/api/house` per-key merge sync, invites. Same-origin via App Platform ingress `/api`.
 
 **Copy rule ("systems, not templates"):** the product story is *"run the house on a system that works"* — the word "template" undersells and should be avoided in headings/CTAs (fine in passing). The calculators are first-class features: label them CALCULATOR and cross-link them prominently.
 - `Shell.toast(msg, 'green'?)` · `Shell.avatarHtml(profile, 'sm'|'lg'?)` · `Shell.matchPill(matchResult)`
@@ -104,6 +106,7 @@ Conventions for building pages of the Commons prototype. **Read `PRD.md` for pro
 | chore-builder.html | `chores` | Space-by-space chore schedule calculator with effort estimates; applies a generated rotation to the house |
 | ledger.html | `ledger` | Splitwise-style house ledger: expenses w/ 4 split modes, template-aware defaults, net balances, simplify-debts, one-tap rail settlement, category chart, activity feed, labor-credit hour ledger |
 | gathering.html | `gatherings` | Shareable per-event page (`?id=`): details, RSVP/deposit, copy-link + .ics export, attendees, post-event mutual match |
+| join.html | `browse` | Invite landing (`?code=`): walks a stranger through account → cloud passkey → house membership |
 | agreement.html | `dashboard` | The living house agreement: versioned text, member signatures, 2/3 amendments, optional Gnosis notarization |
 | split.html | `dashboard` | The split protocol: social-ceiling readout, member picker, pro-rata fund math, two-step confirm |
 

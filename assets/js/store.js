@@ -890,7 +890,10 @@
     if (changed) save();
   }
 
-  function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+  function save() {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    try { if (window.CloudSync) window.CloudSync.onSave(); } catch (e) { /* sync is optional */ }
+  }
   function reset() { localStorage.removeItem(KEY); load(); }
 
   /* ---------- Formatting & misc ---------- */

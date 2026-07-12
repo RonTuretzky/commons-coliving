@@ -307,6 +307,7 @@
         });
       }
 
+      window.addEventListener("sync:update", () => { if (Shell.editing()) return; try { render(); } catch (e) {} });
       render();
     })();
   </script>

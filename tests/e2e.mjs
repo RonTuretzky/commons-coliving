@@ -13,7 +13,8 @@ const PNG_1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUl
 async function newPage() {
   page = await ctx.newPage();
   page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push('console: ' + m.text()); });
+  // resource 404s are not app errors (the /api/health probe is 404 on static-only serving)
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) consoleErrors.push('console: ' + m.text()); });
   return page;
 }
 async function fresh(url) {

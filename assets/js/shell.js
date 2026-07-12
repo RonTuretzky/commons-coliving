@@ -137,11 +137,15 @@
   function avatarHtml(profile, size) {
     const U = window.Commons.util;
     if (!profile) return "";
-    if (profile.photo) {
+    // photo/hue can arrive from another member's synced profile — never trust
+    // them raw in an inline style. A photo must be a data:image URL; a hue a CSS color.
+    const okPhoto = typeof profile.photo === "string" && /^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(profile.photo);
+    if (okPhoto) {
       return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background-image:url('${profile.photo}');background-size:cover;background-position:center;color:transparent">${U.esc(U.initials(profile.name))}</span>`;
     }
-    const bg = profile.hue || U.hue(profile.id);
-    return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background:${bg}">${U.esc(U.initials(profile.name))}</span>`;
+    const okHue = typeof profile.hue === "string" && /^#[0-9a-fA-F]{3,8}$|^(rgb|hsl)a?\([0-9.,%\s/]+\)$/.test(profile.hue);
+    const bg = okHue ? profile.hue : U.hue(profile.id);
+    return `<span class="avatar ${size || ""}" title="${U.esc(profile.name)}" style="background:${U.esc(bg)}">${U.esc(U.initials(profile.name))}</span>`;
   }
   function matchPill(m) {
     const conf = m.conflicts > 0
@@ -159,10 +163,19 @@
     const burger = document.getElementById("nav-burger");
     if (burger) burger.addEventListener("click", () => document.getElementById("nav-links").classList.toggle("open"));
     installPwa();
+    installSync();
   }
 
   // PWA: manifest + service worker, injected here so every page gets both
   // without repeating <head> boilerplate. Chrome processes dynamic manifests.
+  function installSync() {
+    if (window.CloudSync || document.querySelector('script[data-cloud-sync]')) return;
+    const sc = document.createElement("script");
+    sc.src = "assets/js/sync.js";
+    sc.dataset.cloudSync = "1";
+    document.body.appendChild(sc);
+  }
+
   function installPwa() {
     if (!document.querySelector('link[rel="manifest"]')) {
       document.head.insertAdjacentHTML("beforeend",
@@ -182,5 +195,12 @@
     return true;
   }
 
-  window.Shell = { render, gate, toast, avatarHtml, matchPill, LINKS };
+  // true while the user is typing in a field — pages skip sync:update re-renders
+  // then, so a housemate's incoming change can't wipe an in-progress form
+  function editing() {
+    const el = document.activeElement;
+    return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  }
+
+  window.Shell = { render, gate, toast, avatarHtml, matchPill, editing, LINKS };
 })();

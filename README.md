@@ -36,6 +36,15 @@ Systems + a ledger + votes. Deterministic bill rotation, period-calculated chore
 - **The split protocol** (`split.html`) — past ~8 people a house divides Hutterite-style: pro-rata fund split, rotations pruned, both houses stay in the network.
 - **Gatherings, shareable** (`gathering.html?id=`) — per-event pages with copy-link and real `.ics` export, monthly recurrence that rolls itself forward, and post-event mutual matching (picks stay private until reciprocal).
 
+## The backend (real accounts, real sync)
+
+An optional Node service at `/api` (same origin, DigitalOcean App Platform) with managed Postgres:
+
+- **Accounts are passkeys** — WebAuthn, server-verified (`@simplewebauthn/server`), no passwords anywhere. One Touch ID gesture creates the account; the same passkey signs you in on any device and restores your whole world.
+- **State syncs as you go** — the client pushes only changed top-level keys (per-key last-writer-wins); the server merges with jsonb `doc || changes`. Local-first stays the truth on-device; offline keeps working and back-fills when the API returns.
+- **Houses are shared** — "Put the house online" on the dashboard, mint a 7-day invite link, and each housemate joins from their own phone: same rotations, ledger, votes, signatures, live within seconds (8s poll). House docs are canonical (member ids are real user ids); each device translates its own id ↔ `'me'` at the sync boundary (`assets/js/sync.js`), so the entire store and every page work unchanged.
+- **Run it**: `cd api && npm install && STORAGE=memory STATIC_DIR=.. RP_ID=localhost ORIGINS=http://localhost:8080 node server.js` — one process serves the site and the API, exactly like production routing.
+
 ## Gnosis rails (real)
 
 - **Wallets:** every account gets a real Gnosis Chain address, generated on-device (`assets/js/rails.js`, vendored viem); key never leaves the browser. Balances read via the public RPC. Native **xDai** — a dollar that costs a fraction of a cent to move.
@@ -47,7 +56,7 @@ Systems + a ledger + votes. Deterministic bill rotation, period-calculated chore
 
 ## E2E tests
 
-60 headless Playwright tests drive every feature against real store state — account creation/sign-out, the full quiz, ledger splits/settle/auto-settle, 2/3 votes executing from the fund, the check-in reallocator, escrow reserve/refund, the steward's draft→approve flow, the wizard, both calculators, bounties (incl. on-chain dual-write + dispute votes), the agreement lifecycle (sign → amend → notarize on anvil), labor credits, the split protocol, mutual match, `.ics` downloads, PWA registration, and JSON backup/restore.
+60 headless Playwright tests (plus a 10-test cloud suite: two browser contexts as two people's phones — signup with server-verified passkeys, house sharing via invite, cross-device expenses/signatures/chores with identity intact, and same-passkey world restore on a new device) drive every feature against real store state — account creation/sign-out, the full quiz, ledger splits/settle/auto-settle, 2/3 votes executing from the fund, the check-in reallocator, escrow reserve/refund, the steward's draft→approve flow, the wizard, both calculators, bounties (incl. on-chain dual-write + dispute votes), the agreement lifecycle (sign → amend → notarize on anvil), labor credits, the split protocol, mutual match, `.ics` downloads, PWA registration, and JSON backup/restore.
 
 ```bash
 python3 -m http.server 8091 &

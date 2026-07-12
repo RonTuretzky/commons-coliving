@@ -1,0 +1,13 @@
+{
+  "name": "colive-api",
+  "private": true,
+  "version": "1.0.0",
+  "description": "colive.fun backend: passkey auth + state sync + shared houses",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.1.1",
+    "pg": "^8.13.1"
+  }
+}

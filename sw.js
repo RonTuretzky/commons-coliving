@@ -6,13 +6,13 @@
    the same page ignoring the query string (gathering.html?id=… still gets
    gathering.html), and only then to the homepage. Cross-origin (RPC,
    raw.githubusercontent) is never touched — chain calls must not be cached. */
-const CACHE = "colive-v2";
+const CACHE = "colive-v3";
 const CORE = [
   "index.html", "browse.html", "gatherings.html", "gathering.html", "templates.html",
   "quiz.html", "dashboard.html", "ledger.html", "chores.html", "meals.html",
   "account.html", "house.html", "person.html", "checkin.html", "create.html",
-  "steward.html", "chore-builder.html", "agreement.html", "split.html",
-  "assets/css/park.css", "assets/js/store.js", "assets/js/shell.js", "assets/js/rails.js",
+  "steward.html", "chore-builder.html", "agreement.html", "split.html", "join.html",
+  "assets/css/park.css", "assets/js/store.js", "assets/js/shell.js", "assets/js/rails.js", "assets/js/sync.js",
   "assets/js/vendor/viem.js", "assets/img/logomark.png", "assets/img/logomark-192.png",
 ];
 
@@ -39,6 +39,7 @@ function cachePut(request, res) {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
+  if (url.pathname.startsWith("/api/")) return; // live data — the network owns it, always
 
   const networkFirst = e.request.mode === "navigate" ||
     /\.(html|js|css|webmanifest)$/.test(url.pathname) || url.pathname.endsWith("/");

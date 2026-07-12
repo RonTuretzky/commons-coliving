@@ -233,6 +233,7 @@
     window.addEventListener("rails:addresses", () => { try { render(); } catch (e) {} });
 
     render();
+    window.addEventListener("sync:update", () => { if (Shell.editing()) return; try { render(); } catch (e) {} });
   </script>
 </body>
 </html>

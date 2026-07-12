@@ -167,6 +167,8 @@
           </a>`;
         })()}
 
+        <div id="cloud-house"></div>
+
         ${bountiesHtml(house)}
 
         <div class="grid grid-3">
@@ -469,7 +471,71 @@
       Shell.toast(`Proposed — needs ${Commons.proposals.threshold()} of ${Commons.houses.mine().members.length}`, "green");
     });
 
+    /* ---------- cloud house sharing ---------- */
+    async function renderCloudHouse() {
+      const el = document.getElementById("cloud-house");
+      if (!el || !window.CloudSync) return;
+      const C = window.CloudSync;
+      const house = Commons.houses.mine();
+      if (!house || C.available !== true) { if (el) el.innerHTML = ""; return; }
+      if (!C.user) {
+        el.innerHTML = `<div class="card flat row between wrap" style="gap:10px">
+          <span class="small muted">☁️ Cloud sync is live — back your account with a passkey and this house can run across everyone's devices.</span>
+          <a class="park-btn light sm" href="account.html">Set up in your account →</a>
+        </div>`;
+        return;
+      }
+      if (C.houseSynced()) {
+        el.innerHTML = `<div class="card row between wrap" style="border-color:var(--pine);gap:10px">
+          <span class="small"><span class="pill match">● Live across devices</span> Every member's phone sees the same rotations, ledger, votes, and agreement.</span>
+          <span class="row wrap">
+            <button class="park-btn light sm" data-cloud="invite">Invite a housemate</button>
+          </span>
+          <div class="stack" id="invite-out" style="width:100%"></div>
+        </div>`;
+        el.querySelector("[data-cloud='invite']").addEventListener("click", async () => {
+          try {
+            const { code } = await C.invite();
+            const url = location.origin + location.pathname.replace(/[^/]*$/, "") + "join.html?code=" + code;
+            const out = document.getElementById("invite-out");
+            out.innerHTML = `<div class="row wrap" style="gap:8px;margin-top:8px">
+              <input class="input" readonly value="${U.esc(url)}" style="flex:1;min-width:220px" id="invite-url" />
+              <button class="park-btn sm light" id="invite-copy">Copy</button>
+              <span class="text-caption muted">Good for 7 days — they create their account, tap the link, and they're in every rotation.</span>
+            </div>`;
+            document.getElementById("invite-copy").addEventListener("click", () => {
+              navigator.clipboard && navigator.clipboard.writeText(url);
+              document.getElementById("invite-url").select();
+              Shell.toast("Invite link copied", "green");
+            });
+          } catch (e) { Shell.toast("Couldn't mint an invite: " + (e.message || "try again")); }
+        });
+        return;
+      }
+      el.innerHTML = `<div class="card row between wrap" style="gap:10px">
+        <span class="small">☁️ <strong class="display-bold">Take ${U.esc(house.name)} online</strong>
+          <span class="muted" style="display:block">Housemates join from their own phones — same ledger, same chores, same votes, no phone-passing.</span></span>
+        <button class="lifted xs" data-cloud="online"><span class="shadow"></span><span class="face">Put the house online</span></button>
+      </div>`;
+      el.querySelector("[data-cloud='online']").addEventListener("click", async (evt) => {
+        const btn = evt.currentTarget;
+        btn.disabled = true;
+        try {
+          await CloudSync.houseOnline();
+          Shell.toast("House is live across devices — mint an invite", "green");
+          renderCloudHouse();
+        } catch (e) {
+          btn.disabled = false;
+          Shell.toast("Couldn't put the house online: " + (e.message || "try again"));
+        }
+      });
+    }
+    window.addEventListener("cloud:ready", renderCloudHouse);
+    window.addEventListener("cloud:change", renderCloudHouse);
+    window.addEventListener("sync:update", () => { if (Shell.editing()) return; try { render(); renderCloudHouse(); } catch (e) {} });
+
     render();
+    renderCloudHouse();
   </script>
 </body>
 </html>
