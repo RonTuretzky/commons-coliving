@@ -278,6 +278,48 @@
       document.getElementById("a-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doSubmit(); });
     }
 
+    // Vouch, Refer & Living References — bring-your-own-trust: growth + reputation.
+    function referBase() { return location.origin + location.pathname.replace(/[^/]*$/, ""); }
+    function referLink() { return referBase() + "account.html?ref=" + encodeURIComponent(Commons.refs.referralCode()); }
+    function referenceLink() {
+      const a = Commons.account.get();
+      return referBase() + "reference.html?for=" + encodeURIComponent(Commons.refs.referralCode()) + "&name=" + encodeURIComponent((a && a.name) || "a friend");
+    }
+    function referCardHtml() {
+      const myRefs = Commons.refs.forPerson("me");
+      return `<div class="card stack">
+        <div class="kicker">Bring your people · your reputation</div>
+        <h3 class="text-h3" style="margin-top:2px">Invite & references</h3>
+        <p class="small muted" style="margin:0">An invite from someone who'll vouch for you is worth more than any profile. Share your link — when a friend joins, you both get a "brought a neighbor" nod.</p>
+        <div class="row wrap" style="gap:6px">
+          <input class="input mono" readonly id="refer-link" value="${U.esc(referLink())}" style="flex:1;min-width:200px" />
+          <button class="park-btn light sm" id="refer-copy">Copy</button>
+          <button class="park-btn primary sm" id="refer-share">Share</button>
+        </div>
+        <div class="stack" style="--gap:6px;border-top:1px solid var(--paper-1);padding-top:10px">
+          <div class="row between wrap">
+            <span class="small"><strong>Living references</strong> — ask a former housemate to speak for you.</span>
+            <button class="park-btn light sm" id="reference-copy">Copy reference link</button>
+          </div>
+          ${myRefs.length ? myRefs.map((r) => `<div class="text-caption"><strong>${U.esc(r.byName || (r.by === "me" ? "You" : "A housemate"))}</strong> (${U.esc(r.relationship)}): “${U.esc(r.line || "would live with them again")}” ${r.recommend ? "👍" : ""}</div>`).join("")
+            : `<span class="text-caption muted">No references yet — send the link to someone who's lived with you.</span>`}
+        </div>
+      </div>`;
+    }
+    function notifyCardHtml() {
+      const on = !!Commons.me().notify;
+      const supported = typeof Notification !== "undefined";
+      const perm = supported ? Notification.permission : "unsupported";
+      return `<div class="card stack">
+        <div class="kicker">Nudges</div>
+        <div class="row between wrap">
+          <span class="small"><strong>Remind me on this device</strong>
+            <span class="muted" style="display:block">When something needs you — a chore due, cook duty, an unpaid bill — get a local notification. On-device only, no server push, no tracking.</span></span>
+          <button class="park-btn sm ${on && perm === "granted" ? "primary" : "light"}" id="notify-toggle" ${supported ? "" : "disabled"}>${!supported ? "Not supported here" : on && perm === "granted" ? "On ✓" : perm === "denied" ? "Blocked in browser" : "Turn on"}</button>
+        </div>
+      </div>`;
+    }
+
     function accountView() {
       startDraft();
       const a = Commons.account.get();
@@ -298,6 +340,10 @@
           <a class="park-btn light sm" href="quiz.html">${me.quizDone ? "Retake the quiz" : "Take the quiz"}</a>
           ${house ? `<a class="park-btn light sm" href="checkin.html">Weekly check-in</a>` : `<a class="park-btn light sm" href="browse.html">Find your house</a>`}
         </div>
+
+        ${referCardHtml()}
+        ${notifyCardHtml()}
+
         <div class="card stack">
           <div class="kicker">Profile</div>
           <div id="profile-fields" class="stack">${profileFieldsHtml()}</div>
@@ -314,6 +360,27 @@
       </div>`;
       wireProfileFields();
       wireWallet();
+      const copyEl = (id, msg) => { const el = document.getElementById(id); if (el) { navigator.clipboard && navigator.clipboard.writeText(el.value); el.select && el.select(); Shell.toast(msg, "green"); } };
+      const rc = document.getElementById("refer-copy");
+      if (rc) rc.addEventListener("click", () => copyEl("refer-link", "Invite link copied — send it to your people"));
+      const rs = document.getElementById("refer-share");
+      if (rs) rs.addEventListener("click", async () => {
+        const url = referLink();
+        const text = "Come find your people on colive.fun — I'll vouch for you.";
+        if (navigator.share) { try { await navigator.share({ title: "colive.fun", text, url }); } catch (e) {} }
+        else { navigator.clipboard && navigator.clipboard.writeText(url); Shell.toast("Link copied — paste it wherever your group chat lives", "green"); }
+      });
+      const refc = document.getElementById("reference-copy");
+      if (refc) refc.addEventListener("click", () => { navigator.clipboard && navigator.clipboard.writeText(referenceLink()); Shell.toast("Reference link copied — send it to a former housemate", "green"); });
+      const nt = document.getElementById("notify-toggle");
+      if (nt) nt.addEventListener("click", async () => {
+        if (typeof Notification === "undefined") return;
+        if (Commons.me().notify && Notification.permission === "granted") { Commons.setMe({ notify: false }); accountView(); Shell.toast("Nudges off"); return; }
+        let perm = Notification.permission;
+        if (perm !== "granted") { try { perm = await Notification.requestPermission(); } catch (e) {} }
+        if (perm === "granted") { Commons.setMe({ notify: true }); accountView(); Shell.toast("Nudges on — we'll only ping you for things that need you", "green"); }
+        else { Shell.toast("Your browser blocked notifications — enable them in site settings"); }
+      });
       document.getElementById("a-save").addEventListener("click", async () => {
         const fields = { name: (draft.name || "").trim() || a.name, borough: draft.borough, budget: draft.budget, hue: draft.hue, bio: (draft.bio || "").trim(), email: (draft.email || "").trim() || null, photo: draft.photo, socials: draft.socials, discoverable: draft.discoverable };
         Commons.setMe({ seeking: draft.seeking });
@@ -341,6 +408,8 @@
       authView();
     }
 
+    // referral attribution: if arrived via someone's invite link, remember who
+    const _ref = U.qp("ref"); if (_ref) { try { Commons.refs.setReferredBy(_ref); } catch (e) {} }
     loadingView();
     window.addEventListener("cloud:ready", route);
     window.addEventListener("cloud:change", route);

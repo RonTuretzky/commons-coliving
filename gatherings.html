@@ -206,7 +206,13 @@
     }
 
     function hostedBy(ev) {
-      if (ev.host) { const h = Commons.houses.get(ev.host); if (h) return `<div class="text-caption muted">Hosted by <a href="house.html?id=${encodeURIComponent(h.id)}">${esc(h.name)}</a></div>`; }
+      if (ev.host) { const h = Commons.houses.get(ev.host); if (h) {
+        const fol = Commons.follows.has("house", h.id);
+        return `<div class="text-caption muted row between wrap" style="gap:6px">
+          <span>Hosted by <a href="house.html?id=${encodeURIComponent(h.id)}">${esc(h.name)}</a></span>
+          ${Commons.account.active() ? `<button class="park-btn ghost sm" data-action="follow" data-id="${esc(h.id)}">${fol ? "★ Following" : "☆ Follow"}</button>` : ""}
+        </div>`;
+      } }
       if (ev.hostName) return `<div class="text-caption muted">Hosted by ${esc(ev.hostName)}</div>`;
       return "";
     }
@@ -347,6 +353,12 @@
       if (!btn) return;
       const id = btn.dataset.id;
       switch (btn.dataset.action) {
+        case "follow": {
+          const now = Commons.follows.toggle("house", id);
+          Shell.toast(now ? "Following — their gatherings surface for you" : "Unfollowed");
+          render();
+          break;
+        }
         case "rsvp": {
           if (!Commons.account.active()) { location.href = "account.html"; break; }
           (async () => {
@@ -464,7 +476,23 @@
       if (!el) return;
       el.textContent = "Every gathering you post shows up on the shared calendar for everyone on colive.fun.";
     }
-    async function boot() { await loadComm(); render(); renderMine(); }
+    let hostPrefilled = false;
+    function maybeHostPrefill() {
+      if (hostPrefilled) return;
+      const h = U.qp("host"); if (!h || !Commons.account.active()) return;
+      hostPrefilled = true;
+      const form = document.getElementById("host-form");
+      if (!form) return;
+      form.classList.remove("hidden");
+      if (h === "open-house") {
+        const mine = Commons.houses.mine();
+        const ti = document.getElementById("g-title"); if (ti && !ti.value) ti.value = mine ? "Open house at " + mine.name : "Open house";
+        const wh = document.getElementById("g-where"); if (wh && !wh.value && mine) wh.value = mine.borough;
+        const de = document.getElementById("g-desc"); if (de && !de.value) de.value = "Come see the place, meet the crew, no pressure. There's a room open — take the quiz first if you want to know how you'd fit.";
+      }
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    async function boot() { await loadComm(); render(); renderMine(); maybeHostPrefill(); }
     window.addEventListener("cloud:ready", boot);
     window.addEventListener("cloud:change", boot);
     boot();

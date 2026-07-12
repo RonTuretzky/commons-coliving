@@ -532,6 +532,19 @@
       checkinLog: [],
       clicks: {},
       maintenance: [],
+      // --- house-shared operations layer (sync: HOUSE_KEYS + per-element merge) ---
+      wall: [],               // async heads-up board: {id, by, text, tag, date?, at, reactions{}, replies[], pinned}
+      shoppingList: [],       // the pantry: {id, name, est?, status:'need'|'bought', claimedBy?, addedBy, ...}
+      dinnerRSVP: {},         // { 'YYYY-MM-DD': { memberId: {status:'in'|'out', guests} } }
+      coverRequests: [],      // chore swaps: {id, choreId, period, by, at, status, claimedBy?}
+      kudos: [],              // gratitude circle: {id, from, to, why, at, week}
+      // --- personal (not house-shared): survive leaving a house / live on the profile ---
+      follows: [],            // [{kind:'house'|'borough', id}]
+      lastSeen: {},           // { key: iso } — "new since you were here" badges
+      references: [],         // vouches & living references: {id, about, by, relationship, kind, tags[], line?, at}
+      reviews: [],            // two-sided move-out reviews: {id, house, from, to, tags[], line?, recommend, at}
+      dinnerDefault: null,    // 'in' | 'out' | null — "I usually eat in on cook nights"
+      referredBy: null,       // who invited me (attribution)
     };
   }
 
@@ -658,6 +671,26 @@
         { id: "m-sink", title: "Kitchen sink slow drain", status: "open", openedBy: "p-zora", at: days(-2), notes: "Steward suggested enzyme treatment before calling anyone." },
         { id: "m-radiator", title: "Front room radiator knock", status: "resolved", openedBy: "p-eli", at: days(-40), notes: "Bled the line — fixed. $0." },
       ],
+      wall: [
+        { id: "w-guest", by: "p-marcus", text: "Cousin crashing on the couch through Sunday — say hi if you see a tall stranger making coffee.", tag: "heads-up", date: days(3), at: days(-1), reactions: { "👍": ["p-zora", "p-eli"] }, replies: [], pinned: false },
+        { id: "w-wifi", by: "p-eli", text: "Wifi: CypressYard / hunter2-brownstone. Router's on the pantry shelf if it flakes.", tag: "fyi", at: days(-30), reactions: {}, replies: [], pinned: true },
+      ],
+      shoppingList: [
+        { id: "sl-oil", name: "Olive oil (the big tin)", est: 18, status: "need", addedBy: "p-zora", at: days(-1) },
+        { id: "sl-soap", name: "Dish soap ×2", est: 7, status: "need", claimedBy: "p-eli", at: days(-2) },
+        { id: "sl-coffee", name: "Coffee beans", est: 14, status: "bought", addedBy: "p-june", boughtBy: "p-june", price: 13.5, boughtAt: days(-3), participants: ["p-theo", "p-zora", "p-eli", "p-priya", "p-marcus", "p-june"] },
+      ],
+      dinnerRSVP: {},
+      coverRequests: [],
+      kudos: [
+        { id: "k-1", from: "p-zora", to: "p-marcus", why: "reset the kitchen every morning this week without being asked", at: days(-2), week: "seed" },
+      ],
+      follows: [],
+      lastSeen: {},
+      references: [],
+      reviews: [],
+      dinnerDefault: null,
+      referredBy: null,
     };
   }
 
@@ -887,6 +920,20 @@
   /* ---------- Store plumbing ---------- */
 
   let state;
+  // Additive keys introduced after v9 shipped. Rather than bump the version (which
+  // would force a reseed / new migration for every synced world), we backfill any
+  // missing key with a safe empty default on every load — for the local cache, a
+  // server-hydrated world, and an imported export alike.
+  const LATER_KEYS = {
+    wall: () => [], shoppingList: () => [], dinnerRSVP: () => ({}), coverRequests: () => [],
+    kudos: () => [], follows: () => [], lastSeen: () => ({}), references: () => [],
+    reviews: () => [], dinnerDefault: () => null, referredBy: () => null,
+  };
+  function ensureKeys(s) {
+    if (!s || typeof s !== "object") return s;
+    Object.keys(LATER_KEYS).forEach((k) => { if (s[k] == null) s[k] = LATER_KEYS[k](); });
+    return s;
+  }
   // A v8 world upcasts losslessly: every v9 addition is a new key with a safe
   // empty default (no fictional bounties/picks appear in an existing user's world).
   function upcastV8(s8) {
@@ -903,13 +950,13 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { state = JSON.parse(raw); if (state.version === 9) return; }
+      if (raw) { state = JSON.parse(raw); if (state.version === 9) { ensureKeys(state); return; } }
     } catch (e) { /* reseed */ }
     try {
       const v8 = localStorage.getItem("dp-commons-v8");
       if (v8) {
         const s8 = JSON.parse(v8);
-        if (s8 && s8.version === 8) { state = upcastV8(s8); save(); return; }
+        if (s8 && s8.version === 8) { state = ensureKeys(upcastV8(s8)); save(); return; }
       }
     } catch (e) { /* fall through to reseed */ }
     // opt-in demo fixture: only when a test/preview explicitly asks for it before load
@@ -919,6 +966,7 @@
     } else {
       state = seedState(); // the real, empty world
     }
+    ensureKeys(state);
     save();
   }
   // (rollRecurring runs after load, below)
@@ -1018,7 +1066,7 @@
     get state() { return state; },
     save, reset,
     // opt-in demo world (tests / sales previews) — never auto-runs for real users
-    __seedDemo() { state = demoState(); seedChoreHistory(state); rollRecurring(); save(); return state; },
+    __seedDemo() { state = ensureKeys(demoState()); seedChoreHistory(state); rollRecurring(); save(); return state; },
     DIMS, DEALBREAKERS, QUIZ, ARCHETYPES, DAY,
     ECON_TEMPLATES, SPACES, CHORE_PRESETS, MEAL_PRESETS, STAPLES,
 
@@ -1316,6 +1364,44 @@
         state.agreementDoc = null;
         state.checkinLog = [];
         save(); return h;
+      },
+      // Graceful exit: leave the house you're in. Your slots stop rotating to a
+      // ghost (chores/bills/meal-cook rotations are pruned of you exactly the way
+      // split() prunes a departing side), a room opens back up, and — if you leave
+      // with an open ledger balance — that's flagged, never trapped. Returns the
+      // move-out summary so the UI can prompt a two-sided review of each co-resident.
+      // (In hosted mode the UI also calls CloudSync.leaveHouse() to detach server-side.)
+      leave() {
+        const mine = state.houses.find((x) => x.id === state.myHouseId);
+        if (!mine || !mine.members.includes("me")) return null;
+        const coResidents = mine.members.filter((m) => m !== "me");
+        // net ledger position at the moment of leaving (+ = the house owes me)
+        const bal = window.Commons.ledger.balances() || {};
+        const myBalance = Math.round((bal.me || 0) * 100) / 100;
+        // prune me from the roster and every running rotation; a room reopens
+        mine.members = coResidents;
+        if (typeof mine.roomsOpen === "number") mine.roomsOpen += 1;
+        state.contributions = state.contributions.filter((c) => c.member !== "me");
+        state.bills.forEach((b) => { b.rotation = b.rotation.filter((m) => m !== "me"); });
+        state.bills = state.bills.filter((b) => b.rotation.length);
+        state.chores.forEach((c) => { c.rotation = c.rotation.filter((m) => m !== "me"); });
+        state.chores = state.chores.filter((c) => c.rotation.length);
+        if (state.mealPlan && state.mealPlan.rotation) {
+          state.mealPlan.rotation = state.mealPlan.rotation.filter((m) => m !== "me");
+          state.mealPlan.eaters = coResidents.length;
+        }
+        if (state.agreementDoc && state.agreementDoc.signatures) delete state.agreementDoc.signatures.me;
+        // detach: I'm houseless now. The house lives on in the gallery for everyone
+        // who stayed; my device's house-scoped operations reset to a clean slate.
+        state.myHouseId = null;
+        Object.assign(state, {
+          contributions: [], bills: [], billsPaid: {}, chores: [], choreDone: {}, choreOverrides: {},
+          mealPlan: null, expenses: [], settlements: [], proposals: [], treasury: { balance: 0, currency: "USD" },
+          maintenance: [], tasks: [], labor: [], agreementDoc: null, checkinLog: [],
+          wall: [], shoppingList: [], dinnerRSVP: {}, coverRequests: [], kudos: [],
+        });
+        save();
+        return { house: mine, coResidents, myBalance, leftInGoodStanding: Math.abs(myBalance) < 0.01 };
       },
     },
     events: {
@@ -1822,8 +1908,305 @@
       addMaintenance(m) { state.maintenance.unshift(Object.assign({ id: "m-" + Math.random().toString(36).slice(2, 8), status: "open", at: new Date().toISOString(), openedBy: "me" }, m)); save(); },
     },
 
+    // The House Wall — an async, append-only heads-up board (a bulletin, not DMs).
+    wall: {
+      TAGS: [
+        { id: "heads-up", label: "Heads-up", emoji: "📣" },
+        { id: "ask", label: "Ask", emoji: "🙏" },
+        { id: "fyi", label: "FYI", emoji: "🛠️" },
+        { id: "win", label: "Win", emoji: "🎉" },
+      ],
+      all: () => (state.wall || []).slice().sort((a, b) => (b.pinned === a.pinned ? new Date(b.at) - new Date(a.at) : (b.pinned ? 1 : -1))),
+      pinned: () => (state.wall || []).filter((p) => p.pinned),
+      // dated posts from today onward → the "this week" strip
+      dated: () => (state.wall || []).filter((p) => p.date && new Date(p.date) >= new Date(Date.now() - DAY)).sort((a, b) => new Date(a.date) - new Date(b.date)),
+      post({ text, tag, date }) {
+        const t = String(text || "").trim(); if (!t) return null;
+        const entry = { id: "w-" + Math.random().toString(36).slice(2, 8), by: "me", text: t.slice(0, 400),
+          tag: tag || "heads-up", at: new Date().toISOString(), reactions: {}, replies: [], pinned: false };
+        if (date) entry.date = new Date(date + "T12:00:00").toISOString();
+        state.wall = state.wall || []; state.wall.unshift(entry); save(); return entry;
+      },
+      react(id, emoji) {
+        const p = (state.wall || []).find((x) => x.id === id); if (!p) return;
+        p.reactions = p.reactions || {};
+        const arr = p.reactions[emoji] = p.reactions[emoji] || [];
+        const i = arr.indexOf("me"); if (i >= 0) arr.splice(i, 1); else arr.push("me");
+        if (!arr.length) delete p.reactions[emoji];
+        save();
+      },
+      reply(id, text) {
+        const p = (state.wall || []).find((x) => x.id === id); const t = String(text || "").trim();
+        if (!p || !t) return; p.replies = p.replies || [];
+        p.replies.push({ by: "me", text: t.slice(0, 240), at: new Date().toISOString() }); save();
+      },
+      togglePin(id) { const p = (state.wall || []).find((x) => x.id === id); if (p) { p.pinned = !p.pinned; save(); } },
+      remove(id) { state.wall = (state.wall || []).filter((x) => x.id !== id); save(); },
+    },
+
+    // The Pantry — a shared supplies list that settles itself into the ledger.
+    pantry: {
+      all: () => (state.shoppingList || []).slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      needs: () => (state.shoppingList || []).filter((x) => x.status === "need"),
+      bought: () => (state.shoppingList || []).filter((x) => x.status === "bought").sort((a, b) => new Date(b.boughtAt) - new Date(a.boughtAt)),
+      // smart suggestions: meal-plan staples + recurring past-buy names not already listed
+      suggestions() {
+        const have = new Set((state.shoppingList || []).map((x) => x.name.toLowerCase()));
+        const out = [];
+        (STAPLES || []).forEach((s) => { if (!have.has(s.name.toLowerCase())) out.push(s.name); });
+        (state.expenses || []).filter((x) => x.category === "groceries" || x.category === "supplies").forEach((x) => {
+          const n = (x.desc || "").split(" · ")[0].split(" — ")[0].trim();
+          if (n && !have.has(n.toLowerCase()) && !out.includes(n)) out.push(n);
+        });
+        return out.slice(0, 6);
+      },
+      add({ name, est, fromFund }) {
+        const n = String(name || "").trim(); if (!n) return null;
+        const item = { id: "sl-" + Math.random().toString(36).slice(2, 8), name: n.slice(0, 60),
+          est: est != null && est !== "" ? Math.max(0, Number(est) || 0) : null, status: "need",
+          addedBy: "me", at: new Date().toISOString(), fromFund: !!fromFund };
+        state.shoppingList = state.shoppingList || []; state.shoppingList.unshift(item); save(); return item;
+      },
+      claim(id) { const it = (state.shoppingList || []).find((x) => x.id === id); if (it && it.status === "need") { it.claimedBy = it.claimedBy === "me" ? null : "me"; save(); } },
+      remove(id) { state.shoppingList = (state.shoppingList || []).filter((x) => x.id !== id); save(); },
+      _members() { const h = state.houses.find((x) => x.id === state.myHouseId); return h ? h.members.slice() : ["me"]; },
+      // mark bought → post the real cost straight into the ledger (or debit the fund)
+      buy(id, opts) {
+        opts = opts || {};
+        const it = (state.shoppingList || []).find((x) => x.id === id); if (!it) return null;
+        it.status = "bought"; it.boughtBy = "me"; it.boughtAt = new Date().toISOString();
+        it.price = Math.max(0, Number(opts.price) || 0);
+        it.participants = (opts.participants && opts.participants.length ? opts.participants : this._members()).slice();
+        if (it.price > 0) {
+          const exp = { desc: it.name, amount: it.price, paidBy: "me", category: "groceries",
+            at: new Date().toISOString(), split: { mode: "equal", participants: it.participants }, fromPantry: id };
+          if (opts.fromFund) window.Commons.ledger.payFromFund(exp); else window.Commons.ledger.add(exp);
+        }
+        save(); return it;
+      },
+      // one receipt, several items, split once — the "restock run"
+      buyRun(ids, opts) {
+        opts = opts || {};
+        const items = (state.shoppingList || []).filter((x) => ids.includes(x.id) && x.status === "need");
+        if (!items.length) return null;
+        const parts = (opts.participants && opts.participants.length ? opts.participants : this._members()).slice();
+        items.forEach((it) => { it.status = "bought"; it.boughtBy = "me"; it.boughtAt = new Date().toISOString(); it.participants = parts.slice(); it.price = null; });
+        const amt = Math.max(0, Number(opts.total) || 0);
+        if (amt > 0) {
+          const exp = { desc: "Restock run · " + items.length + " items", amount: amt, paidBy: "me", category: "groceries",
+            at: new Date().toISOString(), split: { mode: "equal", participants: parts }, restock: true };
+          if (opts.fromFund) window.Commons.ledger.payFromFund(exp); else window.Commons.ledger.add(exp);
+        }
+        save(); return items;
+      },
+    },
+
+    // "Eating in tonight?" — the nightly headcount the cook is otherwise blind to.
+    dinner: {
+      dayKey: (d) => (d ? new Date(d) : new Date()).toISOString().slice(0, 10),
+      _members() { const h = state.houses.find((x) => x.id === state.myHouseId); return h ? h.members.slice() : ["me"]; },
+      // is a meal plan running, and who cooks today?
+      tonight() {
+        const plan = state.mealPlan;
+        if (!plan || !plan.rotation || !plan.rotation.length) return null;
+        const dayIdx = Math.floor(Date.now() / DAY);
+        return { date: this.dayKey(), cook: plan.rotation[dayIdx % plan.rotation.length], cutoffHour: 16 };
+      },
+      rsvps: (date) => Object.assign({}, (state.dinnerRSVP || {})[date || new Date().toISOString().slice(0, 10)] || {}),
+      myRSVP(date) {
+        const key = date || this.dayKey();
+        const r = ((state.dinnerRSVP || {})[key] || {}).me;
+        if (r) return r;
+        return state.dinnerDefault ? { status: state.dinnerDefault, guests: 0, implicit: true } : null;
+      },
+      setRSVP(status, guests, date) {
+        const key = date || this.dayKey();
+        state.dinnerRSVP = state.dinnerRSVP || {};
+        state.dinnerRSVP[key] = state.dinnerRSVP[key] || {};
+        state.dinnerRSVP[key].me = { status: status === "out" ? "out" : "in", guests: Math.max(0, Number(guests) || 0), at: new Date().toISOString() };
+        save();
+      },
+      setDefault(v) { state.dinnerDefault = (v === "in" || v === "out") ? v : null; save(); },
+      getDefault: () => state.dinnerDefault,
+      // headcount for a date, folding in my standing default
+      tally(date) {
+        const key = date || this.dayKey();
+        const members = this._members();
+        const explicit = (state.dinnerRSVP || {})[key] || {};
+        let plates = 0, guests = 0; const inList = [], outList = [], pending = [];
+        members.forEach((m) => {
+          let r = explicit[m];
+          if (!r && m === "me" && state.dinnerDefault) r = { status: state.dinnerDefault, guests: 0 };
+          if (!r) { pending.push(m); return; }
+          if (r.status === "in") { plates += 1 + (r.guests || 0); guests += (r.guests || 0); inList.push(m); }
+          else outList.push(m);
+        });
+        return { plates, guests, inList, outList, pending };
+      },
+      // the cook one-taps "cooked it" → logs the labor to whoever the rotation cooked
+      markCooked(date) {
+        const t = this.tonight(); if (!t) return null;
+        const tally = this.tally(t.date);
+        state.labor = state.labor || [];
+        state.labor.push({ id: "l-" + Math.random().toString(36).slice(2, 8), member: t.cook, hours: 1, kind: "cooking",
+          desc: "Cooked dinner for " + tally.plates, at: new Date().toISOString(), fromDinner: t.date });
+        save(); return { cook: t.cook, plates: tally.plates };
+      },
+    },
+
+    // Cover me — targeted chore swaps that keep the rotation humane.
+    covers: {
+      all: () => (state.coverRequests || []).slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      open: () => (state.coverRequests || []).filter((c) => c.status === "open"),
+      forChore: (choreId, period) => (state.coverRequests || []).find((c) => c.choreId === choreId && c.period === period && c.status === "open") || null,
+      request(choreId, period) {
+        const exists = this.forChore(choreId, period); if (exists) return exists;
+        const req = { id: "cv-" + Math.random().toString(36).slice(2, 8), choreId, period, by: "me", at: new Date().toISOString(), status: "open" };
+        state.coverRequests = state.coverRequests || []; state.coverRequests.unshift(req); save(); return req;
+      },
+      claim(id) {
+        const req = (state.coverRequests || []).find((c) => c.id === id); if (!req || req.status !== "open") return null;
+        req.status = "claimed"; req.claimedBy = "me"; req.claimedAt = new Date().toISOString();
+        // route this period's chore to me (same mechanism the reallocator uses) — I earn the credit on mark-done
+        state.choreOverrides = state.choreOverrides || {};
+        state.choreOverrides[req.choreId + ":" + req.period] = "me";
+        save(); return req;
+      },
+      cancel(id) { state.coverRequests = (state.coverRequests || []).filter((c) => c.id !== id); save(); },
+      // gentle reciprocity ("you've covered June twice; she's covered you once") — not a debt
+      favorBalance(a, b) {
+        const done = (state.coverRequests || []).filter((c) => c.status === "claimed");
+        return { aForB: done.filter((c) => c.claimedBy === a && c.by === b).length, bForA: done.filter((c) => c.claimedBy === b && c.by === a).length };
+      },
+    },
+
+    // Kudos — a weekly gratitude circle: a small pot of thanks, each needs a reason.
+    kudos: {
+      CAP: 3, // thanks tokens per person per week
+      weekKey(d) { const x = d ? new Date(d) : new Date(); const jan1 = new Date(x.getFullYear(), 0, 1); const wk = Math.ceil(((x - jan1) / DAY + jan1.getDay() + 1) / 7); return x.getFullYear() + "-W" + wk; },
+      all: () => (state.kudos || []).slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      feed: () => (state.kudos || []).slice().sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 30),
+      forMember: (id) => (state.kudos || []).filter((k) => k.to === id),
+      countReceived: (id) => (state.kudos || []).filter((k) => k.to === id).length,
+      myTokensLeft() {
+        const wk = this.weekKey();
+        return Math.max(0, this.CAP - (state.kudos || []).filter((k) => k.from === "me" && k.week === wk).length);
+      },
+      give(to, why) {
+        const t = String(why || "").trim();
+        if (!to || to === "me" || !t || this.myTokensLeft() <= 0) return null;
+        const k = { id: "k-" + Math.random().toString(36).slice(2, 8), from: "me", to, why: t.slice(0, 160), at: new Date().toISOString(), week: this.weekKey() };
+        state.kudos = state.kudos || []; state.kudos.unshift(k); save(); return k;
+      },
+    },
+
+    // "What needs you" — a computed inbox of only the items that need YOU.
+    // No new stored collection; every row maps to an existing action.
+    inbox: {
+      items() {
+        const h = state.houses.find((x) => x.id === state.myHouseId);
+        if (!h) return [];
+        const out = [];
+        state.chores.forEach((c) => {
+          const per = currentPeriod(c);
+          if (choreAssignee(c, per) === "me" && !((state.choreDone[c.id] || {})[per])) {
+            out.push({ type: "chore", icon: c.emoji || "🧹", text: c.name + " is yours this round", action: "chore", choreId: c.id, period: per });
+          }
+        });
+        state.bills.forEach((b) => {
+          if (billPayer(b, new Date()) === "me" && !state.billsPaid[b.id + ":" + monthKey()]) {
+            out.push({ type: "bill", icon: "💡", text: b.name + " (" + fmtMoney(b.amount) + ") is yours to pay this month", action: "bill", billId: b.id });
+          }
+        });
+        const myC = state.contributions.find((c) => c.member === "me");
+        if (myC && !myC.paid && h.poolMonthly) out.push({ type: "contribution", icon: "🪙", text: "Your " + fmtMoney(h.poolMonthly) + " into the house fund is due", action: "contribution" });
+        state.proposals.filter((p) => p.status === "open" && !("me" in (p.votes || {}))).forEach((p) => {
+          out.push({ type: "vote", icon: "🗳️", text: "Vote: " + p.title, action: "vote", proposalId: p.id });
+        });
+        const t = window.Commons.dinner.tonight();
+        if (t && t.cook === "me") {
+          out.push({ type: "cook", icon: "🍲", text: "You're cooking tonight — " + window.Commons.dinner.tally(t.date).plates + " eating in so far", action: "cook" });
+        } else if (t && !window.Commons.dinner.myRSVP(t.date)) {
+          out.push({ type: "dinner", icon: "🍽️", text: "Eating in tonight? " + firstName(t.cook) + " is cooking", action: "dinner" });
+        }
+        window.Commons.covers.open().filter((c) => c.by !== "me").forEach((c) => {
+          const ch = state.chores.find((x) => x.id === c.choreId);
+          out.push({ type: "cover", icon: "🤝", text: firstName(c.by) + " needs a cover for " + (ch ? ch.name : "a chore"), action: "cover", coverId: c.id });
+        });
+        return out;
+      },
+      count() { return this.items().length; },
+    },
+
+    // Follow houses / boroughs → a "For you" calendar feed with memory.
+    follows: {
+      all: () => (state.follows || []).slice(),
+      has: (kind, id) => (state.follows || []).some((f) => f.kind === kind && f.id === id),
+      toggle(kind, id) {
+        state.follows = state.follows || [];
+        const i = state.follows.findIndex((f) => f.kind === kind && f.id === id);
+        if (i >= 0) state.follows.splice(i, 1); else state.follows.push({ kind, id, at: new Date().toISOString() });
+        save(); return this.has(kind, id);
+      },
+      seen: (key) => (state.lastSeen || {})[key] || 0,
+      markSeen(key) { state.lastSeen = state.lastSeen || {}; state.lastSeen[key] = new Date().toISOString(); save(); },
+    },
+
+    // Two-sided move-out reviews — reputation that only exists after real co-residence.
+    reviews: {
+      TAGS: ["Paid their share", "Pulled their weight", "Respected quiet hours", "Good communicator", "Kept common spaces clean", "Easy to live with"],
+      all: () => (state.reviews || []).slice(),
+      byMe: () => (state.reviews || []).filter((r) => r.from === "me"),
+      forPerson: (id) => (state.reviews || []).filter((r) => r.to === id),
+      forHouse: (id) => (state.reviews || []).filter((r) => r.house === id),
+      hasReviewed: (house, to) => (state.reviews || []).some((r) => r.from === "me" && r.to === to && r.house === house),
+      add(o) {
+        o = o || {}; if (!o.to) return null;
+        const r = { id: "rv-" + Math.random().toString(36).slice(2, 8), house: o.house || state.myHouseId, from: "me", to: o.to,
+          tags: (o.tags || []).slice(0, 6), line: String(o.line || "").trim().slice(0, 240) || null,
+          recommend: o.recommend !== false, at: new Date().toISOString() };
+        state.reviews = state.reviews || []; state.reviews.unshift(r); save(); return r;
+      },
+      reply(id, line) { const r = (state.reviews || []).find((x) => x.id === id); if (r) { r.reply = String(line || "").trim().slice(0, 240); save(); } },
+      summaryForPerson(id) {
+        const rs = (state.reviews || []).filter((r) => r.to === id);
+        if (!rs.length) return null;
+        return { count: rs.length, houses: new Set(rs.map((r) => r.house)).size, wouldLiveAgain: Math.round((rs.filter((r) => r.recommend).length / rs.length) * 100) };
+      },
+    },
+
+    // Vouch, Refer & Living References — bring-your-own-trust: growth + reputation in one.
+    refs: {
+      RELATIONSHIPS: ["Former housemate", "Lived nearby", "Friend", "Organized together", "Coworker"],
+      all: () => (state.references || []).slice().sort((a, b) => new Date(b.at) - new Date(a.at)),
+      forPerson: (id) => (state.references || []).filter((r) => r.about === id),
+      vouchesFor: (id) => (state.references || []).filter((r) => r.about === id && r.kind === "vouch"),
+      referralCode() { const a = state.account; return (a && (a.username || a.id)) || "me"; },
+      setReferredBy(code) { if (code && !state.referredBy) { state.referredBy = String(code).slice(0, 60); save(); } },
+      referredBy: () => state.referredBy,
+      // I vouch for someone (non-anonymous, revocable)
+      vouch(about, line) {
+        if (!about || about === "me") return null;
+        const existing = (state.references || []).find((r) => r.about === about && r.by === "me" && r.kind === "vouch");
+        if (existing) { existing.line = String(line || "").trim().slice(0, 160) || null; save(); return existing; }
+        const r = { id: "ref-" + Math.random().toString(36).slice(2, 8), about, by: "me", kind: "vouch",
+          relationship: "Former housemate", line: String(line || "").trim().slice(0, 160) || null, at: new Date().toISOString() };
+        state.references = state.references || []; state.references.unshift(r); save(); return r;
+      },
+      unvouch(about) { state.references = (state.references || []).filter((r) => !(r.about === about && r.by === "me" && r.kind === "vouch")); save(); },
+      // a reference left via a share link by a former housemate (no account needed on their end)
+      addReference(o) {
+        o = o || {};
+        const r = { id: "ref-" + Math.random().toString(36).slice(2, 8), about: o.about || "me", by: null,
+          byName: String(o.byName || "A former housemate").slice(0, 40), kind: "reference",
+          relationship: o.relationship || "Former housemate", recommend: o.recommend !== false,
+          line: String(o.line || "").trim().slice(0, 240) || null, at: new Date().toISOString() };
+        state.references = state.references || []; state.references.unshift(r); save(); return r;
+      },
+    },
+
     // upcast an older exported state to the current shape (null = unsupported)
-    migrate: (st) => (st && st.version === 9 ? st : (st && st.version === 8 ? upcastV8(st) : null)),
+    migrate: (st) => (st && st.version === 9 ? ensureKeys(st) : (st && st.version === 8 ? ensureKeys(upcastV8(st)) : null)),
     util: { fmtMoney, fmtDate, fmtDateLong, fmtTime, relDate, initials, hue, esc, qp, clamp },
   };
 })();

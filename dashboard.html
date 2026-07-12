@@ -6,6 +6,13 @@
   <title>My House — colive.fun</title>
   <link rel="icon" href="assets/img/logomark.png" />
   <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .inbox-card { border-color: var(--app); }
+    .ib-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--paper-1); padding-top: 8px; }
+    .qr-box { background: #fff; padding: 8px; border: 1px solid var(--paper-1); border-radius: 6px; flex: none; line-height: 0; }
+    .qr-box svg { display: block; width: 116px; height: 116px; }
+    .life-note { border-top: 1px solid var(--paper-1); padding-top: 8px; }
+  </style>
 </head>
 <body>
   <main>
@@ -39,6 +46,7 @@
   <script src="assets/js/store.js"></script>
   <script src="assets/js/vendor/viem.js"></script>
   <script src="assets/js/rails.js"></script>
+  <script src="assets/js/qr.min.js"></script>
   <script src="assets/js/shell.js"></script>
   <script>
     Shell.render("dashboard");
@@ -108,6 +116,9 @@
           </div>`;
         })()}
 
+        ${inboxHtml()}
+        ${tonightHtml()}
+
         <div class="grid grid-3">
           <div class="card stack">
             <div class="kicker">House fund</div>
@@ -169,6 +180,17 @@
 
         <div id="cloud-house"></div>
 
+        <div class="row between wrap" style="margin-top:12px">
+          <div><div class="kicker">House life</div><h2 class="text-h3">The day-to-day</h2></div>
+        </div>
+        <div class="grid grid-3">
+          ${wallHtml()}
+          ${pantryHtml()}
+          ${kudosHtml()}
+        </div>
+
+        ${recruitHtml(house)}
+
         ${bountiesHtml(house)}
 
         <div class="grid grid-3">
@@ -203,9 +225,14 @@
             </span>
           </div>`).join("")}
         </div>` : ""}
+
+        <div class="row center" style="margin-top:16px">
+          <a class="park-btn ghost sm" href="moveout.html">Planning to move out? →</a>
+        </div>
       </div>`;
 
       wire();
+      renderRecruitQr();
     }
 
     function proposalCard(p, threshold) {
@@ -357,6 +384,125 @@
         <span class="park-btn light sm" style="align-self:start">${atCeiling ? "Plan the split →" : "How it works →"}</span></a>`;
     }
 
+    /* ---------- "What needs you" inbox ---------- */
+    function inboxHtml() {
+      const items = Commons.inbox.items();
+      if (!items.length) return "";
+      return `<div class="card stack inbox-card">
+        <div class="row between wrap">
+          <div><div class="kicker">What needs you</div><h2 class="text-h3" style="margin:0">${items.length} thing${items.length > 1 ? "s" : ""} waiting on you</h2></div>
+          <span class="pill ink">only you can clear these</span>
+        </div>
+        <div class="stack" style="--gap:8px">${items.map(inboxRow).join("")}</div>
+      </div>`;
+    }
+    function inboxRow(it) {
+      const btn = {
+        chore: `<button class="park-btn sm green" data-act="ib-chore" data-id="${it.choreId}" data-period="${it.period}">Mark done</button>`,
+        bill: `<button class="park-btn sm green" data-act="ib-bill" data-id="${it.billId}">Pay</button>`,
+        contribution: `<button class="park-btn sm green" data-act="ib-contrib">Pay in</button>`,
+        vote: `<span class="row" style="gap:4px"><button class="park-btn sm green" data-act="ib-vote" data-id="${it.proposalId}" data-val="1">Yes</button><button class="park-btn sm light" data-act="ib-vote" data-id="${it.proposalId}" data-val="0">No</button></span>`,
+        cook: `<a class="park-btn sm light" href="meals.html#tonight">See headcount</a>`,
+        dinner: `<span class="row" style="gap:4px"><button class="park-btn sm green" data-act="ib-dinner" data-val="in">In</button><button class="park-btn sm light" data-act="ib-dinner" data-val="out">Out</button></span>`,
+        cover: `<button class="park-btn sm green" data-act="ib-cover" data-id="${it.coverId}">I've got it</button>`,
+      }[it.action] || "";
+      return `<div class="ib-row"><span class="row" style="gap:8px"><span style="font-size:1.15rem">${it.icon}</span><span class="small">${U.esc(it.text)}</span></span>${btn}</div>`;
+    }
+
+    /* ---------- "Eating in tonight?" ---------- */
+    function tonightHtml() {
+      const t = Commons.dinner.tonight();
+      if (!t) return "";
+      const tally = Commons.dinner.tally(t.date);
+      const mine = Commons.dinner.myRSVP(t.date);
+      const cookName = t.cook === "me" ? "You're" : firstName(t.cook) + " is";
+      return `<div class="card stack" style="--gap:10px">
+        <div class="row between wrap">
+          <span class="row" style="gap:10px"><span style="font-size:1.5rem">🍽️</span><span>
+            <strong class="display-bold">Eating in tonight?</strong>
+            <span class="small muted" style="display:block">${cookName} cooking · ${tally.plates} plate${tally.plates === 1 ? "" : "s"} so far${tally.pending.length ? ` · ${tally.pending.length} yet to say` : ""}</span>
+          </span></span>
+          <span class="row" style="gap:6px">
+            <button class="park-btn sm ${mine && mine.status === "in" ? "green" : "light"}" data-act="dn-in">In${mine && mine.status === "in" && mine.guests ? " +" + mine.guests : ""}</button>
+            <button class="park-btn sm ${mine && mine.status === "out" ? "primary" : "light"}" data-act="dn-out">Out</button>
+            <a class="park-btn sm light" href="meals.html#tonight">Details</a>
+          </span>
+        </div>
+      </div>`;
+    }
+
+    /* ---------- House life: wall, pantry, kudos ---------- */
+    function wallHtml() {
+      const posts = Commons.wall.all().slice(0, 3);
+      const tagMap = {}; Commons.wall.TAGS.forEach((t) => { tagMap[t.id] = t; });
+      return `<div class="card stack">
+        <div class="row between"><div class="kicker">House wall</div><a class="park-btn light sm" href="wall.html">Open →</a></div>
+        ${posts.length ? posts.map((p) => {
+          const tg = tagMap[p.tag] || tagMap.fyi;
+          return `<div class="row life-note" style="gap:8px">${Shell.avatarHtml(member(p.by), "sm")}
+            <span class="small"><span title="${tg.label}">${tg.emoji}</span> ${U.esc(p.text)}${p.pinned ? ` <span class="pill paper" style="font-size:.62rem">📌</span>` : ""}</span></div>`;
+        }).join("") : `<p class="small muted" style="margin:0">Nothing on the wall yet — post a heads-up.</p>`}
+        <form data-wallquick class="row" style="gap:6px;margin-top:4px">
+          <input class="input" name="text" placeholder="Quick heads-up for the house…" maxlength="200" style="flex:1" autocomplete="off" />
+          <button class="park-btn sm primary" type="submit">Post</button>
+        </form>
+      </div>`;
+    }
+    function pantryHtml() {
+      const needs = Commons.pantry.needs();
+      return `<div class="card stack">
+        <div class="row between"><div class="kicker">The pantry</div><a class="park-btn light sm" href="pantry.html">Open →</a></div>
+        ${needs.length ? `<p class="small muted" style="margin:0">${needs.length} thing${needs.length > 1 ? "s" : ""} the house needs:</p>
+          <div class="row wrap" style="gap:6px">${needs.slice(0, 6).map((x) => `<span class="chip soft xs">${U.esc(x.name)}${x.claimedBy ? ` · ${U.esc(firstName(x.claimedBy))} 🛒` : ""}</span>`).join("")}</div>`
+          : `<p class="small muted" style="margin:0">Nothing needed right now — the shelves are stocked.</p>`}
+        <form data-pantryquick class="row" style="gap:6px;margin-top:4px">
+          <input class="input" name="name" placeholder="Add something we're low on…" maxlength="60" style="flex:1" autocomplete="off" />
+          <button class="park-btn sm primary" type="submit">Add</button>
+        </form>
+      </div>`;
+    }
+    function kudosHtml() {
+      const feed = Commons.kudos.feed().slice(0, 3);
+      return `<div class="card stack">
+        <div class="row between"><div class="kicker">Kudos</div><a class="park-btn light sm" href="checkin.html#kudos">Give thanks →</a></div>
+        ${feed.length ? feed.map((k) => `<div class="small life-note">
+          <strong>${U.esc(firstName(k.from))}</strong> → <strong>${U.esc(firstName(k.to))}</strong><br><span class="muted">“${U.esc(k.why)}”</span></div>`).join("")
+          : `<p class="small muted" style="margin:0">No thanks logged yet — notice someone's quiet effort this week.</p>`}
+      </div>`;
+    }
+
+    /* ---------- Recruiting: the public storefront share ---------- */
+    function publicUrl(house) {
+      return location.origin + location.pathname.replace(/[^/]*$/, "") + "house.html?id=" + encodeURIComponent(house.id) + "&public=1";
+    }
+    function recruitHtml(house) {
+      const listed = !!house.listed;
+      const url = publicUrl(house);
+      return `<div class="card stack">
+        <div class="row between wrap">
+          <div><div class="kicker">Recruiting</div><strong class="display-bold">${house.roomsOpen ? `${house.roomsOpen} room${house.roomsOpen > 1 ? "s" : ""} open` : "Share your house"}</strong>
+            <span class="small muted" style="display:block">A public page a stranger can open with no account — your vibe and their fit, never the ledger or votes.</span></div>
+          <button class="park-btn sm ${listed ? "primary" : "light"}" data-act="recruit-toggle">${listed ? "Listed ✓" : "List us publicly"}</button>
+        </div>
+        ${listed ? `<div class="row wrap" style="gap:14px;align-items:flex-start">
+          <div class="qr-box" id="recruit-qr"></div>
+          <div style="flex:1;min-width:200px" class="stack">
+            <div class="row wrap" style="gap:6px"><input class="input mono" readonly value="${U.esc(url)}" id="recruit-url" style="flex:1;min-width:180px" /><button class="park-btn sm light" data-act="recruit-copy">Copy</button></div>
+            <div class="row wrap"><a class="park-btn sm light" href="gatherings.html?host=open-house">Host an open house →</a><a class="park-btn sm light" href="${U.esc(url)}" target="_blank" rel="noopener">Preview public page →</a></div>
+          </div>
+        </div>` : ""}
+      </div>`;
+    }
+    function renderRecruitQr() {
+      const box = document.getElementById("recruit-qr");
+      const house = Commons.houses.mine();
+      if (!box || !house || typeof qrcode === "undefined") { if (box) box.remove(); return; }
+      try {
+        const qr = qrcode(0, "M"); qr.addData(publicUrl(house)); qr.make();
+        box.innerHTML = qr.createSvgTag({ cellSize: 3, margin: 1, scalable: true });
+      } catch (e) { box.remove(); }
+    }
+
     /* ---------- interactions ---------- */
     function wire() {
       page.querySelectorAll("[data-act]").forEach((el) => {
@@ -429,7 +575,42 @@
             }
             render(); Shell.toast("Dispute opened — the house votes on the proposal board", "green");
           }
+          // --- inbox quick-actions ---
+          if (act === "ib-chore") { Commons.chores.markDone(el.dataset.id, Number(el.dataset.period), "me"); render(); Shell.toast("Done — logged to your hours", "green"); }
+          if (act === "ib-bill") { Commons.money.payBill(el.dataset.id); render(); Shell.toast("Paid — off your plate", "green"); }
+          if (act === "ib-contrib") { Commons.money.payContribution("me"); render(); Shell.toast("Contribution in — the pool thanks you", "green"); }
+          if (act === "ib-vote") { Commons.proposals.vote(el.dataset.id, "me", el.dataset.val === "1"); render(); Shell.toast("Vote in", "green"); }
+          if (act === "ib-dinner" || act === "dn-in" || act === "dn-out") {
+            const status = act === "dn-out" || el.dataset.val === "out" ? "out" : "in";
+            Commons.dinner.setRSVP(status, 0); render();
+            Shell.toast(status === "in" ? "You're in for dinner 🍽️" : "Noted — out tonight");
+          }
+          if (act === "ib-cover") { Commons.covers.claim(el.dataset.id); render(); Shell.toast("You've got it — the chore's yours this round", "green"); }
+          if (act === "recruit-toggle") {
+            const h = Commons.houses.mine(); h.listed = !h.listed; Commons.save(); render();
+            Shell.toast(h.listed ? "Listed — your public page is live" : "Unlisted");
+          }
+          if (act === "recruit-copy") {
+            const inp = document.getElementById("recruit-url");
+            if (inp) { navigator.clipboard && navigator.clipboard.writeText(inp.value); inp.select(); Shell.toast("Public link copied — send it to a maybe-housemate", "green"); }
+          }
         });
+      });
+      const wq = page.querySelector("[data-wallquick]");
+      if (wq) wq.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const inp = wq.querySelector('[name="text"]');
+        const text = (inp.value || "").trim();
+        if (!text) return;
+        Commons.wall.post({ text, tag: "heads-up" }); render(); Shell.toast("Posted to the wall", "green");
+      });
+      const pq = page.querySelector("[data-pantryquick]");
+      if (pq) pq.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const inp = pq.querySelector('[name="name"]');
+        const name = (inp.value || "").trim();
+        if (!name) return;
+        Commons.pantry.add({ name }); render(); Shell.toast("Added to the pantry list", "green");
       });
     }
 

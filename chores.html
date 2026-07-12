@@ -28,6 +28,18 @@
     const freqLabel = (d) => (d === 7 ? "weekly" : d === 14 ? "every 2 weeks" : `every ${d} days`);
     const periodEnd = (c, period) => new Date(new Date(c.start).getTime() + (period + 1) * c.freqDays * DAY);
 
+    // Cover me — targeted chore swaps that keep the rotation humane.
+    function coverControls(c, period, who, mine) {
+      const req = Commons.covers.forChore(c.id, period);
+      if (mine) {
+        if (req) return `<span class="pill warn" style="font-size:.72rem">🙋 cover requested</span>
+          <button class="park-btn sm ghost" data-cover-cancel="${req.id}">Withdraw</button>`;
+        return `<button class="park-btn sm light" data-cover-ask="${c.id}" data-period="${period}">Can't this week?</button>`;
+      }
+      if (req && req.by !== "me") return `<button class="park-btn sm green" data-cover-claim="${req.id}">🤝 Cover for ${U.esc(firstName(req.by))}</button>`;
+      return "";
+    }
+
     function render() {
       const house = Commons.houses.mine();
       if (!house) {
@@ -67,7 +79,10 @@
           ${done
             ? `<p class="text-caption muted">by ${U.esc(firstName(info.by))} · ${U.relDate(info.at)}</p>`
             : `<p class="text-caption muted">period ends ${U.fmtDate(periodEnd(c, period).toISOString())}</p>
-               <button class="lifted xs" data-chore="${c.id}" data-period="${period}"><span class="shadow"></span><span class="face">Mark done</span></button>`}
+               <div class="row wrap" style="gap:6px">
+                 <button class="lifted xs" data-chore="${c.id}" data-period="${period}"><span class="shadow"></span><span class="face">Mark done</span></button>
+                 ${coverControls(c, period, who, mine)}
+               </div>`}
         </div>`;
       }).join("");
 
@@ -168,6 +183,17 @@
         </div>
       </div>`;
 
+      page.querySelectorAll("[data-cover-ask]").forEach((b) => b.addEventListener("click", () => {
+        Commons.covers.request(b.dataset.coverAsk, Number(b.dataset.period)); render();
+        Shell.toast("Cover requested — anyone in the house can grab it", "green");
+      }));
+      page.querySelectorAll("[data-cover-cancel]").forEach((b) => b.addEventListener("click", () => {
+        Commons.covers.cancel(b.dataset.coverCancel); render(); Shell.toast("Cover request withdrawn");
+      }));
+      page.querySelectorAll("[data-cover-claim]").forEach((b) => b.addEventListener("click", () => {
+        Commons.covers.claim(b.dataset.coverClaim); render();
+        Shell.toast("You've got it — the chore's yours this round, credit and all", "green");
+      }));
       page.querySelectorAll("[data-chore]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const choreId = btn.dataset.chore, period = Number(btn.dataset.period);

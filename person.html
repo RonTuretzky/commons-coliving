@@ -19,6 +19,32 @@
     Shell.render("");
     const U = Commons.util;
     const page = document.getElementById("page");
+    const firstName = (id) => { if (id === "me") return "You"; const pp = Commons.people.get(id); return pp ? pp.name.split(" ")[0] : id; };
+
+    // Vouches, living references, and move-out reviews — reputation from real co-residence.
+    function reputationHtml(p, isMe) {
+      const rev = Commons.reviews.summaryForPerson(p.id);
+      const vouches = Commons.refs.vouchesFor(p.id);
+      const refs = Commons.refs.forPerson(p.id).filter((r) => r.kind === "reference");
+      const iVouched = vouches.some((v) => v.by === "me");
+      if (!rev && !vouches.length && !refs.length) {
+        if (!isMe) return `<div class="card stack"><div class="kicker">Reputation</div>
+          <p class="small muted" style="margin:0">No references or reviews yet — new to the network.</p>
+          <div class="row"><button class="park-btn light sm" id="vouch-btn">Vouch for them</button></div></div>`;
+        return `<div class="card stack"><div class="kicker">Reputation</div>
+          <p class="small muted" style="margin:0">No references or reviews yet. Ask a former housemate to vouch for you from your <a href="account.html">account</a> — bring-your-own-trust beats a blank profile.</p></div>`;
+      }
+      const parts = [];
+      if (rev) parts.push(`<div class="row wrap" style="gap:8px"><span class="pill match">${rev.wouldLiveAgain}% would live again</span><span class="pill paper">${rev.count} review${rev.count > 1 ? "s" : ""} · ${rev.houses} house${rev.houses > 1 ? "s" : ""} lived in</span></div>`);
+      if (vouches.length) parts.push(`<div class="row wrap" style="gap:6px"><span class="pill pine">Vouched by ${vouches.length}</span>${vouches.slice(0, 8).map((v) => `<span class="chip soft xs" title="${U.esc(v.line || "")}">${U.esc(v.by === "me" ? "You" : firstName(v.by))}</span>`).join("")}</div>`);
+      const refList = refs.map((r) => `<div class="text-caption" style="border-top:1px solid var(--paper-1);padding-top:8px"><strong>${U.esc(r.byName || "A housemate")}</strong> (${U.esc(r.relationship)}) — “${U.esc(r.line || "would live with them again")}” ${r.recommend ? "👍" : ""}</div>`).join("");
+      return `<div class="card stack">
+        <div class="kicker">Reputation</div>
+        ${parts.join("")}
+        ${refList ? `<div class="stack" style="--gap:6px;margin-top:4px">${refList}</div>` : ""}
+        ${!isMe ? `<div class="row wrap" style="border-top:1px solid var(--paper-1);padding-top:10px"><button class="park-btn ${iVouched ? "primary" : "light"} sm" id="vouch-btn">${iVouched ? "Vouched ✓ (tap to remove)" : "Vouch for them"}</button></div>` : ""}
+      </div>`;
+    }
 
     // directory-resolved people (cloud uids aren't in the local store unless they
     // share your house) — fetched so a profile link from browse actually works
@@ -137,6 +163,8 @@
           <div class="row wrap">${(p.values || []).map((v) => `<span class="chip soft">${U.esc(v)}</span>`).join("")}</div>
         </div>
 
+        ${reputationHtml(p, isMe)}
+
         <div class="card stack">
           <div class="kicker">Crossed paths</div>
           ${shared.length
@@ -165,6 +193,12 @@
         Commons.connects.add("person", p.id);
         document.getElementById("connect-slot").innerHTML = `<button class="park-btn light" disabled>Request sent ✓</button>`;
         Shell.toast(`Sent — ${p.name.split(" ")[0]} will see your profile and match count`, "green");
+      });
+      const vb = document.getElementById("vouch-btn");
+      if (vb && !isMe) vb.addEventListener("click", () => {
+        if (Commons.refs.vouchesFor(p.id).some((v) => v.by === "me")) { Commons.refs.unvouch(p.id); Shell.toast("Vouch removed"); }
+        else { Commons.refs.vouch(p.id, ""); Shell.toast(`Vouched for ${p.name.split(" ")[0]} — that means something`, "green"); }
+        render();
       });
     }
 

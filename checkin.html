@@ -56,6 +56,30 @@
       if (!tasteToastShown) { Shell.toast("Saved — say it once, the house remembers"); tasteToastShown = true; }
     }
 
+    let kudoTo = null;
+    // Kudos — a weekly gratitude circle: name the invisible care work.
+    function kudosSectionHtml() {
+      const house = Commons.houses.mine(); if (!house) return "";
+      const others = house.members.filter((m) => m !== "me");
+      const left = Commons.kudos.myTokensLeft();
+      const feed = Commons.kudos.feed().slice(0, 6);
+      return `<div class="card stack" id="kudos">
+        <div class="row between wrap">
+          <div><div class="kicker">Gratitude circle</div><h3 class="text-h3" style="margin-top:6px">Kudos</h3></div>
+          <span class="pill ${left ? "pine" : "paper"}">${left} thank-you${left === 1 ? "" : "s"} left this week</span>
+        </div>
+        <p class="small muted" style="margin:0">The care work that never makes the chore chart — the morning kitchen reset, the hard conversation. Name it. Each thanks needs a reason; it's recognition, not points.</p>
+        ${others.length ? `<div class="stack" style="--gap:8px">
+          <div class="row wrap" style="gap:6px" id="kudo-who">${others.map((m) => `<button class="chip ${kudoTo === m ? "on" : ""}" data-kudo-who="${m}">${Shell.avatarHtml(person(m), "sm")} ${esc(firstName(m))}</button>`).join("")}</div>
+          <div class="row" style="gap:6px"><input class="input" id="kudo-why" placeholder="…for what? (e.g. reset the kitchen every morning)" maxlength="160" style="flex:1" ${left ? "" : "disabled"} autocomplete="off" />
+            <button class="park-btn primary" id="kudo-give" ${left ? "" : "disabled"}>Give kudos</button></div>
+        </div>` : `<p class="small muted">Kudos need housemates — invite your crew.</p>`}
+        ${feed.length ? `<div class="stack" style="--gap:6px;border-top:1px solid var(--paper-1);padding-top:10px">
+          ${feed.map((k) => `<div class="small"><strong>${esc(firstName(k.from))}</strong> thanked <strong>${esc(firstName(k.to))}</strong> — <span class="muted">“${esc(k.why)}”</span></div>`).join("")}
+        </div>` : ""}
+      </div>`;
+    }
+
     function render() {
       const house = Commons.houses.mine();
       if (!house) {
@@ -183,6 +207,8 @@
 
         ${resultsHtml}
 
+        ${kudosSectionHtml()}
+
         <div class="card flat">
           <p class="text-caption muted">Under the hood: your answers weight a load balancer — loved chores pull toward you, dreaded ones push away,
           low-bandwidth weeks shrink your share. The chore board shows a ✦ swap badge wherever the reallocator overrode the rotation.
@@ -223,6 +249,17 @@
         lastResult = null;
         render();
         Shell.toast("Reshuffle undone — back to the plain rotation");
+      });
+      // kudos
+      page.querySelectorAll("[data-kudo-who]").forEach((b) => b.addEventListener("click", () => { kudoTo = b.dataset.kudoWho; render(); }));
+      const kg = page.querySelector("#kudo-give");
+      if (kg) kg.addEventListener("click", () => {
+        if (!kudoTo) { Shell.toast("Pick who you're thanking"); return; }
+        const why = (page.querySelector("#kudo-why").value || "").trim();
+        if (!why) { Shell.toast("Say what for — that's the whole point"); return; }
+        const k = Commons.kudos.give(kudoTo, why);
+        if (!k) { Shell.toast("You're out of thank-yous this week — they refresh Monday"); return; }
+        kudoTo = null; render(); Shell.toast("Kudos given 🙌", "green");
       });
     }
 

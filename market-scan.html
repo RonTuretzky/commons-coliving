@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Borrowed Blueprints — a market scan for colive.fun</title>
+<link rel="icon" href="assets/img/logomark.png" />
+<style>
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-700.woff2") format("woff2"); font-weight: 700; }
+  @font-face { font-family: "Park Display"; src: url("assets/fonts/spacegrotesk-500.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Park Body"; src: url("assets/fonts/inter-700.woff2") format("woff2"); font-weight: 700; }
+  :root{
+    --green:#16a34a; --green-0:#86efac; --green-1:#15803d; --green-2:#166534;
+    --pine:#0d9488; --pine-0:#5eead4; --pine-1:#0f766e; --pine-2:#134e4a;
+    --sky:#0284c7; --sky-1:#0369a1;
+    --paper:#f0fdf4; --paper-1:#dcfce7; --paper-2:#bbf7d0;
+    --ink:#14211a; --grey:#3f4a44; --red:#df0b00; --warn:#ce7f00;
+    --display:"Park Display", ui-sans-serif, system-ui, sans-serif;
+    --body:"Park Body", ui-sans-serif, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, var(--paper-2), transparent 60%),
+      radial-gradient(1000px 500px at -10% 110%, var(--paper-1), transparent 55%),
+      var(--paper);
+    overflow:hidden;
+  }
+  .deck{position:fixed;inset:0}
+  .slide{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:clamp(24px,4.5vw,64px) clamp(24px,6vw,88px);
+    opacity:0;transform:translateY(14px) scale(.99);
+    transition:opacity .45s ease, transform .45s ease;pointer-events:none;
+    overflow-y:auto;
+  }
+  .slide.active{opacity:1;transform:none;pointer-events:auto}
+  .kicker{font-family:var(--display);font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    font-size:clamp(11px,1.1vw,13px);color:var(--pine-1);margin-bottom:16px}
+  h1{font-family:var(--display);font-weight:700;letter-spacing:-.02em;line-height:.95;font-size:clamp(38px,7vw,92px)}
+  h2{font-family:var(--display);font-weight:700;letter-spacing:-.015em;line-height:1.02;font-size:clamp(26px,4.2vw,52px);margin-bottom:10px}
+  h3{font-family:var(--display);font-weight:700;font-size:clamp(16px,1.6vw,21px)}
+  .lede{font-size:clamp(15px,1.7vw,21px);color:var(--grey);max-width:840px;margin:16px auto 0;line-height:1.5}
+  .cols{display:grid;gap:16px;margin-top:26px;width:min(1180px,94vw)}
+  .c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:1fr 1fr 1fr}.c4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){.c2,.c3,.c4{grid-template-columns:1fr}}
+  .card{background:#fff;border:1px solid var(--paper-2);border-radius:16px;padding:18px 20px;text-align:left;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  .card h3{margin-bottom:8px}
+  .card p, .card li{font-size:clamp(13px,1.25vw,15.5px);color:var(--grey);line-height:1.5}
+  .card ul{padding-left:18px;margin-top:6px}
+  .card .src{display:block;margin-top:10px;font-size:clamp(11px,1vw,12.5px);color:var(--pine-1);font-family:var(--display);font-weight:500}
+  .pill{display:inline-block;border-radius:999px;padding:3px 12px;font-family:var(--display);font-weight:500;font-size:clamp(11px,1.05vw,13px);margin-bottom:8px}
+  .pill.g{background:var(--green-0);color:var(--green-2)} .pill.p{background:var(--pine-0);color:var(--pine-2)}
+  .pill.r{background:#f7cac2;color:var(--red)} .pill.k{background:var(--ink);color:var(--paper)}
+  .pill.s{background:#bae6fd;color:var(--sky-1)} .pill.w{background:#fde9cc;color:var(--warn)}
+  .big{font-family:var(--display);font-weight:700;font-size:clamp(30px,3.6vw,52px);line-height:1}
+  .tag{font-family:var(--display);font-weight:500;font-size:clamp(12px,1.1vw,14px);color:var(--grey)}
+  .quote{font-size:clamp(15px,1.8vw,22px);line-height:1.5;max-width:860px;margin:20px auto 0;color:var(--ink)}
+  .quote em{background:linear-gradient(transparent 60%, var(--green-0) 60%);font-style:normal}
+  .foot{margin-top:18px;font-size:clamp(11px,1vw,13px);color:var(--grey)}
+  table{border-collapse:collapse;width:min(1100px,94vw);margin-top:22px;background:#fff;border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 40px -28px rgba(20,33,26,.35)}
+  th{font-family:var(--display);font-weight:500;font-size:clamp(11px,1vw,13px);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--grey);text-align:left;padding:12px 14px;border-bottom:2px solid var(--paper-2);background:var(--paper)}
+  td{padding:11px 14px;border-bottom:1px solid var(--paper-1);font-size:clamp(12.5px,1.2vw,15px);text-align:left;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .progress{position:fixed;top:0;left:0;height:4px;background:var(--green);transition:width .35s ease;z-index:20}
+  .dots{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:9px;z-index:20}
+  .dots button{width:9px;height:9px;border-radius:50%;border:0;background:var(--paper-2);cursor:pointer;padding:0;transition:.25s}
+  .dots button.on{background:var(--green);transform:scale(1.35)}
+  .nav{position:fixed;top:50%;transform:translateY(-50%);z-index:20;border:1px solid var(--paper-2);
+    background:rgba(255,255,255,.85);width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:19px;
+    display:flex;align-items:center;justify-content:center}
+  .nav:hover{border-color:var(--green-0)}
+  .nav.prev{left:18px}.nav.next{right:18px}
+  .counter{position:fixed;bottom:18px;right:22px;font-family:var(--display);font-weight:500;font-size:13px;color:var(--grey);z-index:20}
+  .brand{position:fixed;top:16px;left:22px;display:flex;align-items:center;gap:8px;z-index:20;
+    font-family:var(--display);font-weight:700;font-size:15px}
+  .brand img{width:26px;height:26px}
+  @media(max-width:720px){.nav{display:none}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="brand"><img src="assets/img/logomark.png" alt=""/><span>colive<span style="color:var(--pine-1)">.fun</span> · market scan</span></div>
+<div class="deck" id="deck">
+
+  <!-- 1 · Title -->
+  <section class="slide">
+    <div class="kicker">Market scan · Decentral Park NYC · July 2026</div>
+    <h1>Borrowed Blueprints</h1>
+    <p class="lede">Every product in this space already ran the experiment — some with $110M of someone else's
+    money. A deep scan of roommate-matchers, co-living operators, house-ops tools, co-buying platforms and
+    governance apps, distilled into <em>what colive.fun should adopt, and what it should refuse to build</em>.</p>
+    <p class="foot">18 claims adversarially verified (3-vote), 10+ primary sources · ←/→ to move</p>
+  </section>
+
+  <!-- 2 · The graveyard -->
+  <section class="slide">
+    <div class="kicker">First, the graveyard</div>
+    <h2>The operators are dead. The demand isn't.</h2>
+    <div class="cols c4">
+      <div class="card"><span class="pill r">Common · 2024</span>
+        <h3>$110M+ → Chapter 7</h3>
+        <p>5,200 units across 12 US cities; raised over $110M. Filed Chapter 7 in June 2024 — full liquidation, not a WeWork-style reorg. Industry autopsy: VC-driven multi-market expansion without profitability, then rates rose.</p>
+        <span class="src">Fortune · Propmodo · verified 3-0</span></div>
+      <div class="card"><span class="pill r">HubHaus · 2020</span>
+        <h3>Master-lease trap</h3>
+        <p>1,000+ rooms by 2019 — one of the largest players. It held the leases, so every unpaid room was its liability. COVID took vacancy from &lt;5% to 30%+ while Bay Area rents fell 30%. Dead by September 2020.</p>
+        <span class="src">Founder post-mortem (Merchant) · verified 3-0</span></div>
+      <div class="card"><span class="pill r">Quarters · 2021</span>
+        <h3>$300M plan, $17K left</h3>
+        <p>US arm of Medici Living filed Chapter 7 with about $17,000 in the bank — and its own filings show it was unprofitable <em>before</em> COVID. Tenants couldn't recover their security deposits from the estate.</p>
+        <span class="src">The Real Deal · verified 3-0</span></div>
+      <div class="card"><span class="pill r">Roomi · 2018</span>
+        <h3>Matching ≠ a business</h3>
+        <p>The roommate-matching app laid off ~50 of 63 staff, most without severance, when a funding round fell through. Matching alone — no ops layer, no retention — couldn't carry a venture-scale company.</p>
+        <span class="src">VentureBeat · verified 2-0</span></div>
+    </div>
+    <p class="foot">The pattern isn't "co-living failed." It's "holding the lease + VC growth targets failed."</p>
+  </section>
+
+  <!-- 3 · The structural read -->
+  <section class="slide">
+    <div class="kicker">The structural read</div>
+    <h2>colive.fun sits in the surviving quadrant</h2>
+    <p class="quote">Who lived? <em>Outpost Club</em> — ~1,500 units concentrated in 40 NYC buildings, no sprawl —
+    absorbed roughly half of Common's inventory after the bankruptcy. Density in one market beat empire in twelve.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill r">Their liability</span>
+        <p>Operators signed master leases and owed rent on every empty room. When vacancy spiked, the model consumed itself — at 1,000 rooms, at 5,200 units, at $300M of ambition.</p></div>
+      <div class="card"><span class="pill g">Our structure</span>
+        <p>colive.fun holds no leases, custodies no rent, owns no inventory. Houses are sovereign; the platform is coordination software. The failure mode that killed four funded companies <em>does not exist here</em>.</p></div>
+      <div class="card"><span class="pill s">Our market</span>
+        <p>NYC-only is not a limitation — it's the survivor's strategy, proven by the one operator still standing. Depth of community in one city over logos on a map.</p></div>
+    </div>
+    <span class="src" style="margin-top:14px">Fortune (Outpost/Common) · verified 3-0</span>
+  </section>
+
+  <!-- 4 · Matching: already ahead -->
+  <section class="slide">
+    <div class="kicker">Matching · the market agrees</div>
+    <h2>The quiz is validated. Now rank with it.</h2>
+    <div class="cols c3">
+      <div class="card"><span class="pill p">Diggz</span>
+        <h3>Compatibility-ranked search</h3>
+        <p>Ranks every search result by a personality/lifestyle/preferences algorithm, plus 20+ manual filters. Their words: "the best options for you will be ranked at the top."</p>
+        <span class="src">diggz.co · verified 2-1</span></div>
+      <div class="card"><span class="pill p">SpareRoom</span>
+        <h3>Lifestyle Q&amp;A matching</h3>
+        <p>Compatibility questionnaire is its most-cited feature in every roundup; the standard for big-metro roommate search including NYC.</p>
+        <span class="src">cohabby, guarantors.com roundups</span></div>
+      <div class="card"><span class="pill g">colive.fun today</span>
+        <h3>Bands + private dealbreakers</h3>
+        <p>Fit bands with named frictions instead of fake percentages, dealbreakers that never leak — already past what the market ships.</p></div>
+    </div>
+    <p class="quote" style="margin-top:22px"><em>Adopt:</em> order Browse by fit band for signed-in users. The bands are already computed — this is a sort, not a system.</p>
+    <p class="foot">Quick win · days, not weeks</p>
+  </section>
+
+  <!-- 5 · Rec 1: trust layer -->
+  <section class="slide">
+    <div class="kicker">Recommendation 1 · Quick win</div>
+    <h2>A trust layer — solidarity edition</h2>
+    <p class="lede">Diggz's retention weapon is verification: AI + human profile vetting, then optional ID, phone,
+    social and <em>reference</em> checks, plus in-app flagging. Our directory lists anyone who registers. Adopt the
+    layer — but build it from community fabric, not corporate ID checks.</p>
+    <div class="cols c4">
+      <div class="card"><span class="pill g">Vouches</span>
+        <p>A member who's met you at a gathering can vouch for you. Vouches show on your profile card in Browse. The gatherings calendar already records who crossed paths.</p></div>
+      <div class="card"><span class="pill g">References</span>
+        <p>Past housemates leave a short reference when someone moves out — the split protocol and leave flow are natural collection points.</p></div>
+      <div class="card"><span class="pill g">Crossed-paths badge</span>
+        <p>"Seen at 3 gatherings" is organic proof-of-person no bot farms. Derived from existing RSVP data; zero new user work.</p></div>
+      <div class="card"><span class="pill w">Flag + review</span>
+        <p>A report button on profiles and houses, reviewed by admins. Table stakes Diggz ships that we don't.</p></div>
+    </div>
+    <span class="src" style="margin-top:14px">diggz.co trust stack · verified 3-0</span>
+  </section>
+
+  <!-- 6 · Rec 2: auction chores -->
+  <section class="slide">
+    <div class="kicker">Recommendation 2 · Evidence-backed</div>
+    <h2>Auction mode for chores</h2>
+    <p class="lede">A real commune ran a continuous chore auction and published the results: every resident owes
+    100 points/month; a task's value <em>rises the longer it goes undone</em>; claims are peer-verified by upvote.
+    Total governance burden: 2–4 hours of chores plus one 90-minute meeting a month — and the house survived turnover.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill p">Why it works</span>
+        <p>Neglect prices itself. The gross task nobody wants climbs in value until someone claims it — no nagging, no steward escalation, no resentment ledger.</p></div>
+      <div class="card"><span class="pill g">What we have</span>
+        <p>Rotations, labor credits, bounties, mark-done. The auction is a pricing rule on top of existing rails: bounty values that accrue + peer verification instead of self-report.</p></div>
+      <div class="card"><span class="pill s">How to ship it</span>
+        <p>An optional house mode next to rotation mode. Houses pick at setup or by proposal. The paper's parameters (100 pts/month, linear accrual) are sane defaults.</p></div>
+    </div>
+    <span class="src" style="margin-top:14px">arXiv 2504.17113 (Sage house, longitudinal) · verified 3-0</span>
+  </section>
+
+  <!-- 7 · Rec 3: deposits -->
+  <section class="slide">
+    <div class="kicker">Recommendation 3 · Our unfair advantage</div>
+    <h2>Deposits no company can take down with it</h2>
+    <p class="quote">When Quarters died, tenants <em>could not recover their security deposits</em> from the
+    bankrupt operator. colive.fun's gathering deposits already sit in a non-custodial Gnosis contract —
+    no platform bankruptcy can touch them. That's not plumbing. That's the headline.</p>
+    <div class="cols c2">
+      <div class="card"><span class="pill g">Say it</span>
+        <p>Put the custody story on the landing page and every deposit screen: "held by code, not by a company — refundable even if we disappear." The graveyard slide is the marketing copy.</p></div>
+      <div class="card"><span class="pill s">Extend it</span>
+        <p>Move-in deposits for rooms: escrowed on Gnosis at join, released by the house's own vote on move-out terms. Long bet — needs UX care — but no competitor can copy it without becoming us.</p></div>
+    </div>
+    <span class="src" style="margin-top:14px">The Real Deal (Quarters) · verified 2-0</span>
+  </section>
+
+  <!-- 8 · Rec 4: consent governance -->
+  <section class="slide">
+    <div class="kicker">Recommendation 4 · Quick win</div>
+    <h2>Consent templates, not just majorities</h2>
+    <p class="lede">Loomio — the tool housing co-ops, cohousing groups and ecovillages actually use — ships four
+    decision templates: consensus, consent, majority, advice. Votes carry <em>reasoning</em>, and "block" is a
+    first-class position. colive.fun has one instrument: the 2/3 vote.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill g">Consent process</span>
+        <p>"Any meaningful objections?" — absence of objection, not presence of enthusiasm. Faster for the 90% of house decisions that are safe to try (paint the hallway, move dinner to Thursday).</p></div>
+      <div class="card"><span class="pill g">Advice process</span>
+        <p>One person decides after hearing everyone — right for domains with an owner (the meal-plan steward, the tool-shed keeper). Keeps small things out of full votes.</p></div>
+      <div class="card"><span class="pill p">Votes with reasons</span>
+        <p>Agree / abstain / disagree / block, each with a line of reasoning attached. The reasoning is what turns a vote count into a conversation.</p></div>
+    </div>
+    <p class="foot">Ship as proposal templates on the existing proposals rail — the 2/3 amendment vote stays for the agreement itself.</p>
+    <span class="src" style="margin-top:6px">loomio.com — how it works, co-op adoption pages</span>
+  </section>
+
+  <!-- 9 · Rec 5: ownership track -->
+  <section class="slide">
+    <div class="kicker">Recommendation 5 · The long bet</div>
+    <h2>Year five has an address: buy it together</h2>
+    <p class="lede">Radish (Oakland): 20 adults, 10 kids, 8 units, co-owned since 2019 through a "FriendLLC" —
+    with designed exit windows so people get their money out in 5–10 years. Its founder turned the playbook into
+    Supernuclear and then a company, Live Near Friends (2023), helping groups buy property near their people.</p>
+    <div class="cols c3">
+      <div class="card"><span class="pill s">Why us</span>
+        <p>"Built for year five, not week one" is already the pitch. A stable colive.fun house with a treasury, a signed agreement and three years of ledger history is the best-documented co-buying group in America.</p></div>
+      <div class="card"><span class="pill s">First step is paper</span>
+        <p>A co-buying module in the living agreement: equity split worksheet, exit-window clauses, FriendLLC/TIC template links. Documents before deeds.</p></div>
+      <div class="card"><span class="pill w">Not a pivot</span>
+        <p>We never touch the property. No brokerage, no custody, no leases — the graveyard rule holds. We give the house its paperwork and its history, they bring the mortgage.</p></div>
+    </div>
+    <span class="src" style="margin-top:14px">Supernuclear (Radish case study, FriendLLC model) · livenearfriends.com</span>
+  </section>
+
+  <!-- 10 · Anti-features -->
+  <section class="slide">
+    <div class="kicker">The refusal list</div>
+    <h2>What we will not build</h2>
+    <div class="cols c4">
+      <div class="card"><span class="pill r">No master leases</span>
+        <p>Never hold housing inventory or guarantee rent. It killed HubHaus, Quarters and Common at three different scales.</p>
+        <span class="src">verified 3-0, 3-0, 3-0</span></div>
+      <div class="card"><span class="pill r">No custody</span>
+        <p>Never hold rent or deposits in a company account. Quarters' tenants lost theirs in the bankruptcy queue. Code custody or no custody.</p>
+        <span class="src">verified 2-0</span></div>
+      <div class="card"><span class="pill r">No sprawl</span>
+        <p>No second city until NYC is dense. The only surviving operator is the one that never left. Growth pressure is how the dead ones died.</p>
+        <span class="src">verified 3-0</span></div>
+      <div class="card"><span class="pill r">No coordination paywall</span>
+        <p>Splitwise caps free users' daily expense entries and sells the cap's removal — its most-resented feature. A solidarity app never meters the ledger, the votes or the chores.</p>
+        <span class="src">splitwise.com/pro · verified 3-0</span></div>
+    </div>
+    <p class="foot">Also standing, from earlier design passes: no fake match percentages, no tokens, no reputation scores.</p>
+  </section>
+
+  <!-- 11 · The plan -->
+  <section class="slide">
+    <div class="kicker">The plan</div>
+    <h2>Sequenced by evidence and effort</h2>
+    <table>
+      <tr><th>#</th><th>Feature</th><th>Horizon</th><th>Evidence anchor</th><th>Build shape</th></tr>
+      <tr><td><strong>1</strong></td><td>Fit-ranked Browse</td><td><span class="pill g">Days</span></td><td>Diggz ranks by compatibility</td><td>Sort existing bands; signed-in only</td></tr>
+      <tr><td><strong>2</strong></td><td>Flag / report button</td><td><span class="pill g">Days</span></td><td>Diggz trust stack (3-0)</td><td>Report endpoint + admin review</td></tr>
+      <tr><td><strong>3</strong></td><td>Vouches + crossed-paths badges</td><td><span class="pill g">Weeks</span></td><td>Diggz verification, adapted</td><td>On gatherings/RSVP data we already store</td></tr>
+      <tr><td><strong>4</strong></td><td>Consent + advice proposal templates</td><td><span class="pill g">Weeks</span></td><td>Loomio's co-op adoption</td><td>Templates on the proposals rail</td></tr>
+      <tr><td><strong>5</strong></td><td>Housemate references</td><td><span class="pill p">1–2 mo</span></td><td>Diggz references path</td><td>Collected at leave/split flows</td></tr>
+      <tr><td><strong>6</strong></td><td>Auction mode for chores</td><td><span class="pill p">1–2 mo</span></td><td>arXiv Sage house (3-0)</td><td>Optional mode: accruing bounties + peer verify</td></tr>
+      <tr><td><strong>7</strong></td><td>Move-in deposit escrow</td><td><span class="pill s">Long bet</span></td><td>Quarters deposit loss (2-0)</td><td>Extend gathering escrow to rooms</td></tr>
+      <tr><td><strong>8</strong></td><td>Co-buying module in the agreement</td><td><span class="pill s">Long bet</span></td><td>Radish FriendLLC / Live Near Friends</td><td>Templates + worksheets, never the deed</td></tr>
+    </table>
+  </section>
+
+  <!-- 12 · Method + sources -->
+  <section class="slide">
+    <div class="kicker">Method &amp; sources</div>
+    <h2>How this was verified</h2>
+    <p class="lede">Five research angles fanned out in parallel; top sources fetched whole; every load-bearing claim
+    put to a 3-verifier adversarial vote (2 refutes kill a claim). 18 claims survived. Roomi and Quarters detail
+    claims closed 2-0 when the third verifier hit a rate limit; synthesis was completed by hand from the verified set.</p>
+    <div class="cols c2">
+      <div class="card"><h3>Failure autopsies</h3><ul>
+        <li>Fortune — Common's bankruptcy &amp; the operator model (June 2024)</li>
+        <li>Propmodo — Common Chapter 7 detail, Habyt acquisition</li>
+        <li>Shruti Merchant (founder) — the fall of HubHaus</li>
+        <li>The Real Deal — Quarters' $300M US collapse</li>
+        <li>VentureBeat — Roomi's 2018 layoffs</li></ul></div>
+      <div class="card"><h3>Feature evidence</h3><ul>
+        <li>diggz.co — compatibility ranking, verification stack</li>
+        <li>splitwise.com/pro — caps + dual monetization</li>
+        <li>arXiv 2504.17113 — the Sage house chore auction</li>
+        <li>loomio.com — consent/advice templates, co-op adoption</li>
+        <li>Supernuclear — Radish case study, FriendLLC model</li></ul></div>
+    </div>
+    <p class="foot">Prepared for Decentral Park NYC · colive.fun · July 2026</p>
+  </section>
+
+</div>
+<button class="nav prev" onclick="move(-1)">←</button>
+<button class="nav next" onclick="move(1)">→</button>
+<div class="dots" id="dots"></div>
+<div class="counter" id="counter"></div>
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  slides.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.onclick = () => show(i);
+    dots.appendChild(b);
+  });
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => s.classList.toggle("active", j === cur));
+    [...dots.children].forEach((d, j) => d.classList.toggle("on", j === cur));
+    document.getElementById("progress").style.width = ((cur + 1) / slides.length * 100) + "%";
+    document.getElementById("counter").textContent = (cur + 1) + " / " + slides.length;
+  }
+  function move(d) { show(cur + d); }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") move(1);
+    if (e.key === "ArrowLeft" || e.key === "PageUp") move(-1);
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+  });
+  let tx = null;
+  document.addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (tx == null) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 48) move(dx < 0 ? 1 : -1);
+    tx = null;
+  }, { passive: true });
+  show(0);
+</script>
+</body>
+</html>

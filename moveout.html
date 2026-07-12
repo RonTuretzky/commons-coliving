@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plan a move-out — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .check-row { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--paper-1); padding-top: 12px; }
+    .check-row:first-child { border-top: 0; padding-top: 0; }
+    .check-ico { font-size: 1.3rem; flex: none; }
+    .rev-tag { border: 1px solid var(--paper-1); background: var(--paper-0); border-radius: 20px; padding: 4px 12px; font-size: .84rem; cursor: pointer; }
+    .rev-tag.on { border-color: var(--app); background: var(--paper-main); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("dashboard");
+    Shell.gate();
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    function member(id) { return Commons.people.get(id); }
+    function firstName(id) { const p = member(id); return p ? p.name.split(" ")[0] : id; }
+
+    let phase = "plan";      // plan -> review -> done
+    let exit = null;         // the summary returned by houses.leave()
+    let moveDate = "";
+    const drafts = {};       // memberId -> {tags:Set, line, recommend}
+
+    function renderPlan() {
+      const house = Commons.houses.mine();
+      if (!house) { page.innerHTML = houselessHtml(); return; }
+      const bal = Math.round((Commons.ledger.balances().me || 0) * 100) / 100;
+      const myChores = Commons.chores.all().filter((c) => Commons.chores.assignee(c, Commons.chores.period(c)) === "me").length;
+      const myBills = Commons.money.bills().filter((b) => Commons.money.billPayer(b) === "me").length;
+      const onCook = !!(Commons.meals.plan() && (Commons.meals.plan().rotation || []).includes("me"));
+      const signed = Commons.agreementDoc.signedBy("me");
+      const co = house.members.filter((m) => m !== "me");
+
+      const chk = (ico, title, body, warn) => `<div class="check-row">
+        <span class="check-ico">${ico}</span>
+        <span><strong class="display-bold small">${title}</strong>
+        <span class="small muted" style="display:block">${body}</span></span></div>`;
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="stack" style="--gap:4px">
+          <a href="dashboard.html" class="small">← My House</a>
+          <div class="kicker">Graceful exit</div>
+          <h1 class="text-h2">Leaving ${U.esc(house.name)}</h1>
+          <p class="muted small">Moving out shouldn't mean your chores keep rotating to a ghost. Here's what settles when you go — you're never trapped, just squared up.</p>
+        </div>
+
+        <div class="card stack">
+          <div class="kicker">Before you go</div>
+          ${chk(Math.abs(bal) < 0.01 ? "✅" : "🧾",
+            Math.abs(bal) < 0.01 ? "Ledger: all square" : (bal > 0 ? `The house owes you ${U.fmtMoney(Math.abs(bal))}` : `You owe the house ${U.fmtMoney(Math.abs(bal))}`),
+            Math.abs(bal) < 0.01 ? "Nothing outstanding on the shared ledger." : `Settle up on the <a href="ledger.html">ledger</a> first — you can still leave with a balance, it'll just be flagged, not forgiven.`)}
+          ${chk("🔁", `${myChores} chore${myChores === 1 ? "" : "s"} + ${myBills} bill slot${myBills === 1 ? "" : "s"}${onCook ? " + cook duty" : ""} to hand back`,
+            "These get pruned from every rotation the moment you leave — the reallocator spreads them across whoever stays.")}
+          ${chk(signed ? "✍️" : "○", signed ? "Your agreement signature releases" : "You haven't signed the current agreement",
+            "Leaving removes your signature from the living agreement — the house re-signs at its next amendment.")}
+          ${chk("👋", `${co.length} housemate${co.length === 1 ? "" : "s"} to review`,
+            "After you leave, you'll get to leave each of them a private, two-sided review — they review you too, and neither sees the other's until both are in.")}
+        </div>
+
+        <div class="card stack">
+          <div class="field" style="max-width:240px">
+            <label for="mv-date">Move-out date (optional)</label>
+            <input class="input" id="mv-date" type="date" />
+          </div>
+          <div class="row wrap between">
+            <a class="park-btn ghost" href="dashboard.html">Never mind, staying</a>
+            <button class="lifted green" id="confirm-leave"><span class="shadow"></span><span class="face">Leave ${U.esc(house.name)}</span></button>
+          </div>
+          <p class="text-caption muted" style="margin:0">This opens a room back up for the house and drops you to houseless. You keep your account, your quiz, and your reputation.</p>
+        </div>
+      </div>`;
+
+      document.getElementById("mv-date").addEventListener("change", (e) => { moveDate = e.target.value; });
+      document.getElementById("confirm-leave").addEventListener("click", doLeave);
+    }
+
+    async function doLeave() {
+      const house = Commons.houses.mine();
+      exit = Commons.houses.leave();
+      if (!exit) { Shell.toast("Couldn't process — try again"); return; }
+      // hosted mode: detach from the shared house on the server too
+      try { if (window.CloudSync && CloudSync.signedIn && CloudSync.signedIn() && CloudSync.houseId) await CloudSync.leaveHouse(); } catch (e) {}
+      exit.houseName = house.name;
+      exit.houseId = house.id;
+      exit.coResidents.forEach((m) => { drafts[m] = { tags: new Set(), line: "", recommend: true }; });
+      Shell.toast("You've left " + house.name + " — a room just opened up", "green");
+      phase = exit.coResidents.length ? "review" : "done";
+      route();
+    }
+
+    function renderReview() {
+      const tags = Commons.reviews.TAGS;
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="stack" style="--gap:4px">
+          <div class="kicker green">You've moved out</div>
+          <h1 class="text-h2">Review your ${exit.coResidents.length === 1 ? "housemate" : "housemates"}</h1>
+          <p class="muted small">Honest, structured, and two-sided — they're reviewing you too, and neither side sees the other's words until both are in. This only exists because you actually lived together.</p>
+          ${exit.leftInGoodStanding ? `<span class="pill match" style="align-self:start">Left in good standing ✓</span>` : `<span class="pill warn" style="align-self:start">Left with an open balance — settle it to clear the flag</span>`}
+        </div>
+        ${exit.coResidents.map((m) => {
+          const d = drafts[m];
+          return `<div class="card stack" data-rev="${m}">
+            <div class="row" style="gap:10px">${Shell.avatarHtml(member(m), "lg")}<span><strong class="display-bold">${U.esc(member(m).name)}</strong>
+              <span class="small muted" style="display:block">Would you live with them again?</span></span></div>
+            <div class="row" style="gap:8px">
+              <button class="park-btn sm ${d.recommend ? "green" : "light"}" data-rec="${m}" data-v="1">Yes, gladly</button>
+              <button class="park-btn sm ${d.recommend ? "light" : "primary"}" data-rec="${m}" data-v="0">Probably not</button>
+            </div>
+            <div class="row wrap" style="gap:6px">${tags.map((tg) => `<button class="rev-tag ${d.tags.has(tg) ? "on" : ""}" data-tag="${m}" data-t="${U.esc(tg)}">${U.esc(tg)}</button>`).join("")}</div>
+            <textarea class="input" data-line="${m}" maxlength="240" placeholder="One honest line (optional) — the thing a future housemate would want to know.">${U.esc(d.line)}</textarea>
+          </div>`;
+        }).join("")}
+        <div class="row wrap between">
+          <a class="park-btn ghost" href="browse.html">Skip — just find my next place</a>
+          <button class="lifted green" id="submit-reviews"><span class="shadow"></span><span class="face">Submit ${exit.coResidents.length} review${exit.coResidents.length > 1 ? "s" : ""}</span></button>
+        </div>
+      </div>`;
+
+      page.querySelectorAll("[data-rec]").forEach((b) => b.addEventListener("click", () => { drafts[b.dataset.rec].recommend = b.dataset.v === "1"; renderReview(); }));
+      page.querySelectorAll("[data-tag]").forEach((b) => b.addEventListener("click", () => {
+        const d = drafts[b.dataset.tag]; const t = b.dataset.t;
+        d.tags.has(t) ? d.tags.delete(t) : d.tags.add(t); renderReview();
+      }));
+      page.querySelectorAll("[data-line]").forEach((ta) => ta.addEventListener("input", () => { drafts[ta.dataset.line].line = ta.value; }));
+      document.getElementById("submit-reviews").addEventListener("click", () => {
+        exit.coResidents.forEach((m) => {
+          const d = drafts[m];
+          Commons.reviews.add({ house: exit.houseId, to: m, tags: [...d.tags], line: d.line, recommend: d.recommend });
+        });
+        phase = "done"; route();
+        Shell.toast("Reviews in — thank you for the honesty", "green");
+      });
+    }
+
+    function renderDone() {
+      page.innerHTML = `
+      <div class="stack-lg center-text">
+        <div class="kicker green">All wrapped up</div>
+        <h1 class="text-h2">You've moved out of ${U.esc(exit ? exit.houseName : "the house")}</h1>
+        <p class="lede">Your rotations are handed back, a room's open for whoever comes next, and your reputation travels with you.</p>
+        <div class="row center wrap">
+          <a class="lifted green" href="browse.html"><span class="shadow"></span><span class="face">Find your next place</span></a>
+          <a class="park-btn light" href="account.html">Your profile</a>
+        </div>
+      </div>`;
+    }
+
+    function houselessHtml() {
+      return `<div class="empty stack">
+        <h2 class="text-h3">You're not in a house right now</h2>
+        <p>Nothing to move out of — go <a href="browse.html">find your people</a>.</p>
+      </div>`;
+    }
+
+    function route() {
+      if (phase === "review" && exit) renderReview();
+      else if (phase === "done") renderDone();
+      else renderPlan();
+    }
+    route();
+  </script>
+</body>
+</html>

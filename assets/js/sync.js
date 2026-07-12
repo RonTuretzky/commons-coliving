@@ -21,6 +21,9 @@
     "chorePrefs", "bandwidth", "mealAppetite", "mealPlan", "expenses", "settlements",
     "proposals", "treasury", "maintenance", "tasks", "labor", "agreementDoc",
     "checkinLog", "choreChain",
+    // the operations layer: async board, shared pantry, dinner headcount, chore
+    // covers, and the gratitude circle — all shared by every member of the house
+    "wall", "shoppingList", "dinnerRSVP", "coverRequests", "kudos",
   ];
   // device-local sync bookkeeping — never pushed to or read from the server
   // (pushing them would corrupt another device's version tracking)
@@ -78,6 +81,20 @@
     }
     (d.checkinLog || []).forEach((e) => { e.member = t(e.member); });
     (d.maintenance || []).forEach((m) => { m.openedBy = t(m.openedBy); });
+    (d.wall || []).forEach((w) => {
+      w.by = t(w.by);
+      if (w.reactions) Object.keys(w.reactions).forEach((emoji) => { w.reactions[emoji] = tArr(w.reactions[emoji]); });
+      (w.replies || []).forEach((r) => { r.by = t(r.by); });
+    });
+    (d.shoppingList || []).forEach((x) => {
+      x.addedBy = t(x.addedBy);
+      if (x.claimedBy) x.claimedBy = t(x.claimedBy);
+      if (x.boughtBy) x.boughtBy = t(x.boughtBy);
+      if (Array.isArray(x.participants)) x.participants = tArr(x.participants);
+    });
+    if (d.dinnerRSVP) Object.keys(d.dinnerRSVP).forEach((day) => { d.dinnerRSVP[day] = tKeys(d.dinnerRSVP[day]); });
+    (d.coverRequests || []).forEach((c) => { c.by = t(c.by); if (c.claimedBy) c.claimedBy = t(c.claimedBy); });
+    (d.kudos || []).forEach((k) => { k.from = t(k.from); k.to = t(k.to); });
     return d;
   }
 

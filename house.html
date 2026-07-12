@@ -89,6 +89,7 @@
     function mainCol(h) {
       const parts = [];
       parts.push(pillsRow(h));
+      parts.push(repLine(h));
       parts.push(`<p class="lede" style="margin-top:16px">${esc(h.blurb)}</p>`);
 
       if (h.mission) {
@@ -129,7 +130,25 @@
       return parts.join("");
     }
 
+    function repLine(h) {
+      const rs = Commons.reviews.forHouse(h.id);
+      if (!rs.length) return "";
+      const rec = Math.round((rs.filter((r) => r.recommend).length / rs.length) * 100);
+      return `<div class="row wrap" style="gap:8px;margin-top:16px"><span class="pill match">${rec}% of past members would recommend</span><span class="pill paper">${rs.length} review${rs.length > 1 ? "s" : ""}</span></div>`;
+    }
+
     function compatCard(h, mine) {
+      // A stranger with no account or an untaken quiz would only get match math on
+      // default 50s — misleading. Show the honest conversion teaser instead.
+      if (!mine && (!Commons.account.active() || !Commons.me().quizDone)) {
+        return `<div class="card flat side-card">
+          <div class="kicker">Your fit</div>
+          <div class="text-h3" style="margin-top:8px;filter:blur(5px);user-select:none" aria-hidden="true">Strong fit</div>
+          <p class="small muted" style="margin-top:10px">Take the 2-minute quiz and we'll show you exactly how you'd fit ${esc(h.name)} — on the six things that actually predict whether a house works, with dealbreakers kept private.</p>
+          <a class="lifted sm green" href="quiz.html" style="margin-top:12px"><span class="shadow"></span><span class="face">See if we'd click →</span></a>
+          <p class="text-caption muted" style="margin-top:10px">Already have an account? <a href="account.html">Sign in</a>.</p>
+        </div>`;
+      }
       if (mine) {
         return `
           <div class="card flat side-card">
@@ -250,8 +269,13 @@
       document.title = house.name + " — colive.fun";
       const myHouse = Commons.houses.mine();
       const mine = !!myHouse && myHouse.id === house.id;
+      const isPublic = U.qp("public") === "1";
 
       root.innerHTML = `
+        ${isPublic && !mine ? `<div class="card flat row between wrap" style="border-color:var(--pine);gap:10px;margin-bottom:18px">
+          <span class="small">🌿 You're looking at <strong>${esc(house.name)}</strong>'s public page${house.roomsOpen ? ` — <strong>${house.roomsOpen} ${plural(house.roomsOpen, "room", "rooms")} open</strong>` : ""}.</span>
+          <a class="park-btn primary sm" href="gatherings.html">See their open house →</a>
+        </div>` : ""}
         <div class="card">
           <div class="card-band house-band" style="background: radial-gradient(620px 220px at 85% -60%, rgba(255,255,255,.28), transparent 60%), ${esc(house.hue)}">
             <span>${esc(house.name)}</span>

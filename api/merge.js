@@ -58,6 +58,14 @@ function unionValues(a, b) {
   return out;
 }
 const mergeProposal = (pa, pb) => Object.assign({}, pa, pb, { votes: shallowMerge(pa && pa.votes, pb && pb.votes) });
+// a wall post: incoming text/pin wins, but reactions maps union and replies append
+const mergeWallPost = (wa, wb) => {
+  const reactions = {};
+  const src = [wa && wa.reactions, wb && wb.reactions];
+  src.forEach((m) => { if (m && typeof m === "object") safeKeys(m).forEach((e) => { reactions[e] = unionValues(reactions[e], m[e]); }); });
+  const replies = unionById(wa && wa.replies, wb && wb.replies);
+  return Object.assign({}, wa, wb, { reactions, replies });
+};
 
 const STRATEGY = {
   expenses: (a, b) => unionById(a, b),
@@ -67,6 +75,12 @@ const STRATEGY = {
   checkinLog: (a, b) => unionById(a, b),
   maintenance: (a, b) => unionById(a, b),
   proposals: (a, b) => unionById(a, b, mergeProposal),
+  // the operations layer
+  wall: (a, b) => unionById(a, b, mergeWallPost),
+  shoppingList: (a, b) => unionById(a, b),        // incoming wins a same-id conflict (bought supersedes need)
+  coverRequests: (a, b) => unionById(a, b),
+  kudos: (a, b) => unionById(a, b),
+  dinnerRSVP: (a, b) => deepMerge2(a, b),         // date → member → rsvp
   contributions: (a, b) => {
     const byM = new Map();
     const order = [];

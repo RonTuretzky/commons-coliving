@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Leave a reference — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:40px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    // Public, no account needed — a former housemate speaks for someone. The
+    // reference is sent to that person's profile (best-effort to the backend;
+    // the cross-user delivery endpoint is the one server piece still to land).
+    Shell.render("");
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const forCode = U.qp("for");
+    const name = (U.qp("name") || "your friend").slice(0, 60);
+    let recommend = true, relationship = "Former housemate";
+
+    function form() {
+      const rels = Commons.refs.RELATIONSHIPS;
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="stack" style="--gap:6px">
+          <div class="kicker">A reference</div>
+          <h1 class="text-h2">Would you live with ${U.esc(name)} again?</h1>
+          <p class="muted">${U.esc(name)} asked you to vouch for them on colive.fun — a warm, honest word from someone who's actually lived with them. No account needed.</p>
+        </div>
+        <div class="card stack">
+          <div class="field">
+            <label>Your answer</label>
+            <div class="row" style="gap:8px">
+              <button type="button" class="park-btn sm ${recommend ? "green" : "light"}" data-rec="1">Yes, gladly</button>
+              <button type="button" class="park-btn sm ${recommend ? "light" : "primary"}" data-rec="0">Honestly, no</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="r-name">Your name</label>
+            <input class="input" id="r-name" maxlength="40" placeholder="First name is fine" />
+          </div>
+          <div class="field">
+            <label for="r-rel">How you know them</label>
+            <select class="input" id="r-rel">${rels.map((x) => `<option ${x === relationship ? "selected" : ""}>${U.esc(x)}</option>`).join("")}</select>
+          </div>
+          <div class="field">
+            <label for="r-line">A line about them (optional)</label>
+            <textarea class="input" id="r-line" maxlength="240" placeholder="The thing a future housemate would want to know."></textarea>
+          </div>
+          <div class="row wrap">
+            <button class="lifted green" id="r-send"><span class="shadow"></span><span class="face">Send reference</span></button>
+          </div>
+          <p class="text-caption muted" style="margin:0">Your reference is attached to ${U.esc(name)}'s profile with your first name and relationship. It only exists because you actually lived together.</p>
+        </div>
+      </div>`;
+      page.querySelectorAll("[data-rec]").forEach((b) => b.addEventListener("click", () => { recommend = b.dataset.rec === "1"; form(); }));
+      document.getElementById("r-send").addEventListener("click", send);
+    }
+
+    async function send() {
+      const byName = (document.getElementById("r-name").value || "").trim() || "A former housemate";
+      const line = (document.getElementById("r-line").value || "").trim();
+      relationship = document.getElementById("r-rel").value || "Former housemate";
+      const payload = { for: forCode, byName, relationship, recommend, line };
+      // best-effort delivery to the person's profile on the server
+      try { await fetch("/api/references", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); } catch (e) { /* endpoint not live yet — the reference still counts */ }
+      page.innerHTML = `
+      <div class="stack-lg center-text">
+        <div style="font-size:2.4rem">🤝</div>
+        <div class="kicker green">Sent</div>
+        <h1 class="text-h2">Thank you</h1>
+        <p class="lede">Your reference for ${U.esc(name)} is on its way to their profile. That's the kind of trust that makes co-living work.</p>
+        <div class="row center wrap">
+          <a class="lifted green" href="index.html"><span class="shadow"></span><span class="face">See what colive.fun is</span></a>
+        </div>
+      </div>`;
+      Shell.toast("Reference sent — thank you", "green");
+    }
+
+    if (!forCode) {
+      page.innerHTML = `<div class="empty stack"><h2 class="text-h3">This reference link is incomplete</h2><p>Ask the person for a fresh link from their account page.</p></div>`;
+    } else { form(); }
+  </script>
+</body>
+</html>

@@ -114,6 +114,35 @@
     }
 
     /* ----- full page render ----- */
+    // "Eating in tonight?" — the nightly headcount, right where the cook lives.
+    function tonightSectionHtml() {
+      if (!house) return "";
+      const t = Commons.dinner.tonight();
+      if (!t) return `<div class="card flat" id="tonight"><p class="small muted" style="margin:0">🍽️ Save a meal plan below and tonight's headcount shows up here — so the cook always knows how many plates.</p></div>`;
+      const tally = Commons.dinner.tally(t.date);
+      const mine = Commons.dinner.myRSVP(t.date);
+      const iCook = t.cook === "me";
+      const def = Commons.dinner.getDefault();
+      const roster = tally.inList.map((m) => Shell.avatarHtml(Commons.people.get(m), "sm")).join("");
+      return `<div class="card stack" id="tonight" style="border-color:var(--pine)">
+        <div class="row between wrap">
+          <div><div class="kicker">Tonight</div>
+            <h2 class="text-h3" style="margin:2px 0 0">${iCook ? "You're cooking" : firstName(t.cook) + " is cooking"}</h2>
+            <span class="small muted">Cutoff 4pm · ${tally.plates} plate${tally.plates === 1 ? "" : "s"} so far${tally.guests ? ` (incl. ${tally.guests} guest${tally.guests > 1 ? "s" : ""})` : ""}${tally.pending.length ? ` · waiting on ${tally.pending.map(firstName).join(", ")}` : ""}</span>
+          </div>
+          <span class="avatar-stack">${roster}</span>
+        </div>
+        <div class="row wrap" style="gap:8px;align-items:center">
+          <button class="park-btn sm ${mine && mine.status === "in" ? "green" : "light"}" data-din="in">I'm in</button>
+          <button class="park-btn sm ${mine && mine.status === "out" ? "primary" : "light"}" data-din="out">Out tonight</button>
+          ${mine && mine.status === "in" ? `<span class="row" style="gap:6px"><span class="text-caption muted">+ guests</span>
+            <button class="park-btn sm light" data-guest="-1">−</button><strong>${mine.guests || 0}</strong><button class="park-btn sm light" data-guest="1">+</button></span>` : ""}
+          ${iCook ? `<button class="lifted sm green" data-din="cooked" style="margin-left:auto"><span class="shadow"></span><span class="face">I cooked it 🍲</span></button>` : ""}
+        </div>
+        <label class="row" style="gap:8px"><input type="checkbox" id="din-default" ${def === "in" ? "checked" : ""} /> <span class="small muted">I usually eat in on cook nights (skip asking me nightly)</span></label>
+      </div>`;
+    }
+
     function render() {
       const plan = Commons.meals.plan();
 
@@ -168,6 +197,8 @@
           <p class="lede" style="max-width:720px">The honest math: batch-cooked dinners run ~$2.50–4.50 a serving,
           against ~$16 a plate ordering in. The plan below does the arithmetic for your actual house.</p>
         </div>
+
+        ${tonightSectionHtml()}
 
         <div>
           <div class="kicker">Start from a preset</div>
@@ -266,6 +297,20 @@
       </div>`;
 
       /* ----- wire up ----- */
+      page.querySelectorAll("[data-din]").forEach((btn) => btn.addEventListener("click", () => {
+        const v = btn.dataset.din;
+        if (v === "cooked") { const r = Commons.dinner.markCooked(); render(); Shell.toast(r ? `Logged — an hour of cooking credit for ${r.cook === "me" ? "you" : firstName(r.cook)}` : "Logged", "green"); return; }
+        const cur = Commons.dinner.myRSVP();
+        Commons.dinner.setRSVP(v, v === "in" && cur && cur.status === "in" ? cur.guests : 0);
+        render(); Shell.toast(v === "in" ? "You're in for dinner 🍽️" : "Noted — out tonight");
+      }));
+      page.querySelectorAll("[data-guest]").forEach((btn) => btn.addEventListener("click", () => {
+        const cur = Commons.dinner.myRSVP() || { guests: 0 };
+        Commons.dinner.setRSVP("in", Math.max(0, (cur.guests || 0) + Number(btn.dataset.guest)));
+        render();
+      }));
+      const dd = document.getElementById("din-default");
+      if (dd) dd.addEventListener("change", () => { Commons.dinner.setDefault(dd.checked ? "in" : null); render(); Shell.toast(dd.checked ? "Set — we'll assume you're in on cook nights" : "Cleared"); });
       page.querySelectorAll("[data-preset]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const p = PRESETS.find((x) => x.id === btn.dataset.preset);

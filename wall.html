@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>House Wall — colive.fun</title>
+  <link rel="icon" href="assets/img/logomark.png" />
+  <link rel="stylesheet" href="assets/css/park.css" />
+  <style>
+    .wall-post { border-top: 1px solid var(--paper-1); padding-top: 14px; }
+    .wall-post:first-of-type { border-top: 0; padding-top: 0; }
+    .react-btn { border: 1px solid var(--paper-1); background: var(--paper-0); border-radius: 20px; padding: 2px 10px; font-size: .82rem; cursor: pointer; }
+    .react-btn.on { border-color: var(--app); background: var(--paper-main); }
+    .react-btn:hover { border-color: var(--app); }
+    .week-chip { border: 1px solid var(--paper-1); border-radius: 8px; padding: 4px 10px; font-size: .78rem; white-space: nowrap; }
+    .reply { border-left: 2px solid var(--paper-1); padding-left: 10px; margin-left: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="container narrow section" id="page" style="padding-top:36px"></div>
+  </main>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/shell.js"></script>
+  <script>
+    Shell.render("dashboard");
+    Shell.gate();
+    const U = Commons.util;
+    const page = document.getElementById("page");
+    const REACTS = ["👍", "❤️", "🙌", "👀"];
+    function member(id) { return Commons.people.get(id); }
+    function firstName(id) { const p = member(id); return p ? p.name.split(" ")[0] : id; }
+    const tagMap = {}; Commons.wall.TAGS.forEach((t) => { tagMap[t.id] = t; });
+    let composeTag = "heads-up";
+
+    function render() {
+      const house = Commons.houses.mine();
+      if (!house) { page.innerHTML = `<div class="empty stack"><h2 class="text-h3">No house yet</h2><p>The wall is a house thing — <a href="create.html">start one</a> or <a href="browse.html">join one</a>.</p></div>`; return; }
+      const posts = Commons.wall.all();
+      const dated = Commons.wall.dated();
+
+      page.innerHTML = `
+      <div class="stack-lg">
+        <div class="stack" style="--gap:4px">
+          <div class="kicker">House wall</div>
+          <h1 class="text-h2">${U.esc(house.name)}'s bulletin</h1>
+          <p class="muted small">The house's shared heads-up board — guests, quiet nights, wins, the wifi password. A bulletin, not a chat: post, react, leave one reply.</p>
+        </div>
+
+        ${dated.length ? `<div class="card flat stack" style="--gap:8px">
+          <div class="kicker">This week</div>
+          <div class="row wrap" style="gap:8px">${dated.map((p) => `<span class="week-chip">${(tagMap[p.tag] || tagMap.fyi).emoji} ${U.esc(p.text.slice(0, 44))}${p.text.length > 44 ? "…" : ""} · <span class="muted">${U.fmtDate(p.date)}</span></span>`).join("")}</div>
+        </div>` : ""}
+
+        <div class="card stack">
+          <div class="field">
+            <label for="w-text">Post to the house</label>
+            <textarea class="input" id="w-text" maxlength="400" placeholder="e.g. Keep Friday quiet — I have an exam. Or: landlord coming Tuesday 2pm."></textarea>
+          </div>
+          <div class="row wrap between">
+            <div class="row wrap" style="gap:6px" id="w-tags">
+              ${Commons.wall.TAGS.map((t) => `<button type="button" class="choice ${t.id === composeTag ? "on" : ""}" data-tag="${t.id}" style="padding:6px 12px">${t.emoji} ${t.label}</button>`).join("")}
+            </div>
+            <div class="row" style="gap:8px">
+              <label class="text-caption muted" for="w-date">Dated?</label>
+              <input class="input" id="w-date" type="date" style="width:auto;padding:6px 8px" />
+              <button class="lifted sm" id="w-post"><span class="shadow"></span><span class="face">Post</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card stack">
+          ${posts.length ? posts.map(postHtml).join("") : `<div class="empty">Nothing on the wall yet — be the first to post.</div>`}
+        </div>
+      </div>`;
+      wire();
+    }
+
+    function postHtml(p) {
+      const tg = tagMap[p.tag] || tagMap.fyi;
+      const reacts = REACTS.map((e) => {
+        const arr = (p.reactions || {})[e] || [];
+        const on = arr.includes("me");
+        return `<button class="react-btn ${on ? "on" : ""}" data-react="${p.id}" data-emoji="${e}">${e}${arr.length ? " " + arr.length : ""}</button>`;
+      }).join("");
+      return `<div class="wall-post stack" style="--gap:8px">
+        <div class="row between wrap">
+          <span class="row" style="gap:8px">${Shell.avatarHtml(member(p.by), "sm")}
+            <span><strong class="small">${U.esc(member(p.by).name)}</strong>
+            <span class="text-caption muted"> · ${U.relDate(p.at)}</span></span>
+          </span>
+          <span class="row" style="gap:6px">
+            <span class="pill paper" style="font-size:.72rem">${tg.emoji} ${tg.label}</span>
+            ${p.date ? `<span class="pill pine" style="font-size:.72rem">📅 ${U.fmtDate(p.date)}</span>` : ""}
+            ${p.pinned ? `<span class="pill ink" style="font-size:.72rem">📌 Pinned</span>` : ""}
+          </span>
+        </div>
+        <p class="small" style="margin:0;white-space:pre-wrap">${U.esc(p.text)}</p>
+        <div class="row wrap" style="gap:6px">${reacts}
+          <button class="react-btn" data-pin="${p.id}">${p.pinned ? "Unpin" : "📌 Pin"}</button>
+          ${p.by === "me" ? `<button class="react-btn" data-del="${p.id}">Delete</button>` : ""}
+        </div>
+        ${(p.replies || []).length ? `<div class="stack reply" style="--gap:4px">${p.replies.map((r) => `<div class="text-caption"><strong>${U.esc(firstName(r.by))}:</strong> ${U.esc(r.text)}</div>`).join("")}</div>` : ""}
+        <form data-reply="${p.id}" class="row" style="gap:6px">
+          <input class="input" name="text" placeholder="One reply…" maxlength="240" style="flex:1;padding:6px 10px" autocomplete="off" />
+          <button class="park-btn sm light" type="submit">Reply</button>
+        </form>
+      </div>`;
+    }
+
+    function wire() {
+      page.querySelectorAll("#w-tags [data-tag]").forEach((b) => b.addEventListener("click", () => {
+        composeTag = b.dataset.tag;
+        page.querySelectorAll("#w-tags [data-tag]").forEach((x) => x.classList.toggle("on", x === b));
+      }));
+      const post = () => {
+        const text = document.getElementById("w-text").value.trim();
+        if (!text) { Shell.toast("Type something first"); return; }
+        const date = document.getElementById("w-date").value || null;
+        Commons.wall.post({ text, tag: composeTag, date });
+        render(); Shell.toast("Posted to the wall", "green");
+      };
+      document.getElementById("w-post").addEventListener("click", post);
+      page.querySelectorAll("[data-react]").forEach((b) => b.addEventListener("click", () => { Commons.wall.react(b.dataset.react, b.dataset.emoji); render(); }));
+      page.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () => { Commons.wall.togglePin(b.dataset.pin); render(); }));
+      page.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => { Commons.wall.remove(b.dataset.del); render(); Shell.toast("Removed"); }));
+      page.querySelectorAll("[data-reply]").forEach((f) => f.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = (f.querySelector('[name="text"]').value || "").trim(); if (!text) return;
+        Commons.wall.reply(f.dataset.reply, text); render();
+      }));
+    }
+
+    window.addEventListener("sync:update", () => { if (Shell.editing()) return; try { render(); } catch (e) {} });
+    render();
+  </script>
+</body>
+</html>
