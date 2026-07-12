@@ -103,11 +103,13 @@
               </div></div>
           </div>
           <div class="grid grid-2">
-            <div class="field"><label for="g-when">When</label>
+            <div class="field"><label for="g-when">Date</label>
               <input class="input" id="g-when" type="date" /></div>
-            <div class="field"><label for="g-where">Where</label>
-              <input class="input" id="g-where" maxlength="60" placeholder="e.g. McCarren Park, Greenpoint" /></div>
+            <div class="field"><label for="g-time">Start time</label>
+              <input class="input" id="g-time" type="time" value="18:00" /></div>
           </div>
+          <div class="field"><label for="g-where">Where</label>
+            <input class="input" id="g-where" maxlength="60" placeholder="e.g. McCarren Park, Greenpoint" /></div>
           <div class="grid grid-2">
             <div class="field"><label for="g-cap">Capacity · <strong class="tnum" id="g-cap-val">20</strong></label>
               <input type="range" class="slider" id="g-cap" min="4" max="120" step="2" value="20" />
@@ -240,7 +242,7 @@
         <article class="card event-card">
           <div class="row between wrap">
             ${typePill(ev.type)}
-            <span class="text-caption muted">${esc(U.fmtDateLong(ev.when))} · ${esc(U.relDate(ev.when))}</span>
+            <span class="text-caption muted">${esc(U.fmtDateLong(ev.when))} · ${esc(U.fmtTime(ev.when))} · ${esc(U.relDate(ev.when))}</span>
           </div>
           <h3 class="text-h4"><a href="gathering.html?id=${encodeURIComponent(ev.id)}" style="text-decoration:none;color:inherit">${esc(ev.title)}</a></h3>
           <div class="text-caption muted">${esc(ev.where)}${ev.recurringMonthly ? " · repeats monthly" : ""} · <a href="gathering.html?id=${encodeURIComponent(ev.id)}">share&nbsp;&amp;&nbsp;.ics ↗</a></div>
@@ -393,7 +395,7 @@
         <div class="kicker">Your gatherings</div>
         ${mine.map((e) => `
           <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-block:10px">
-            <span class="small"><strong>${esc(e.title)}</strong> · ${esc(U.fmtDateLong(e.when))} · ${esc(e.where)}
+            <span class="small"><strong>${esc(e.title)}</strong> · ${esc(U.fmtDateLong(e.when))} · ${esc(U.fmtTime(e.when))} · ${esc(e.where)}
               <span class="muted">— ${e.attendeeCount} going of ${e.capacity}${e.price ? " · " + U.fmtMoney(e.price) + " deposit" : ""}</span></span>
             <button class="park-btn light sm" data-action="cancel-gathering" data-id="${esc(e.id)}">Cancel it</button>
           </div>`).join("")}
@@ -426,14 +428,17 @@
         if (!window.CloudSync || !CloudSync.user) { Shell.toast("Sign in to host a gathering"); setTimeout(() => { location.href = "account.html"; }, 700); return; }
         const title = document.getElementById("g-title").value.trim();
         const when = document.getElementById("g-when").value;
+        const time = document.getElementById("g-time").value || "18:00";
         const where = document.getElementById("g-where").value.trim();
         if (!title) { Shell.toast("Give it a name people will say out loud"); return; }
-        if (!when || new Date(when + "T12:00:00") < new Date()) { Shell.toast("Pick a date that hasn't happened yet"); return; }
+        if (!when) { Shell.toast("Pick a date"); return; }
+        const startAt = new Date(when + "T" + time + ":00");
+        if (isNaN(startAt.getTime()) || startAt < new Date()) { Shell.toast("Pick a date & time that hasn't happened yet"); return; }
         if (!where) { Shell.toast("People need somewhere to show up"); return; }
         const btn = document.getElementById("g-submit"); btn.disabled = true;
         try {
           const g = await CloudSync.publishGathering({
-            title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
+            title, type: gtype, when: startAt.toISOString(), where,
             capacity: Number(document.getElementById("g-cap").value) || 20,
             price: Number(document.getElementById("g-price").value) || 0,
             recurringMonthly: document.getElementById("g-recurring").checked || undefined,

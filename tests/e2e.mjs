@@ -558,10 +558,15 @@ await test('gatherings: host to the shared calendar, then cancel it', async () =
   const d = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
   await page.fill('#g-title', 'E2E Stoop Mixer');
   await page.fill('#g-when', d);
+  await page.fill('#g-time', '19:30');
   await page.fill('#g-where', 'The Stoop, Bed-Stuy');
   await page.locator('#g-submit').click();
   await page.waitForTimeout(1500); // publish to the server + reload
   assert((await ev(() => document.getElementById('upcoming-grid').innerText.includes('E2E Stoop Mixer'))), 'hosted gathering not shown');
+  // a start time renders WITH an explicit ET zone label (so a shared invite isn't
+  // read in the viewer's own timezone); value varies with the runner's zone, the
+  // label does not
+  assert((await ev(() => /\d{1,2}:\d{2}\s?(AM|PM)\s?E[SD]T/.test(document.getElementById('upcoming-grid').innerText))), 'zoned start time not shown on the card');
   assert((await ev(() => document.getElementById('my-gatherings').textContent.includes('E2E Stoop Mixer'))), 'not in Your gatherings');
   // cancel (two-tap confirm) → off the shared calendar
   await page.locator("[data-action='cancel-gathering']").first().click();

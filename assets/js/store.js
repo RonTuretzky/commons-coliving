@@ -955,6 +955,10 @@
   const fmtMoney = (n) => "$" + Number(n).toLocaleString("en-US");
   const fmtDate = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const fmtDateLong = (iso) => new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric" });
+  // gatherings are physical NYC events, so a shared invite must show the
+  // event's local wall-clock time (with a zone label) to EVERY viewer — never
+  // the reader's own timezone (which would mislead out-of-town recipients).
+  const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
   function relDate(iso) {
     const d = Math.round((new Date(iso).getTime() - Date.now()) / DAY);
     if (d === 0) return "today";
@@ -1820,6 +1824,6 @@
 
     // upcast an older exported state to the current shape (null = unsupported)
     migrate: (st) => (st && st.version === 9 ? st : (st && st.version === 8 ? upcastV8(st) : null)),
-    util: { fmtMoney, fmtDate, fmtDateLong, relDate, initials, hue, esc, qp, clamp },
+    util: { fmtMoney, fmtDate, fmtDateLong, fmtTime, relDate, initials, hue, esc, qp, clamp },
   };
 })();
