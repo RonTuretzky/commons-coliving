@@ -319,3 +319,30 @@ input[type="range"].slider { width: 100%; accent-color: var(--app); height: 32px
 /* ---------- Hero helpers ---------- */
 .hero-wash { background: radial-gradient(900px 420px at 70% -20%, var(--pine-0), transparent 55%); }
 .step-num { font-family: var(--display); font-weight: 700; font-size: .85rem; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--paper-main); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+
+/* ---------- Language switcher ---------- */
+.lang-select {
+  font-family: var(--display); font-weight: 500; font-size: .82rem; color: var(--grey-soft);
+  background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 8px;
+  padding: 5px 8px; margin-left: 6px; cursor: pointer; max-width: 132px;
+}
+.lang-select:hover { color: var(--ink); border-color: var(--pine-2); }
+@media (max-width: 880px) { .lang-select { max-width: 112px; font-size: .78rem; } }
+
+/* ---------- RTL (Hebrew, Arabic) — dir is set on <html> by the i18n engine ----------
+   Flexbox rows mirror automatically under dir=rtl; these fix text flow, the few
+   left-anchored spacings, and left-aligned tables/labels. */
+[dir="rtl"] body { text-align: right; }
+[dir="rtl"] .center-text { text-align: center; }
+[dir="rtl"] .ledger th { text-align: right; }
+[dir="rtl"] .avatar-stack .avatar { margin-left: 0; margin-right: -10px; }
+[dir="rtl"] .avatar-stack .avatar:first-child { margin-right: 0; }
+[dir="rtl"] .lang-select { margin-left: 0; margin-right: 6px; }
+/* nav controls use inline margin-left:6px to space out — flip it in RTL */
+[dir="rtl"] .navbar a[style*="margin-left"],
+[dir="rtl"] .navbar .lifted[style*="margin-left"] { margin-left: 0 !important; margin-right: 6px; }
+/* bullets/lists read from the right */
+[dir="rtl"] ul { padding-left: 0; padding-right: 20px; }
+/* inputs follow their CONTENT's direction: Hebrew display names stay RTL while
+   usernames/emails/@handles (Latin-only) type left-to-right, caret included */
+[dir="rtl"] input.input, [dir="rtl"] textarea.input { unicode-bidi: plaintext; }

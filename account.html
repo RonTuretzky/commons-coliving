@@ -59,6 +59,7 @@
 
     /* ---------- profile fields (shared by register + edit) ---------- */
     function profileFieldsHtml() {
+      const T = Shell.t;
       const hueSwatches = HUES.map((h) =>
         `<button type="button" class="avatar sm" data-hue="${h}" style="background:${h};cursor:pointer;border:${draft.hue === h && !draft.photo ? "3px solid var(--ink)" : "2px solid var(--paper-0)"}">${U.esc(U.initials(draft.name || "You"))}</button>`
       ).join("");
@@ -66,37 +67,37 @@
         <div class="row wrap" style="gap:16px">
           <span id="ava-preview">${avatarPreview()}</span>
           <div class="stack" style="--gap:6px;flex:1;min-width:220px">
-            <label class="park-btn light sm" style="align-self:start;cursor:pointer">📷 ${draft.photo ? "Change photo" : "Add a photo"}
+            <label class="park-btn light sm" style="align-self:start;cursor:pointer">📷 ${draft.photo ? T("profile.changePhoto") : T("profile.addPhoto")}
               <input id="a-photo" type="file" accept="image/*" style="display:none" />
             </label>
             ${draft.photo ? `<button type="button" class="park-btn ghost sm" id="a-photo-clear" style="align-self:start">Remove photo</button>` : `<div class="row wrap" style="gap:8px">${hueSwatches}</div>`}
           </div>
         </div>
         <div class="field">
-          <label for="a-name">Display name</label>
-          <input class="input" id="a-name" value="${U.esc(draft.name)}" placeholder="The name housemates will see" />
+          <label for="a-name">${T("profile.displayName")}</label>
+          <input class="input" id="a-name" value="${U.esc(draft.name)}" placeholder="${T("profile.displayName.ph")}" />
         </div>
         <div class="grid grid-2">
           <div class="field">
-            <label for="a-borough">Home base</label>
+            <label for="a-borough">${T("profile.homeBase")}</label>
             <select class="input" id="a-borough">${BOROUGHS.map((b) => `<option ${b === draft.borough ? "selected" : ""}>${b}</option>`).join("")}</select>
           </div>
           <div class="field">
-            <label for="a-budget">Monthly budget · <span class="tnum" id="a-budget-val">${U.fmtMoney(draft.budget)}</span></label>
+            <label for="a-budget">${T("profile.budget")} · <span class="tnum" id="a-budget-val">${U.fmtMoney(draft.budget)}</span></label>
             <input type="range" class="slider" id="a-budget" min="800" max="2500" step="50" value="${draft.budget}" />
             <div class="range-labels"><span>$800</span><span>$2,500</span></div>
           </div>
         </div>
         <div class="field">
-          <label for="a-bio">One-liner (optional)</label>
+          <label for="a-bio">${T("profile.oneliner")}</label>
           <input class="input" id="a-bio" value="${U.esc(draft.bio)}" placeholder="e.g. Big-dinner person, early riser, strong compost opinions." />
         </div>
         <div class="field">
-          <label for="a-email">Contact email (optional)</label>
+          <label for="a-email">${T("profile.email")}</label>
           <input class="input" id="a-email" type="email" value="${U.esc(draft.email)}" placeholder="you@example.com" />
         </div>
         <div class="field">
-          <label>Socials (optional)</label>
+          <label>${T("profile.socials")}</label>
           <div class="grid grid-2">
             <input class="input" id="a-ig" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.instagram || "")}" placeholder="📷 Instagram @handle" />
             <input class="input" id="a-x" autocapitalize="none" spellcheck="false" value="${U.esc(draft.socials.x || "")}" placeholder="𝕏 @handle" />
@@ -107,16 +108,16 @@
         </div>
         <div class="grid grid-2">
           <div class="field">
-            <label for="a-seeking">Looking for</label>
+            <label for="a-seeking">${T("profile.lookingFor")}</label>
             <select class="input" id="a-seeking">
-              <option value="room" ${draft.seeking === "room" ? "selected" : ""}>A room in a house</option>
-              <option value="founding" ${draft.seeking === "founding" ? "selected" : ""}>Founding a new house</option>
-              <option value="has-house" ${draft.seeking === "has-house" ? "selected" : ""}>Settled — I have a house</option>
+              <option value="room" ${draft.seeking === "room" ? "selected" : ""}>${T("profile.seeking.room")}</option>
+              <option value="founding" ${draft.seeking === "founding" ? "selected" : ""}>${T("profile.seeking.founding")}</option>
+              <option value="has-house" ${draft.seeking === "has-house" ? "selected" : ""}>${T("profile.seeking.hasHouse")}</option>
             </select>
           </div>
           <div class="field">
-            <label>Discovery</label>
-            <label class="row small" style="gap:8px;cursor:pointer;padding-top:8px"><input type="checkbox" id="a-discoverable" ${draft.discoverable ? "checked" : ""} style="accent-color:var(--pine-2)" /> List me in the public directory</label>
+            <label>${T("profile.discovery")}</label>
+            <label class="row small" style="gap:8px;cursor:pointer;padding-top:8px"><input type="checkbox" id="a-discoverable" ${draft.discoverable ? "checked" : ""} style="accent-color:var(--pine-2)" /> ${T("profile.listMe")}</label>
             <div class="help">Off = you can still join houses by invite, but you won't show up in browse.</div>
           </div>
         </div>`;
@@ -217,28 +218,27 @@
     function authView() {
       startDraft();
       const isReg = mode === "register";
+      const T = Shell.t;
       page.innerHTML = `
       <div class="stack-lg">
         <div>
-          <div class="kicker">${isReg ? "Create your account" : "Welcome back"}</div>
-          <h1 class="text-h2">${isReg ? "Pick a username, and you're in" : "Sign in"}</h1>
-          <p class="lede">${isReg
-            ? "Your account lives on colive.fun's servers — sign in from any device or browser and your world is there."
-            : "One username and password. Works anywhere you open colive.fun."}</p>
+          <div class="kicker">${isReg ? T("auth.kicker.register") : T("auth.kicker.signin")}</div>
+          <h1 class="text-h2">${isReg ? T("auth.title.register") : T("auth.title.signin")}</h1>
+          <p class="lede">${isReg ? T("auth.lede.register") : T("auth.lede.signin")}</p>
         </div>
         <div class="card stack">
           <div class="field">
-            <label for="a-username">Username</label>
-            <input class="input" id="a-username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${U.esc(draft.username)}" placeholder="lowercase, letters/numbers/._-" />
+            <label for="a-username">${T("auth.username")}</label>
+            <input class="input" id="a-username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${U.esc(draft.username)}" placeholder="${T("auth.username.ph")}" />
           </div>
           <div class="field">
-            <label for="a-password">Password</label>
-            <input class="input" id="a-password" type="password" autocomplete="${isReg ? "new-password" : "current-password"}" placeholder="${isReg ? "at least 8 characters" : "your password"}" />
+            <label for="a-password">${T("auth.password")}</label>
+            <input class="input" id="a-password" type="password" autocomplete="${isReg ? "new-password" : "current-password"}" placeholder="${isReg ? T("auth.password.ph.register") : T("auth.password.ph.signin")}" />
           </div>
           ${isReg ? `<div id="profile-fields" class="stack">${profileFieldsHtml()}</div>` : ""}
           <div class="row wrap">
-            <button class="lifted green" id="a-submit"><span class="shadow"></span><span class="face">${isReg ? "Create account" : "Sign in"}</span></button>
-            <button class="park-btn ghost" id="a-toggle">${isReg ? "I already have an account" : "Create a new account"}</button>
+            <button class="lifted green" id="a-submit"><span class="shadow"></span><span class="face">${isReg ? T("auth.submit.register") : T("auth.submit.signin")}</span></button>
+            <button class="park-btn ghost" id="a-toggle">${isReg ? T("auth.toggle.toSignin") : T("auth.toggle.toRegister")}</button>
           </div>
           <p class="text-caption muted" id="a-msg"></p>
         </div>
@@ -251,7 +251,7 @@
         const username = (document.getElementById("a-username").value || "").trim().toLowerCase();
         const password = document.getElementById("a-password").value || "";
         const msg = document.getElementById("a-msg");
-        if (!username || !password) { msg.textContent = "Username and password, please."; return; }
+        if (!username || !password) { msg.textContent = T("auth.err.missing"); return; }
         submit.disabled = true; const face = submit.querySelector(".face"); const orig = face.textContent; face.textContent = "…";
         try {
           if (isReg) {
@@ -264,7 +264,7 @@
             await CloudSync.signIn({ username, password });
           }
           const pendingJoin = localStorage.getItem("dp-pending-join");
-          Shell.toast(isReg ? "Account created — welcome" : "Welcome back", "green");
+          Shell.toast(isReg ? T("auth.toast.created") : T("auth.toast.welcome"), "green");
           setTimeout(() => {
             location.href = pendingJoin ? "join.html?code=" + encodeURIComponent(pendingJoin)
               : (Commons.me().quizDone || Commons.houses.mine() ? "dashboard.html" : "quiz.html");
@@ -301,7 +301,7 @@
         <div class="card stack">
           <div class="kicker">Profile</div>
           <div id="profile-fields" class="stack">${profileFieldsHtml()}</div>
-          <div class="row"><button class="lifted" id="a-save"><span class="shadow"></span><span class="face">Save changes</span></button></div>
+          <div class="row"><button class="lifted" id="a-save"><span class="shadow"></span><span class="face">${Shell.t("profile.save")}</span></button></div>
         </div>
         ${walletCardHtml()}
         <div class="card flat stack">

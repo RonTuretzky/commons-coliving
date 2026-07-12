@@ -202,6 +202,58 @@ await test('gathering page: unknown id gets a friendly dead-end', async () => {
   assert(body.includes("isn't on the board"), 'no friendly missing state');
 });
 
+/* ---------- i18n: 11 languages, language switcher, Hebrew RTL ---------- */
+await test('i18n: switcher offers 11 languages; picking Spanish translates the chrome', async () => {
+  const clean = await browser.newContext();
+  const cp = await clean.newPage();
+  await cp.goto(BASE + '/index.html');
+  await cp.waitForTimeout(300);
+  const opts = await cp.evaluate(() => [...document.querySelectorAll('#lang-select option')].map((o) => o.value));
+  assert(opts.length === 11 && opts.includes('he') && opts.includes('es'), 'switcher languages wrong: ' + opts.join(','));
+  // pick Spanish via the switcher (reloads the page)
+  await cp.selectOption('#lang-select', 'es');
+  await cp.waitForTimeout(700);
+  const es = await cp.evaluate(() => ({
+    lang: document.documentElement.getAttribute('lang'),
+    dir: document.documentElement.getAttribute('dir'),
+    nav: document.getElementById('nav-links').innerText,
+    hero: document.querySelector('.text-h1').innerText,
+  }));
+  assert(es.lang === 'es' && es.dir === 'ltr', 'html lang/dir wrong after switch: ' + JSON.stringify(es));
+  assert(/Explorar|Encuentros/i.test(es.nav), 'nav not in Spanish: ' + es.nav);
+  assert(/Encuentra a tu gente/i.test(es.hero), 'hero not in Spanish: ' + es.hero);
+  await clean.close();
+});
+
+await test('i18n: Hebrew renders RTL with translated chrome, and persists across pages', async () => {
+  const clean = await browser.newContext();
+  await clean.addInitScript(() => { try { localStorage.setItem('dp-lang', 'he'); } catch (e) {} });
+  const cp = await clean.newPage();
+  await cp.goto(BASE + '/index.html');
+  await cp.waitForTimeout(300);
+  const he = await cp.evaluate(() => ({
+    lang: document.documentElement.getAttribute('lang'),
+    dir: document.documentElement.getAttribute('dir'),
+    nav: document.getElementById('nav-links').innerText,
+    hero: document.querySelector('.text-h1').innerText,
+    bodyAlign: getComputedStyle(document.body).textAlign,
+  }));
+  assert(he.lang === 'he' && he.dir === 'rtl', 'Hebrew should set lang=he dir=rtl: ' + JSON.stringify(he));
+  assert(/[֐-׿]/.test(he.nav), 'nav has no Hebrew: ' + he.nav);
+  assert(/[֐-׿]/.test(he.hero), 'hero has no Hebrew: ' + he.hero);
+  assert(he.bodyAlign === 'right', 'RTL body should right-align: ' + he.bodyAlign);
+  // persists onto another page (the auth front door), translated there too
+  await cp.goto(BASE + '/account.html');
+  await cp.waitForTimeout(1200);
+  const auth = await cp.evaluate(() => ({
+    dir: document.documentElement.getAttribute('dir'),
+    page: document.getElementById('page').innerText,
+  }));
+  assert(auth.dir === 'rtl', 'RTL lost on account page');
+  assert(/[֐-׿]/.test(auth.page), 'auth page has no Hebrew: ' + auth.page.slice(0, 120));
+  await clean.close();
+});
+
 await test('browse: house cards carry five-lens dots', async () => {
   await go('browse.html');
   const titles = await ev(() => Array.from(document.querySelectorAll('main [title]')).map((el) => el.title).join('|'));
