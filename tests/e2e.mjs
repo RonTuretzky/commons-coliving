@@ -20,6 +20,8 @@ async function newPage() {
 async function fresh(url) {
   if (ctx) await ctx.close();
   ctx = await browser.newContext();
+  // the shipped app is empty; feature tests run against the opt-in demo fixture
+  await ctx.addInitScript(() => { window.__COLIVE_SEED_DEMO = true; });
   consoleErrors = [];
   await newPage();
   await page.goto(BASE + '/' + url);
@@ -77,6 +79,7 @@ if (CHAIN) {
 async function freshChain(url) {
   if (ctx) await ctx.close();
   ctx = await browser.newContext();
+  await ctx.addInitScript(() => { window.__COLIVE_SEED_DEMO = true; });
   await ctx.addInitScript(([addr, commune]) => {
     localStorage.setItem('dp-chain', 'local');
     localStorage.setItem('dp-escrow-local', addr);
@@ -119,6 +122,44 @@ await test('pwa: manifest linked, sw served, registration attempted', async () =
   assert(sw.s === 200 && sw.t.includes('colive-v'), 'sw.js not served');
   await page.waitForTimeout(600);
   assert((await ev(async () => !!(await navigator.serviceWorker.getRegistration()))), 'sw not registered on localhost');
+});
+
+/* ---------- clean launch: the SHIPPED app carries no demo/mock data ---------- */
+await test('clean launch: a real device starts with an empty world', async () => {
+  // a context WITHOUT the demo fixture flag = exactly what a real user gets
+  const clean = await browser.newContext();
+  const cp = await clean.newPage();
+  await cp.goto(BASE + '/index.html');
+  await cp.waitForTimeout(300);
+  const counts = await cp.evaluate(() => ({
+    people: window.Commons.people.all().length,
+    houses: window.Commons.houses.all().length,
+    events: window.Commons.events.all().length,
+    expenses: window.Commons.ledger.all().length,
+    proposals: window.Commons.proposals.all().length,
+    tasks: window.Commons.tasks.all().length,
+    treasury: window.Commons.money.treasury().balance,
+    account: window.Commons.account.get(),
+  }));
+  assert(counts.houses === 0 && counts.people === 0 && counts.events === 0, 'seeded world leaked into a real device: ' + JSON.stringify(counts));
+  assert(counts.expenses === 0 && counts.proposals === 0 && counts.tasks === 0 && counts.treasury === 0, 'seeded operational data present: ' + JSON.stringify(counts));
+  assert(counts.account === null, 'a real device should start with no account');
+  await clean.close();
+});
+
+await test('clean launch: browse + landing show first-user states, not fake data', async () => {
+  const clean = await browser.newContext();
+  const cp = await clean.newPage();
+  await cp.goto(BASE + '/browse.html');
+  await cp.waitForTimeout(400);
+  const browseText = await cp.evaluate(() => document.querySelector('main').innerText);
+  assert(/No houses yet|start the first/i.test(browseText), 'browse homes tab should show a launch state: ' + browseText.slice(0, 120));
+  assert(!/Cypress|McCarren|Ridgewood/.test(browseText), 'browse leaked seeded house names');
+  await cp.goto(BASE + '/index.html');
+  await cp.waitForTimeout(300);
+  const heroText = await cp.evaluate(() => document.getElementById('live-stats').innerText);
+  assert(/first houses are forming|be one of them|Start yours/i.test(heroText), 'hero should show a launch line: ' + heroText);
+  await clean.close();
 });
 
 await test('gathering page: unknown id gets a friendly dead-end', async () => {
@@ -722,10 +763,23 @@ if (CHAIN && communeAddr) {
       window.Commons.chorePlanner.apply(window.Commons.chorePlanner.estimate({ kitchen: 1, trash: 1 }, 1).chores);
     });
     await go('chores.html');
-    await page.locator('#chain-sync').click();
-    await page.waitForTimeout(3000); // createCommune tx
+    // The chore-log UI is gated behind (unbuilt) collateral mode, so drive the
+    // CommuneOS sync through the same rails the button used — the on-chain path
+    // still exists, it's just not offered without a stake.
+    await ev(async () => {
+      const house = window.Commons.houses.mine();
+      const chores = window.Commons.chores.all();
+      const ids = {}; chores.forEach((c, i) => { ids[c.id] = i; });
+      const { communeId, hash } = await Rails.commune.create(house.name, chores.map((c, i) => ({
+        onchainId: i, name: c.name, freqDays: c.freqDays, startMs: new Date(c.start).getTime(),
+      })));
+      window.Commons.state.choreChain = { communeId, network: Rails.netId(), ids, tx: hash };
+      window.Commons.save();
+    });
+    await page.waitForTimeout(1500);
     const cc = await ev(() => window.Commons.state.choreChain);
     assert(cc && typeof cc.communeId === 'number', 'commune not created: ' + JSON.stringify(cc));
+    await go('chores.html'); // re-render so mark-done binds with the chain synced
     // mark the first chore done through the UI → dual-write
     await page.locator('[data-chore]').first().click();
     await page.waitForTimeout(3000); // markChoreComplete tx

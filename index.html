@@ -53,7 +53,7 @@
           <a class="park-btn outline" href="quiz.html" style="align-self:start">Map yourself →</a>
         </div>
         <div class="card stack" id="match-demo">
-          <div class="kicker green">Live from the demo world</div>
+          <div class="kicker green">What a fit readout looks like</div>
         </div>
       </div>
     </section>
@@ -62,7 +62,7 @@
     <section class="section">
       <div class="container grid grid-2" style="align-items:center">
         <div class="card stack" id="money-demo">
-          <div class="kicker green">This month at Cypress Yard</div>
+          <div class="kicker green">An example house on rails</div>
         </div>
         <div class="stack">
           <div class="kicker">House money</div>
@@ -238,16 +238,20 @@
       }
     })();
 
-    // Live stats
+    // Live stats — real counts once there's a local world; a launch line before that
     (function () {
       const houses = Commons.houses.all();
+      const el = document.getElementById("live-stats");
+      if (!houses.length) {
+        el.innerHTML = `<span class="small muted">New in NYC — the first houses are forming now. ${Commons.account.active() ? "Start yours." : "Create an account and be one of them."}</span>`;
+        return;
+      }
       const rooms = houses.reduce((s, h) => s + (h.roomsOpen || 0), 0);
       const events = Commons.events.upcoming().length;
       const seekers = Commons.people.seekers().length;
       const stat = (n, label) =>
         `<span class="row" style="gap:8px"><span class="display-bold" style="font-size:1.5rem">${n}</span><span class="small muted">${label}</span></span>`;
-      document.getElementById("live-stats").innerHTML =
-        stat(houses.length, "homes") + stat(rooms, "rooms open now") +
+      el.innerHTML = stat(houses.length, "homes") + stat(rooms, "rooms open now") +
         stat(events, "gatherings coming up") + stat(seekers, "people seeking");
     })();
 
@@ -267,44 +271,40 @@
         </a>`).join("");
     })();
 
-    // Live match demo
+    // Match illustration — a static example of the fit readout (marketing graphic,
+    // not the user's data; the real matching runs in the quiz against real people).
     (function () {
-      const me = Commons.me();
-      const picks = ["p-maya", "p-dev", "p-sofia"];
-      const rows = picks.map((id) => {
-        const p = Commons.people.get(id);
-        const m = Commons.match(me, p);
-        const a = Commons.archetype(p.dims);
-        return `<div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:12px">
-          <span class="row">${Shell.avatarHtml(p)}<span><strong>${U.esc(p.name)}</strong>
-            <span class="small muted" style="display:block">${a.emoji} ${U.esc(a.name)}</span></span></span>
-          <span class="row wrap">${Shell.matchPill(m)}</span>
-        </div>`;
-      }).join("");
+      const example = [
+        { name: "Rhythms line up", hue: "#0d9488", arch: "🔥 Hearthkeeper", pill: `<span class="pill match">Strong fit</span> <span class="pill zero">0 dealbreakers</span>` },
+        { name: "Close on money, split on noise", hue: "#0284c7", arch: "🧭 Systems-builder", pill: `<span class="pill paper">Workable fit</span> <span class="pill zero">0 dealbreakers</span>` },
+        { name: "A real gap on guests", hue: "#ce7f00", arch: "🌙 Quiet Anchor", pill: `<span class="pill warn">A stretch</span> <span class="pill conflict">⚠ 1 dealbreaker</span>` },
+      ];
+      const rows = example.map((e) => `
+        <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:12px">
+          <span class="row">${Shell.avatarHtml({ id: e.name, name: e.name, hue: e.hue })}<span><strong>${U.esc(e.name)}</strong>
+            <span class="small muted" style="display:block">${e.arch}</span></span></span>
+          <span class="row wrap">${e.pill}</span>
+        </div>`).join("");
       document.getElementById("match-demo").insertAdjacentHTML("beforeend",
-        `<p class="small muted">How three real profiles score against yours right now:</p>${rows}
-         <a class="small" href="browse.html">See everyone →</a>`);
+        `<p class="small muted">Bands with named frictions — never a fake percentage:</p>${rows}
+         <a class="small" href="quiz.html">Map yourself →</a>`);
     })();
 
-    // Money demo: one bill rotation + treasury line
+    // Money illustration — a static example house so the front door shows the shape
+    // of the ledger (the real numbers appear once you form or join a house).
     (function () {
-      const t = Commons.money.treasury();
-      const bill = Commons.money.bills()[1]; // Con Edison
-      const payer = Commons.people.get(Commons.money.billPayer(bill)) || Commons.me();
-      const preview = Commons.money.rotationPreview(bill, 4).map((r) => {
-        const p = Commons.people.get(r.payer) || Commons.me();
-        return `<span class="chip soft" title="${U.esc(p.name)}">${U.esc(r.month)} · ${U.esc(U.initials(p.name))}</span>`;
-      }).join(" ");
+      const preview = ["Jul", "Aug", "Sep", "Oct"].map((m, i) =>
+        `<span class="chip soft">${m} · ${["ER", "JD", "TA", "ZK"][i]}</span>`).join(" ");
       document.getElementById("money-demo").insertAdjacentHTML("beforeend", `
         <div class="row between wrap">
-          <span>Treasury</span><span class="amount pos" style="font-size:1.6rem">${U.fmtMoney(t.balance)} <span class="small muted">${U.esc(t.currency)}</span></span>
+          <span>House fund</span><span class="amount pos" style="font-size:1.6rem">${U.fmtMoney(2340)} <span class="small muted">USD</span></span>
         </div>
         <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-top:12px">
-          <span>${U.esc(bill.name)} · ${U.fmtMoney(bill.amount)}</span>
-          <span class="row">${Shell.avatarHtml(payer, "sm")} <span class="small">${U.esc(payer.name)} pays this month</span></span>
+          <span>Con Edison · ${U.fmtMoney(214)}</span>
+          <span class="row">${Shell.avatarHtml({ id: "ex", name: "Eli R", hue: "#0d9488" }, "sm")} <span class="small">Eli pays this month</span></span>
         </div>
         <div class="row wrap" style="gap:8px">${preview}</div>
-        <p class="text-caption muted">The rotation is deterministic — it was decided the day the house formed.</p>`);
+        <p class="text-caption muted">The rotation is deterministic — decided the day the house forms, then nobody thinks about it again.</p>`);
     })();
   </script>
 </body>

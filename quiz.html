@@ -500,7 +500,12 @@
             </a>
             ${m.frictions.length ? `<p class="text-caption" style="margin-top:2px">⚡ ${U.esc(m.frictions[0].script)}</p>` : ""}`).join("")}
           <p class="text-caption muted">Bands, not percentages — a strong band means "worth a dinner," not destiny. That's all any questionnaire can honestly say.</p>
-        </div>` : ""}
+        </div>` : `<div class="card stack">
+          <div class="kicker">Where you'd land</div>
+          <p class="small muted">No houses are open yet — colive.fun is new. You can found one now and it becomes the first, or host a gathering and meet the people who'd fill it.</p>
+          <div class="row wrap"><a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+          <a class="park-btn light sm" href="gatherings.html">Host a gathering</a></div>
+        </div>`}
 
         <div class="grid grid-2">
           <div class="card stack">

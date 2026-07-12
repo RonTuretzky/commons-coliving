@@ -235,13 +235,31 @@
       const el = document.getElementById("results");
       const list = tab === "homes" ? homesFiltered() : peopleFiltered();
       if (!list.length) {
-        el.innerHTML = `
-          <div class="empty stack">
-            <div style="font-size:2rem" aria-hidden="true">🍃</div>
-            <p class="text-h4">Nobody here — loosen a filter?</p>
-            <p class="small">Every filter is an AND. Stack enough of them and even the friendliest borough goes quiet.</p>
-            <div><button type="button" class="park-btn secondary" data-clear="1">Clear all filters</button></div>
-          </div>`;
+        // distinguish an empty world (launch) from an over-filtered one
+        const worldEmpty = tab === "homes"
+          ? Commons.houses.all().length === 0
+          : Commons.people.all().length === 0;
+        el.innerHTML = worldEmpty
+          ? (tab === "homes"
+            ? `<div class="empty stack">
+                 <div style="font-size:2rem" aria-hidden="true">🌱</div>
+                 <p class="text-h4">No houses yet — start the first one</p>
+                 <p class="small">colive.fun is new. Found a house, put it online, and it shows up here for the people looking.</p>
+                 <div class="row center wrap"><a class="lifted sm" href="create.html"><span class="shadow"></span><span class="face">Start a house</span></a>
+                 <a class="park-btn light sm" href="gatherings.html">Host a gathering first</a></div>
+               </div>`
+            : `<div class="empty stack">
+                 <div style="font-size:2rem" aria-hidden="true">👋</div>
+                 <p class="text-h4">No one else has joined yet</p>
+                 <p class="small">You're early. Take the quiz so you're ready to match, and bring the people you'd actually live with.</p>
+                 <div class="row center wrap"><a class="lifted sm" href="quiz.html"><span class="shadow"></span><span class="face">Take the quiz</span></a></div>
+               </div>`)
+          : `<div class="empty stack">
+               <div style="font-size:2rem" aria-hidden="true">🍃</div>
+               <p class="text-h4">Nobody here — loosen a filter?</p>
+               <p class="small">Every filter is an AND. Stack enough of them and even the friendliest borough goes quiet.</p>
+               <div><button type="button" class="park-btn secondary" data-clear="1">Clear all filters</button></div>
+             </div>`;
         return;
       }
       const meta = `<p class="text-caption muted" style="margin-bottom:12px">${list.length} ${tab === "homes" ? "home" : "person"}${list.length === 1 ? "" : tab === "homes" ? "s" : ""}${tab === "people" && list.length !== 1 ? "people".slice(0) && "" : ""}</p>`;

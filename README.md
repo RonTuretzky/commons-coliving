@@ -13,7 +13,7 @@ No build step, no backend. Open `index.html`, or:
 python3 -m http.server 8080
 ```
 
-Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn — no server), take the quiz, join or found a house, run it. App pages are auth-gated; a new user starts houseless like a real one. State lives in `localStorage` (`dp-commons-v9`); backup/restore ships as one-file JSON export/import on the account page; "Reset this device" is in the account danger zone. Installable as a PWA (offline shell via service worker).
+Productized and local-first: create an account (photo, avatar, optional Touch ID passkey via WebAuthn), take the quiz, join or found a house, run it. **The shipped app is empty** — no fake people, houses, or ledgers; real users populate it (and share houses via the backend). A seeded NYC demo world stays available as an opt-in fixture (`Commons.__seedDemo()`, used by the test suite and sales previews), never auto-loaded for a real user. App pages are auth-gated; a new user starts houseless. State lives in `localStorage` (`dp-commons-v9`); backup/restore is one-file JSON export/import on the account page. Installable as a PWA (offline shell via service worker), with an optional backend for cross-device sync and shared houses (see below).
 
 ## The tools
 
@@ -51,7 +51,7 @@ An optional Node service at `/api` (same origin, DigitalOcean App Platform) with
 - **Gathering deposits:** non-custodial via `contracts/src/GatheringEscrow.sol` (Foundry; 10 unit tests) — attendees can pull out before start, host cancelling makes everyone refundable forever, an uncancelled gathering lets the host claim after start. The platform never holds funds.
 - **Deploy:** `contracts/deploy.sh gnosis` with a funded key, then set the address in `ESCROW.gnosis` in `rails.js`. Until then the UI runs the same flows off-chain and says so.
 - **Chain e2e:** the suite spins up anvil, deploys the contract, and drives wallet-funding → on-chain escrow → deposit → cancel-refund through the real UI (localhost runs only).
-- **Optional on-chain chore log:** the vendored [commune-os](https://github.com/communetxyz/commune-os-sc) suite (share-house.fun's contracts) — a house can put its rotation on CommuneOS (`createCommune` with chore schedules; the same `period = (now−start)/frequency` math), and every mark-done also writes `markChoreComplete` for an immutable completion record. Deploy via CI with `script=DeployCommuneOS`.
+- **On-chain chore log (gated, not shipped in UI):** the vendored [commune-os](https://github.com/communetxyz/commune-os-sc) suite (share-house.fun's contracts) can put a rotation on CommuneOS (`createCommune`; same `period = (now−start)/frequency` math) with mark-done writing `markChoreComplete`. This only earns its place under **collateral mode** — members stake xDai, completions release it / misses slash it — because a log of self-reported checkmarks with nothing at stake adds gas and friction without adding trust. Collateral mode isn't built yet (`createCommune` is called with `collateralRequired:false`), so the sync isn't offered in the chores UI; the rails + deployed contract stay dormant behind a `COLLATERAL_MODE` flag. Deploy the contract via CI with `script=DeployCommuneOS`.
 - Not wired on purpose: onramps (later), Safe multisig house funds (wanted simpler).
 
 ## E2E tests

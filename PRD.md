@@ -160,7 +160,7 @@ Launching a house chains straight into configuration: create → chore calculato
 - **Inter-house federation (proposed, not built):** tool libraries, bulk buying, and the wider federation rails — see the design deck at `network-proposal.html`. Insurance pools, house mergers, multi-house retreats stay deferred.
 - **The split protocol (shipped):** the Hutterite move — a house past the ~8-person social ceiling divides on purpose: pro-rata fund split, rotations pruned to each side, both houses stay neighbors in the network.
 - **The living agreement (shipped):** versioned, member-signed, amended through the same 2/3 vote machinery, optionally notarized on Gnosis (keccak256 in a 0-value self-send).
-- **Bounties + labor credits (shipped):** one-off jobs with budgets (CommuneOS TaskManager model, optional on-chain dual-write); completion pays hours into a labor ledger — hours count like money.
+- **Bounties + labor credits (shipped):** one-off jobs with budgets (CommuneOS TaskManager model); completion pays hours into a labor ledger — hours count like money. The on-chain dual-write rides the CommuneOS chore log, which is gated behind (unbuilt) collateral mode, so it's dormant in the shipped UI.
 - **Post-event mutual match (shipped):** after a gathering, attendees privately mark who they'd live with; a name surfaces only when it's mutual.
 
 ---
@@ -180,7 +180,7 @@ Launching a house chains straight into configuration: create → chore calculato
 
 ## 5. Demo-mode prototype (this repo)
 
-Static, no build step. **Productized, local-first:** a marketing landing funnels into real account creation (name, photo, avatar, optional WebAuthn **passkey** — Touch ID guards the account, no server involved). App pages are auth-gated like any product. A new user starts houseless: quiz → browse the seeded NYC world (7 houses, 15 seekers, events) → **actually join a house** (you enter its roster, chore/bill rotations, contribution sheet, and meal plan) or found one (fresh, empty systems). All state in `localStorage` (`dp-commons-v9`), portable via one-file JSON backup/restore; installable as a PWA; device reset lives in the account's danger zone. A 60-test Playwright suite (incl. an anvil-backed on-chain rig) drives the entire journey.
+Static, no build step. **Productized, local-first:** a marketing landing funnels into real account creation (name, photo, avatar, optional WebAuthn **passkey** — Touch ID guards the account, no server involved). App pages are auth-gated like any product. A new user starts houseless in an **empty world** (no fake people/houses/events — real users populate it; houses are shared across devices via the backend): quiz → browse (a first-user launch state until real houses form) → found a house (fresh systems) or join one via an invite link. A seeded NYC demo world remains as an opt-in fixture (`Commons.__seedDemo()`) for the test suite and sales previews, never auto-loaded for real users. All state in `localStorage` (`dp-commons-v9`), portable via one-file JSON backup/restore; installable as a PWA. A 62-test Playwright suite (incl. clean-launch checks + an anvil-backed on-chain rig) plus a 15-test cloud suite drive the journey.
 
 | Page | Flow covered |
 |---|---|

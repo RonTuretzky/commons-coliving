@@ -481,20 +481,69 @@
     ];
   }
 
+  // A blank identity — the real one comes from account creation + the quiz.
+  function blankMe() {
+    return {
+      id: "me", name: "You", age: null, borough: "Bed-Stuy", budget: 1500,
+      quizDone: false,
+      dims: { hearth: 50, order: 50, voice: 50, mission: 50, porch: 50, pool: 50 },
+      values: [],
+      hard: [], flags: [],
+      blurb: "New here — the quiz fills this in.",
+      seeking: "room", events: [],
+    };
+  }
+
+  // The shipped world is EMPTY — no fictional people, houses, or gatherings, no
+  // pre-filled ledger. Real users populate it (and share houses via the backend).
   function seedState() {
     return {
       version: 9,
       seededAt: now,
       account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
-      me: {
-        id: "me", name: "You", age: null, borough: "Bed-Stuy", budget: 1500,
-        quizDone: false,
-        dims: { hearth: 50, order: 50, voice: 50, mission: 50, porch: 50, pool: 50 },
-        values: [],
-        hard: [], flags: [],
-        blurb: "New here — the quiz fills this in.",
-        seeking: "room", events: [],
-      },
+      me: blankMe(),
+      people: [],
+      houses: [],
+      events: [],
+      myHouseId: null,
+      rsvps: [],
+      escrowPaid: {},
+      connects: [],
+      treasury: { balance: 0, currency: "USD" },
+      contributions: [],
+      bills: [],
+      billsPaid: {},
+      proposals: [],
+      chores: [],
+      choreDone: {},
+      choreOverrides: {},
+      choreChain: null,
+      chorePrefs: {},
+      bandwidth: {},
+      mealAppetite: {},
+      mealPlan: null,
+      expenses: [],
+      settlements: [],
+      stewardChat: [],
+      tasks: [],
+      labor: [],
+      laborRate: 15,
+      agreementDoc: null,
+      checkinLog: [],
+      clicks: {},
+      maintenance: [],
+    };
+  }
+
+  // The demo world — a seeded NYC of houses, seekers, and a running house — kept
+  // as an OPT-IN fixture (the test suite + `Commons.__seedDemo()`), never shipped
+  // into a real user's app.
+  function demoState() {
+    return {
+      version: 9,
+      seededAt: now,
+      account: null,          // {name, email?, borough, budget, hue, bio?, createdAt} — local-first, this device only
+      me: blankMe(),
       people: seedPeople(),
       houses: seedHouses(),
       events: seedEvents(),
@@ -863,8 +912,13 @@
         if (s8 && s8.version === 8) { state = upcastV8(s8); save(); return; }
       }
     } catch (e) { /* fall through to reseed */ }
-    state = seedState();
-    seedChoreHistory(state);
+    // opt-in demo fixture: only when a test/preview explicitly asks for it before load
+    if (typeof window !== "undefined" && window.__COLIVE_SEED_DEMO) {
+      state = demoState();
+      seedChoreHistory(state);
+    } else {
+      state = seedState(); // the real, empty world
+    }
     save();
   }
   // (rollRecurring runs after load, below)
@@ -959,6 +1013,8 @@
   window.Commons = {
     get state() { return state; },
     save, reset,
+    // opt-in demo world (tests / sales previews) — never auto-runs for real users
+    __seedDemo() { state = demoState(); seedChoreHistory(state); rollRecurring(); save(); return state; },
     DIMS, DEALBREAKERS, QUIZ, ARCHETYPES, DAY,
     ECON_TEMPLATES, SPACES, CHORE_PRESETS, MEAL_PRESETS, STAPLES,
 
