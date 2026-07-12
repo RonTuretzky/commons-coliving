@@ -249,6 +249,28 @@ await test('directory: a published house is browsable by a not-signed-in visitor
   await V.ctx.close();
 }, null);
 
+await test('gatherings: a hosted gathering is shared, RSVPable, and cancelable', async () => {
+  // Ada hosts via the API; a fresh visitor sees it; Bo RSVPs; Ada cancels
+  const g = await ev(A.page, async () => (await (await fetch('/api/gatherings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ title: 'Fireside Mixer', type: 'mixer', when: new Date(Date.now() + 6 * 864e5).toISOString(), where: 'The Loft' }) })).json()).gathering);
+  assert(g && g.id, 'gathering not created');
+  const V = await device();
+  await V.page.goto(BASE + '/gatherings.html'); await V.page.waitForTimeout(2000);
+  assert((await ev(V.page, () => document.getElementById('upcoming-grid').innerText.includes('Fireside Mixer'))), 'visitor cannot see the gathering');
+  await V.ctx.close();
+  // Bo RSVPs → attendee count reflects it for everyone
+  await ev(Bo.page, (id) => fetch('/api/gatherings/rsvp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id, going: true }) }), g.id);
+  await Bo.page.waitForTimeout(400);
+  const after = await ev(A.page, async () => (await (await fetch('/api/gatherings')).json()).gatherings.find((x) => x.title === 'Fireside Mixer').attendeeCount);
+  assert(after === 2, 'RSVP not shared (attendee count wrong): ' + after);
+  // non-host cannot cancel; host can
+  const forbidden = await ev(Bo.page, (id) => fetch('/api/gatherings/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id }) }).then((r) => r.status), g.id);
+  assert(forbidden === 403, 'non-host was allowed to cancel: ' + forbidden);
+  await ev(A.page, (id) => fetch('/api/gatherings/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id }) }), g.id);
+  await A.page.waitForTimeout(300);
+  const gone = await ev(A.page, async () => (await (await fetch('/api/gatherings')).json()).gatherings.some((x) => x.title === 'Fireside Mixer'));
+  assert(!gone, 'cancel did not remove the gathering');
+}, A.errs);
+
 await test('authz: anonymous writes are rejected', async () => {
   const codes = await ev(A.page, async () => {
     const s = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', body: JSON.stringify({ changes: { x: 1 } }) });

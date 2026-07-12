@@ -254,6 +254,20 @@
       return await this.api("/api/house/invite", { method: "POST", body: "{}" });
     },
 
+    /* ----- gatherings (a shared, community-wide calendar) ----- */
+    async listGatherings() {
+      try { return (await this.api("/api/gatherings")).gatherings || []; } catch (e) { return []; }
+    },
+    async publishGathering(body) {
+      return (await this.api("/api/gatherings", { method: "POST", body: JSON.stringify(body) })).gathering;
+    },
+    async rsvpGathering(id, going) {
+      return (await this.api("/api/gatherings/rsvp", { method: "POST", body: JSON.stringify({ id, going: !!going }) })).gathering;
+    },
+    async cancelGathering(id) {
+      return await this.api("/api/gatherings/cancel", { method: "POST", body: JSON.stringify({ id }) });
+    },
+
     async join(code) {
       if (!this.user) throw new Error("cloud account first");
       const r = await this.api("/api/join", { method: "POST", body: JSON.stringify({ code }) });

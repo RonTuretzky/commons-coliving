@@ -249,6 +249,36 @@ function publicHouseSummary(id, doc, discById) {
   };
 }
 
+// a shared gathering as seen publicly — meta + attendee count + the profile
+// cards of attendees who are discoverable (never a non-discoverable person)
+function publicGathering(g, discById) {
+  const d = g.doc || {};
+  const attendees = Array.isArray(d.attendees) ? d.attendees : [];
+  const attendeePeople = attendees.map((id) => discById.get(id)).filter(Boolean).map((u) => personFor(u));
+  const host = discById.get(g.hostId);
+  return {
+    id: d.id, title: d.title, type: d.type, when: d.when, where: d.where,
+    price: d.price || 0, capacity: d.capacity || 0, desc: d.desc || "",
+    recurringMonthly: !!d.recurringMonthly, escrow: d.escrow || null,
+    hostId: g.hostId, hostName: host ? host.name : null, hostHouse: d.hostHouse || null,
+    attendeeCount: attendees.length, attendeePeople,
+  };
+}
+const cleanGatheringDoc = (body, hostId) => ({
+  id: "g-" + crypto.randomBytes(5).toString("hex"),
+  title: String(body.title || "").slice(0, 80),
+  type: ["mixer", "dinner", "retreat", "workday"].includes(body.type) ? body.type : "mixer",
+  when: body.when ? new Date(body.when).toISOString() : null,
+  where: String(body.where || "").slice(0, 120),
+  price: Math.max(0, Math.round(Number(body.price) || 0)),
+  capacity: Math.max(0, Math.round(Number(body.capacity) || 0)),
+  desc: String(body.desc || "").slice(0, 400),
+  recurringMonthly: !!body.recurringMonthly,
+  hostHouse: typeof body.hostHouse === "string" ? body.hostHouse : null,
+  escrow: body.price > 0 ? { state: "held", total: 0, note: "deposits held until it happens" } : null,
+  attendees: [hostId],
+});
+
 /* ---------------- routes ---------------- */
 
 const routes = {
@@ -263,6 +293,61 @@ const routes = {
     const houses = all.map((x) => publicHouseSummary(x.id, x.doc, discById)).filter((h) => h && h.listed);
     const people = discoverable.map((u) => personFor(u));
     send(res, 200, { houses, people });
+  },
+
+  // public: the community calendar of gatherings (mixers, dinners, retreats)
+  "GET /api/gatherings": async (req, res) => {
+    const list = await db.listGatherings();
+    const discoverable = await db.listDiscoverable();
+    const discById = new Map(discoverable.map((u) => [u.id, u]));
+    const cutoff = Date.now() - 45 * 864e5; // keep recent past for the archive
+    const gatherings = list.map((g) => publicGathering(g, discById))
+      .filter((g) => g.when && new Date(g.when).getTime() > cutoff)
+      .sort((a, b) => new Date(a.when) - new Date(b.when));
+    send(res, 200, { gatherings });
+  },
+
+  // host a gathering (shared with everyone)
+  "POST /api/gatherings": async (req, res) => {
+    const user = await currentUser(req);
+    if (!user) return send(res, 401, { error: "not signed in" });
+    if (rateLimited(req, 120)) return send(res, 429, { error: "slow down" });
+    const body = await readBody(req);
+    if (!body.title || !body.when) return send(res, 400, { error: "title and date required" });
+    const doc = cleanGatheringDoc(body, user.id);
+    const r = await db.createGathering(doc, user.id);
+    send(res, 200, { gathering: publicGathering({ doc: r.doc, hostId: user.id }, new Map([[user.id, user]])) });
+  },
+
+  // RSVP / un-RSVP — the attendee list is shared, merged atomically
+  "POST /api/gatherings/rsvp": async (req, res) => {
+    const user = await currentUser(req);
+    if (!user) return send(res, 401, { error: "not signed in" });
+    const body = await readBody(req);
+    const g = await db.getGathering(String(body.id || ""));
+    if (!g) return send(res, 404, { error: "gathering not found" });
+    await db.mutateGathering(g.id, (doc) => {
+      doc.attendees = Array.isArray(doc.attendees) ? doc.attendees : [];
+      const has = doc.attendees.includes(user.id);
+      if (body.going && !has) doc.attendees.push(user.id);
+      if (!body.going) doc.attendees = doc.attendees.filter((a) => a !== user.id);
+      return doc;
+    });
+    const fresh = await db.getGathering(g.id);
+    const discoverable = await db.listDiscoverable();
+    send(res, 200, { gathering: publicGathering(fresh, new Map(discoverable.map((u) => [u.id, u]))) });
+  },
+
+  // the host cancels their gathering (removes it for everyone)
+  "POST /api/gatherings/cancel": async (req, res) => {
+    const user = await currentUser(req);
+    if (!user) return send(res, 401, { error: "not signed in" });
+    const body = await readBody(req);
+    const g = await db.getGathering(String(body.id || ""));
+    if (!g) return send(res, 200, { ok: true });
+    if (g.hostId !== user.id) return send(res, 403, { error: "only the host can cancel this" });
+    await db.deleteGathering(g.id);
+    send(res, 200, { ok: true });
   },
 
   "POST /api/auth/register": async (req, res) => {

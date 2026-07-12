@@ -141,6 +141,37 @@
     const U = Commons.util;
     const esc = U.esc;
 
+    /* ---------- the shared community calendar (from the server) ---------- */
+    let COMM = [];
+    const COMM_PEOPLE = {};
+    async function loadComm() {
+      if (!window.CloudSync || CloudSync.available !== true) { COMM = []; return; }
+      COMM = await CloudSync.listGatherings();
+      Object.keys(COMM_PEOPLE).forEach((k) => delete COMM_PEOPLE[k]);
+      COMM.forEach((g) => (g.attendeePeople || []).forEach((p) => { if (p && p.id) COMM_PEOPLE[p.id] = p; }));
+    }
+    const myUid = () => (window.CloudSync && CloudSync.user) ? CloudSync.user.id : null;
+    const personById = (id) => Commons.people.get(id) || COMM_PEOPLE[id] || null;
+    function commEvents() {
+      const mine = myUid();
+      return COMM.map((g) => ({
+        id: g.id, title: g.title, type: g.type, when: g.when, where: g.where,
+        price: g.price || 0, capacity: g.capacity || 0, desc: g.desc || "", recurringMonthly: g.recurringMonthly,
+        escrow: g.escrow, attendees: (g.attendeePeople || []).map((p) => p.id), attendeeCount: g.attendeeCount,
+        host: g.hostHouse || null, hostName: g.hostName, hostId: g.hostId, hostedByMe: !!(mine && g.hostId === mine),
+        community: true,
+      }));
+    }
+    const getEvent = (id) => commEvents().find((e) => e.id === id) || Commons.events.get(id);
+    function mergedEvents() {
+      const comm = commEvents();
+      const ids = new Set(comm.map((e) => e.id));
+      const local = Commons.events.all().filter((e) => !ids.has(e.id)); // local/seeded not on the server
+      return comm.concat(local);
+    }
+    function commUpcoming() { const now = new Date(); return mergedEvents().filter((e) => e.when && new Date(e.when) > now).sort((a, b) => new Date(a.when) - new Date(b.when)); }
+    function commPast() { const now = new Date(); return mergedEvents().filter((e) => e.when && new Date(e.when) <= now).sort((a, b) => new Date(b.when) - new Date(a.when)); }
+
     const TYPE_PILL = {
       mixer:   { cls: "open",  label: "Mixer" },
       dinner:  { cls: "paper", label: "Open dinner" },
@@ -162,28 +193,20 @@
     }
 
     // How many attendees of `ev` share a past event with me.
-    function crossedPathsCount(ev) {
-      const mine = myPastEventIds();
-      return (ev.attendees || [])
-        .filter((id) => id !== "me")
-        .map((id) => Commons.people.get(id))
-        .filter((p) => p && (p.events || []).some((eid) => mine.has(eid)))
-        .length;
-    }
+    function crossedPathsCount() { return 0; }
 
     function avatarStack(ids, max) {
       const shown = ids.slice(0, max);
       const extra = ids.length - shown.length;
-      let html = shown.map((id) => Shell.avatarHtml(Commons.people.get(id), "sm")).join("");
+      let html = shown.map((id) => Shell.avatarHtml(personById(id), "sm")).join("");
       if (extra > 0) html += `<span class="avatar sm" style="background: var(--grey-soft)">+${extra}</span>`;
       return `<span class="avatar-stack">${html}</span>`;
     }
 
     function hostedBy(ev) {
-      if (!ev.host) return "";
-      const h = Commons.houses.get(ev.host);
-      if (!h) return "";
-      return `<div class="text-caption muted">Hosted by <a href="house.html?id=${encodeURIComponent(h.id)}">${esc(h.name)}</a></div>`;
+      if (ev.host) { const h = Commons.houses.get(ev.host); if (h) return `<div class="text-caption muted">Hosted by <a href="house.html?id=${encodeURIComponent(h.id)}">${esc(h.name)}</a></div>`; }
+      if (ev.hostName) return `<div class="text-caption muted">Hosted by ${esc(ev.hostName)}</div>`;
+      return "";
     }
 
     function escrowNote(ev) {
@@ -198,32 +221,19 @@
     }
 
     function actionsHtml(ev) {
+      if (!Commons.account.active()) return `<a class="park-btn light sm" href="account.html">Sign in to RSVP</a>`;
       const going = Commons.events.isRsvpd(ev.id);
-      if (ev.price > 0) {
-        const paid = Commons.events.escrowPaid(ev.id);
-        if (paid) {
-          return `
-            <div class="stack" style="--gap: 8px">
-              <div class="row wrap">
-                <span class="pill match">✓ ${esc(U.fmtMoney(paid))} held in escrow</span>
-                <button class="park-btn light sm" data-action="refund" data-id="${esc(ev.id)}">Un-RSVP (refunds instantly)</button>
-              </div>
-              <div class="text-caption muted">Released to the lodge on check-in. Refunded if the weekend doesn't happen.</div>
-            </div>`;
-        }
-        return `
-          <div class="stack" style="--gap: 8px">
-            <button class="lifted sm green" data-action="reserve" data-id="${esc(ev.id)}" data-amount="${Number(ev.price)}"><span class="shadow"></span><span class="face">Reserve · ${esc(U.fmtMoney(ev.price))} into escrow</span></button>
-            <div class="text-caption muted">Held by the platform, not the host — your deposit only moves when the weekend happens.</div>
-          </div>`;
-      }
-      return going
-        ? `<button class="park-btn light sm" data-action="unrsvp" data-id="${esc(ev.id)}">You're going ✓ · Un-RSVP</button>`
-        : `<button class="lifted sm" data-action="rsvp" data-id="${esc(ev.id)}"><span class="shadow"></span><span class="face">RSVP</span></button>`;
+      const note = ev.price > 0 ? `<div class="text-caption muted">${esc(U.fmtMoney(ev.price))} deposit — settle it with the host.</div>` : "";
+      return `<div class="stack" style="--gap: 8px">
+        ${going
+          ? `<button class="park-btn light sm" data-action="unrsvp" data-id="${esc(ev.id)}">You're going ✓ · Un-RSVP</button>`
+          : `<button class="lifted sm" data-action="rsvp" data-id="${esc(ev.id)}"><span class="shadow"></span><span class="face">RSVP</span></button>`}
+        ${note}
+      </div>`;
     }
 
     function upcomingCard(ev) {
-      const count = (ev.attendees || []).length;
+      const count = ev.attendeeCount != null ? ev.attendeeCount : (ev.attendees || []).length;
       const pct = U.clamp(Math.round((count / (ev.capacity || 1)) * 100), 0, 100);
       const crossed = crossedPathsCount(ev);
       return `
@@ -250,7 +260,7 @@
     }
 
     function pastCard(ev) {
-      const count = (ev.attendees || []).length;
+      const count = ev.attendeeCount != null ? ev.attendeeCount : (ev.attendees || []).length;
       return `
         <article class="card flat past-card">
           <div class="row between wrap">
@@ -293,22 +303,20 @@
     }
 
     function render() {
-      const upcoming = Commons.events.upcoming();
-      const past = Commons.events.past();
-      const overlap = Commons.events.overlap(Commons.me()).slice(0, 6);
+      const upcoming = commUpcoming();
+      const past = commPast();
 
       document.getElementById("upcoming-grid").innerHTML = upcoming.length
         ? upcoming.map(upcomingCard).join("")
-        : `<div class="empty" style="grid-column: 1 / -1">Nothing on the calendar yet — check back after the Switchboard's next planning night.</div>`;
+        : `<div class="empty" style="grid-column: 1 / -1">No gatherings on the calendar yet — host the first one and it shows up here for everyone.</div>`;
 
       document.getElementById("past-grid").innerHTML = past.length
         ? past.map(pastCard).join("")
         : `<div class="empty" style="grid-column: 1 / -1">No gatherings in the archive yet. The first one is always the strangest — go make it.</div>`;
 
       renderMutuals();
-      document.getElementById("overlap-grid").innerHTML = overlap.length
-        ? overlap.map(overlapCard).join("")
-        : `<div class="empty" style="grid-column: 1 / -1">RSVP to a mixer and this space fills itself — familiar faces come from shared rooms.</div>`;
+      const ov = document.getElementById("overlap-grid");
+      if (ov) ov.innerHTML = `<div class="empty" style="grid-column: 1 / -1">Familiar faces show up here as the community meets — RSVP to a mixer to get started.</div>`;
     }
 
     // Mutual picks from past gatherings — private until reciprocal.
@@ -338,87 +346,34 @@
       const id = btn.dataset.id;
       switch (btn.dataset.action) {
         case "rsvp": {
-          Commons.events.rsvp(id);
-          Shell.toast("You're going — see you there", "green");
-          render();
+          if (!Commons.account.active()) { location.href = "account.html"; break; }
+          (async () => {
+            try { if (window.CloudSync && CloudSync.user) await CloudSync.rsvpGathering(id, true); } catch (e) {}
+            Commons.events.rsvp(id);
+            Shell.toast("You're going — see you there", "green");
+            await loadComm(); render();
+          })();
           break;
         }
         case "unrsvp": {
-          Commons.events.unrsvp(id);
-          Shell.toast("Taken off the list");
-          render();
-          break;
-        }
-        case "reserve": {
-          const amt = Number(btn.dataset.amount) || 0;
-          const evt = Commons.events.get(id);
-          if (evt && evt.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
-            const face = btn.querySelector(".face"); if (face) face.textContent = "Signing on Gnosis…";
-            btn.disabled = true;
-            Rails.escrow.deposit(id, amt).then((hash) => {
-              Commons.state.escrowTx = Commons.state.escrowTx || {};
-              Commons.state.escrowTx[id] = hash;
-              Commons.events.payEscrow(id, amt);
-              Shell.toast("Deposited on-chain — held by the contract, not by anyone", "green");
-              render();
-            }).catch(() => {
-              btn.disabled = false; if (face) face.textContent = "Reserve · " + U.fmtMoney(amt) + " into escrow";
-              Shell.toast("Transaction didn't go through — is the wallet funded?");
-            });
-            break;
-          }
-          Commons.events.payEscrow(id, amt);
-          Shell.toast("Held in escrow — not paid to anyone yet", "green");
-          render();
-          break;
-        }
-        case "refund": {
-          const amt = Commons.events.escrowPaid(id);
-          const evc = Commons.events.get(id);
-          const localRefund = () => {
+          (async () => {
+            try { if (window.CloudSync && CloudSync.user) await CloudSync.rsvpGathering(id, false); } catch (e) {}
             Commons.events.unrsvp(id);
-            const ev = Commons.events.get(id);
-            if (amt && ev && ev.escrow) ev.escrow.total = Math.max(0, ev.escrow.total - amt);
-            if (amt) { delete Commons.state.escrowPaid[id]; Commons.save(); }
-            render();
-          };
-          if (evc && evc.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
-            btn.disabled = true; btn.textContent = "Withdrawing on Gnosis…";
-            Rails.escrow.withdraw(id).then(() => {
-              localRefund();
-              Shell.toast(`Withdrawn on-chain — ${U.fmtMoney(amt)} back in your wallet`, "green");
-            }).catch(() => {
-              btn.disabled = false; btn.textContent = "Un-RSVP (refunds instantly)";
-              Shell.toast("Withdraw didn't go through — try again");
-            });
-            break;
-          }
-          localRefund();
-          Shell.toast(`Refunded instantly — ${U.fmtMoney(amt)} back in your pocket`, "green");
+            Shell.toast("Taken off the list");
+            await loadComm(); render();
+          })();
           break;
         }
         case "cancel-gathering": {
-          const ev = Commons.events.get(id);
+          const ev = getEvent(id);
           if (btn.dataset.armed) {
-            if (ev && ev.chain && window.Rails && Rails.enabled && Rails.escrow.available()) {
-              btn.disabled = true; btn.textContent = "Cancelling on Gnosis…";
-              const mine = Number(Commons.events.escrowPaid(id)) > 0;
-              Rails.escrow.cancel(id)
-                .then(() => (mine ? Rails.escrow.withdraw(id) : null))
-                .then(() => {
-                  Commons.events.cancel(id);
-                  Shell.toast("Cancelled on-chain — every deposit is refundable at the contract", "green");
-                  render(); renderMine();
-                })
-                .catch(() => {
-                  btn.disabled = false; btn.textContent = "Cancel it";
-                  Shell.toast("Chain cancel failed — try again");
-                });
-              break;
-            }
-            Commons.events.cancel(id);
-            Shell.toast("Cancelled — deposits refunded on the spot", "green");
-            render(); renderMine();
+            (async () => {
+              try { await CloudSync.cancelGathering(id); }
+              catch (e) { Shell.toast("Couldn't cancel — try again"); return; }
+              Commons.events.unrsvp(id);
+              Shell.toast("Cancelled — it's off the calendar", "green");
+              await loadComm(); render(); renderMine();
+            })();
           } else {
             btn.dataset.armed = "1";
             btn.textContent = "Really cancel " + (ev ? ev.title : "it") + "?";
@@ -432,18 +387,17 @@
     /* ---------- hosting: your gatherings + the form ---------- */
     function renderMine() {
       const wrap = document.getElementById("my-gatherings");
-      const mine = Commons.events.all().filter((e) => e.hostedByMe);
+      const mine = commEvents().filter((e) => e.hostedByMe);
       if (!mine.length) { wrap.innerHTML = ""; return; }
       wrap.innerHTML = `<div class="card stack">
         <div class="kicker">Your gatherings</div>
         ${mine.map((e) => `
           <div class="row between wrap" style="border-top:1px solid var(--paper-1);padding-block:10px">
             <span class="small"><strong>${esc(e.title)}</strong> · ${esc(U.fmtDateLong(e.when))} · ${esc(e.where)}
-              <span class="muted">— ${(e.attendees || []).length} going of ${e.capacity}${e.price ? " · " + U.fmtMoney(e.price) + " deposit" : ""}</span>
-              ${e.escrow ? `<span class="muted">· ${U.fmtMoney(e.escrow.total)} held</span>` : ""}</span>
+              <span class="muted">— ${e.attendeeCount} going of ${e.capacity}${e.price ? " · " + U.fmtMoney(e.price) + " deposit" : ""}</span></span>
             <button class="park-btn light sm" data-action="cancel-gathering" data-id="${esc(e.id)}">Cancel it</button>
           </div>`).join("")}
-        <p class="text-caption muted">Cancelling refunds every deposit instantly — that's the deal that makes strangers trust the calendar.</p>
+        <p class="text-caption muted">Cancelling takes it off everyone's calendar.</p>
       </div>`;
     }
 
@@ -468,39 +422,34 @@
       document.getElementById("g-cap").addEventListener("input", (e) => {
         document.getElementById("g-cap-val").textContent = e.target.value;
       });
-      document.getElementById("g-submit").addEventListener("click", () => {
+      document.getElementById("g-submit").addEventListener("click", async () => {
+        if (!window.CloudSync || !CloudSync.user) { Shell.toast("Sign in to host a gathering"); setTimeout(() => { location.href = "account.html"; }, 700); return; }
         const title = document.getElementById("g-title").value.trim();
         const when = document.getElementById("g-when").value;
         const where = document.getElementById("g-where").value.trim();
         if (!title) { Shell.toast("Give it a name people will say out loud"); return; }
         if (!when || new Date(when + "T12:00:00") < new Date()) { Shell.toast("Pick a date that hasn't happened yet"); return; }
         if (!where) { Shell.toast("People need somewhere to show up"); return; }
-        const price = Number(document.getElementById("g-price").value) || 0;
-        const ev = Commons.events.add({
-          title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
-          capacity: Number(document.getElementById("g-cap").value) || 20,
-          price,
-          recurringMonthly: document.getElementById("g-recurring").checked || undefined,
-          desc: document.getElementById("g-desc").value.trim() || "Come through — details in the group chat.",
-        });
-        form.classList.add("hidden");
-        document.getElementById("g-title").value = ""; document.getElementById("g-desc").value = "";
-        document.getElementById("g-recurring").checked = false;
-        render(); renderMine();
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        if (price > 0 && window.Rails && Rails.enabled && Rails.escrow.available()) {
-          Shell.toast("On the calendar — opening escrow on " + Rails.net().label + "…", "green");
-          Rails.escrow.create(ev.id, new Date(ev.when).getTime(), price).then((hash) => {
-            const e2 = Commons.events.get(ev.id);
-            if (e2) { e2.chain = true; e2.escrowTx = hash; Commons.save(); }
-            Shell.toast("Escrow live on-chain — deposits are held by code now", "green");
-            render(); renderMine();
-          }).catch(() => {
-            Shell.toast("Chain unreachable or wallet unfunded — deposits run off-chain for now");
+        const btn = document.getElementById("g-submit"); btn.disabled = true;
+        try {
+          const g = await CloudSync.publishGathering({
+            title, type: gtype, when: new Date(when + "T18:00:00").toISOString(), where,
+            capacity: Number(document.getElementById("g-cap").value) || 20,
+            price: Number(document.getElementById("g-price").value) || 0,
+            recurringMonthly: document.getElementById("g-recurring").checked || undefined,
+            hostHouse: (Commons.houses.mine() && Commons.houses.mine().id) || null,
+            desc: document.getElementById("g-desc").value.trim() || "Come through — details in the group chat.",
           });
-        } else {
-          Shell.toast("It's on the calendar — see you there", "green");
-        }
+          Commons.events.rsvp(g.id); // you're hosting → you're going
+          form.classList.add("hidden");
+          document.getElementById("g-title").value = ""; document.getElementById("g-desc").value = "";
+          document.getElementById("g-recurring").checked = false;
+          await loadComm(); render(); renderMine();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          Shell.toast("It's on the community calendar — see you there", "green");
+        } catch (e) {
+          Shell.toast("Couldn't post it: " + (e.message || "try again"));
+        } finally { btn.disabled = false; }
       });
     })();
 
@@ -508,19 +457,12 @@
     function railsStatus() {
       const el = document.getElementById("rails-status");
       if (!el) return;
-      if (!window.Rails || !Rails.enabled) { el.textContent = "Deposits run off-chain in this browser."; return; }
-      if (Rails.escrow.available()) {
-        el.textContent = "Deposits are held by the GatheringEscrow contract on " + Rails.net().label + " — code, not custody.";
-      } else if (Rails.hasWallet()) {
-        el.textContent = "Wallet ready on " + Rails.net().label + " — escrow contract not deployed on this network yet, so deposits run off-chain.";
-      } else {
-        el.innerHTML = 'Create a wallet in <a href="account.html" style="color:var(--green-0)">your account</a> to put deposits on ' + Rails.net().label + ".";
-      }
+      el.textContent = "Every gathering you post shows up on the shared calendar for everyone on colive.fun.";
     }
-    railsStatus();
-
-    render();
-    renderMine();
+    async function boot() { await loadComm(); render(); renderMine(); }
+    window.addEventListener("cloud:ready", boot);
+    window.addEventListener("cloud:change", boot);
+    boot();
   </script>
 </body>
 </html>

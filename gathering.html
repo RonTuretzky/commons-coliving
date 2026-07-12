@@ -50,9 +50,31 @@
       return `<span class="pill ${t.cls}">${esc(t.label)}</span>`;
     }
 
+    let COMM_EV = null;
+    const COMM_PEOPLE = {};
+    async function loadEvent() {
+      const id = U.qp("id");
+      if (!id || Commons.events.get(id)) return;
+      if (!window.CloudSync || CloudSync.available !== true) return;
+      try {
+        const list = await CloudSync.listGatherings();
+        const g = list.find((x) => x.id === id);
+        if (!g) return;
+        (g.attendeePeople || []).forEach((p) => { if (p && p.id) COMM_PEOPLE[p.id] = p; });
+        const mine = (window.CloudSync.user || {}).id;
+        COMM_EV = {
+          id: g.id, title: g.title, type: g.type, when: g.when, where: g.where, price: g.price || 0,
+          capacity: g.capacity || 0, desc: g.desc || "", recurringMonthly: g.recurringMonthly, escrow: g.escrow,
+          attendees: (g.attendeePeople || []).map((p) => p.id), attendeeCount: g.attendeeCount,
+          hostId: g.hostId, hostName: g.hostName, hostedByMe: !!(mine && g.hostId === mine), community: true,
+        };
+      } catch (e) { /* offline */ }
+    }
+    const personById = (id) => Commons.people.get(id) || COMM_PEOPLE[id] || null;
     function currentEvent() {
       const id = U.qp("id");
-      return id ? Commons.events.get(id) : null;
+      if (!id) return null;
+      return Commons.events.get(id) || COMM_EV;
     }
     function isPast(ev) {
       return !!ev.past || new Date(ev.when) <= new Date();
@@ -305,15 +327,22 @@
       if (!ev) return;
       switch (btn.dataset.action) {
         case "rsvp": {
-          Commons.events.rsvp(ev.id);
-          Shell.toast("You're going — see you there", "green");
-          render();
+          if (!Commons.account.active()) { location.href = "account.html"; break; }
+          (async () => {
+            try { if (window.CloudSync && CloudSync.user) await CloudSync.rsvpGathering(ev.id, true); } catch (e) {}
+            Commons.events.rsvp(ev.id);
+            Shell.toast("You're going — see you there", "green");
+            await loadEvent(); render();
+          })();
           break;
         }
         case "unrsvp": {
-          Commons.events.unrsvp(ev.id);
-          Shell.toast("Taken off the list");
-          render();
+          (async () => {
+            try { if (window.CloudSync && CloudSync.user) await CloudSync.rsvpGathering(ev.id, false); } catch (e) {}
+            Commons.events.unrsvp(ev.id);
+            Shell.toast("Taken off the list");
+            await loadEvent(); render();
+          })();
           break;
         }
         case "reserve": {
@@ -358,10 +387,10 @@
       }
     });
 
-    // when the rails manifest lands, the deposit note may change
+    async function boot() { await loadEvent(); render(); }
+    window.addEventListener("cloud:ready", boot);
     window.addEventListener("rails:addresses", render);
-
-    render();
+    boot();
   </script>
 </body>
 </html>

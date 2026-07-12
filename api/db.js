@@ -21,6 +21,7 @@ function memoryDriver() {
   const houses = new Map();       // id -> {doc, version}
   const members = new Map();      // houseId -> Set(userId)
   const invites = new Map();      // code -> {houseId, createdBy, expiresAt}
+  const gatherings = new Map();   // id -> {doc, hostId}
 
   return {
     kind: "memory",
@@ -120,6 +121,12 @@ function memoryDriver() {
       if (new Date(i.expiresAt) < new Date()) { invites.delete(code); return null; }
       return i;
     },
+
+    async createGathering(doc, hostId) { gatherings.set(doc.id, { doc, hostId }); return { id: doc.id, doc }; },
+    async getGathering(id) { const g = gatherings.get(id); return g ? { id, doc: g.doc, hostId: g.hostId } : null; },
+    async listGatherings() { return [...gatherings.entries()].map(([id, g]) => ({ id, doc: g.doc, hostId: g.hostId })); },
+    async mutateGathering(id, fn) { const g = gatherings.get(id); if (!g) return null; g.doc = fn(JSON.parse(JSON.stringify(g.doc))); return { doc: g.doc }; },
+    async deleteGathering(id) { gatherings.delete(id); },
   };
 }
 
@@ -207,6 +214,13 @@ function pgDriver(databaseUrl) {
       house_id TEXT NOT NULL REFERENCES houses(id),
       created_by TEXT NOT NULL REFERENCES users(id),
       expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS gatherings (
+      id TEXT PRIMARY KEY,
+      doc JSONB NOT NULL,
+      host_id TEXT REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `;
 
@@ -376,6 +390,33 @@ function pgDriver(databaseUrl) {
       const r = row(await pool.query(`SELECT * FROM invites WHERE code=$1 AND expires_at > now()`, [code]));
       return r && { houseId: r.house_id, createdBy: r.created_by, expiresAt: r.expires_at };
     },
+
+    async createGathering(doc, hostId) {
+      await pool.query(`INSERT INTO gatherings (id, doc, host_id) VALUES ($1,$2::jsonb,$3)`, [doc.id, JSON.stringify(doc), hostId]);
+      return { id: doc.id, doc };
+    },
+    async getGathering(id) {
+      const r = row(await pool.query(`SELECT id, doc, host_id FROM gatherings WHERE id=$1`, [id]));
+      return r && { id: r.id, doc: r.doc, hostId: r.host_id };
+    },
+    async listGatherings() {
+      const r = await pool.query(`SELECT id, doc, host_id FROM gatherings ORDER BY created_at DESC LIMIT 500`);
+      return r.rows.map((x) => ({ id: x.id, doc: x.doc, hostId: x.host_id }));
+    },
+    async mutateGathering(id, fn) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const cur = row(await client.query(`SELECT doc FROM gatherings WHERE id=$1 FOR UPDATE`, [id]));
+        if (!cur) { await client.query("ROLLBACK"); return null; }
+        const next = fn(cur.doc);
+        const r = row(await client.query(`UPDATE gatherings SET doc=$2::jsonb, updated_at=now() WHERE id=$1 RETURNING doc`, [id, JSON.stringify(next)]));
+        await client.query("COMMIT");
+        return { doc: r.doc };
+      } catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; }
+      finally { client.release(); }
+    },
+    async deleteGathering(id) { await pool.query(`DELETE FROM gatherings WHERE id=$1`, [id]); },
   };
 }
 

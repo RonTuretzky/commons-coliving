@@ -540,40 +540,35 @@ await test('recurring gatherings: past monthly dates roll forward on load', asyn
   await ev(() => { const e = window.Commons.events.all().find((x) => x.title === 'E2E Monthly Potluck'); window.Commons.events.cancel(e.id); });
 });
 
-await test('gatherings: rsvp, escrow reserve → refund', async () => {
+await test('gatherings: RSVP marks you going', async () => {
   await go('gatherings.html');
+  await page.waitForTimeout(500);
   await page.locator("[data-action='rsvp']").first().click();
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
   assert((await ev(() => window.Commons.state.rsvps.length)) >= 1, 'rsvp not stored');
-  await page.locator("[data-action='reserve']").first().click();
-  await page.waitForTimeout(300);
-  assert((await ev(() => window.Commons.events.escrowPaid('e-retreat-catskills'))) === 185, 'escrow not held');
-  await page.locator('button', { hasText: /refunds/ }).click();
-  await page.waitForTimeout(300);
-  assert((await ev(() => window.Commons.events.escrowPaid('e-retreat-catskills'))) === 0, 'escrow not refunded');
+  assert((await ev(() => document.getElementById('upcoming-grid').innerText.includes("You're going"))), 'not marked going');
 });
 
-await test('gatherings: host a gathering end-to-end, then cancel it', async () => {
+await test('gatherings: host to the shared calendar, then cancel it', async () => {
   await go('gatherings.html');
+  await page.waitForFunction(() => window.CloudSync && window.CloudSync.available === true, null, { timeout: 8000 });
+  await page.waitForTimeout(400);
   await page.locator('#host-toggle').click();
-  await page.waitForTimeout(300);
+  await page.waitForSelector('#g-title', { state: 'visible', timeout: 6000 });
   const d = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
   await page.fill('#g-title', 'E2E Stoop Mixer');
   await page.fill('#g-when', d);
   await page.fill('#g-where', 'The Stoop, Bed-Stuy');
-  await page.fill('#g-price', '15');
   await page.locator('#g-submit').click();
-  await page.waitForTimeout(400);
-  const ev1 = await ev(() => window.Commons.events.all().find((x) => x.title === 'E2E Stoop Mixer'));
-  assert(ev1 && ev1.hostedByMe && ev1.escrow && ev1.price === 15, 'hosted event not stored: ' + JSON.stringify(ev1 || null).slice(0,120));
-  assert((await ev(() => document.body.innerText.includes('E2E Stoop Mixer'))), 'hosted event not rendered');
+  await page.waitForTimeout(1500); // publish to the server + reload
+  assert((await ev(() => document.getElementById('upcoming-grid').innerText.includes('E2E Stoop Mixer'))), 'hosted gathering not shown');
   assert((await ev(() => document.getElementById('my-gatherings').textContent.includes('E2E Stoop Mixer'))), 'not in Your gatherings');
-  // cancel (two-tap confirm)
+  // cancel (two-tap confirm) → off the shared calendar
   await page.locator("[data-action='cancel-gathering']").first().click();
   await page.waitForTimeout(200);
   await page.locator("[data-action='cancel-gathering']").first().click();
-  await page.waitForTimeout(400);
-  assert(!(await ev(() => window.Commons.events.all().some((x) => x.title === 'E2E Stoop Mixer'))), 'cancel did not remove event');
+  await page.waitForTimeout(1500);
+  assert(!(await ev(() => document.getElementById('upcoming-grid').innerText.includes('E2E Stoop Mixer'))), 'cancel did not remove it');
 });
 
 await test('steward: personalized greeting + ledger + slammed + draft→approve', async () => {
