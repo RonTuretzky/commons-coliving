@@ -83,6 +83,7 @@ function memoryDriver() {
       const h = houses.get(id);
       return h ? { id, doc: h.doc, version: h.version } : null;
     },
+    async allHouses() { return [...houses.entries()].map(([id, h]) => ({ id, doc: h.doc })); },
     // atomic read-modify-write (single-threaded JS: fn must be synchronous)
     async mutateHouse(id, fn) {
       const h = houses.get(id);
@@ -300,6 +301,10 @@ function pgDriver(databaseUrl) {
     async getHouse(id) {
       const r = row(await pool.query(`SELECT doc, version FROM houses WHERE id=$1`, [id]));
       return r && { id, doc: r.doc, version: r.version };
+    },
+    async allHouses() {
+      const r = await pool.query(`SELECT id, doc FROM houses ORDER BY updated_at DESC LIMIT 500`);
+      return r.rows.map((x) => ({ id: x.id, doc: x.doc }));
     },
     // atomic read-modify-write under a row lock; fn may be sync or async
     async mutateHouse(id, fn) {

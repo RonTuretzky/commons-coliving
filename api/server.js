@@ -213,10 +213,32 @@ function addMemberToDoc(doc, user) {
   return doc;
 }
 
+// A public, safe summary of a shared house for the browse directory — house
+// meta + member profile cards, never the private ledger/chores/votes.
+function publicHouseSummary(id, doc) {
+  const h = doc && doc.house;
+  if (!h || !Array.isArray(h.members)) return null;
+  const listed = (h.roomsOpen || 0) > 0 || h.listed === true;
+  return {
+    id, name: h.name, borough: h.borough, hood: h.hood, rent: h.rent || 0,
+    roomsOpen: h.roomsOpen || 0, hue: h.hue, blurb: h.blurb || h.vibe || "",
+    mission: h.mission || "", founded: h.founded, poolModel: h.poolModel,
+    networked: h.networked, lenses: h.lenses, hasLocation: h.hasLocation !== false,
+    members: h.members, housePeople: doc.housePeople || [], listed,
+  };
+}
+
 /* ---------------- routes ---------------- */
 
 const routes = {
   "GET /api/health": async (req, res) => send(res, 200, { ok: true, storage: db.kind, rpId: RP_ID }),
+
+  // public: the browsable directory of houses seeking members (no auth needed)
+  "GET /api/directory": async (req, res) => {
+    const all = await db.allHouses();
+    const houses = all.map((x) => publicHouseSummary(x.id, x.doc)).filter((h) => h && h.listed);
+    send(res, 200, { houses });
+  },
 
   "POST /api/auth/register": async (req, res) => {
     if (rateLimited(req, 30)) return send(res, 429, { error: "slow down" });

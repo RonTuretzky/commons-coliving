@@ -495,11 +495,16 @@
           })(),
         };
       }
-      function launch() {
+      async function launch() {
         if (!draft.moveIn) { Shell.toast("Pick an earliest move-in date"); return; }
         launched = buildHouse();
         Commons.houses.claimOwn(launched);
         inviteLink = new URL("house.html?id=" + encodeURIComponent(launched.id), location.href).href;
+        // publish to the server so it syncs across your devices and — if you've
+        // left rooms open — shows up in the public browse directory
+        if (window.CloudSync && CloudSync.user) {
+          try { await CloudSync.houseOnline(); } catch (e) { /* stays yours locally if the server hiccups */ }
+        }
         Shell.toast("🎉 " + launched.name + " is live", "green");
         renderSuccess();
       }

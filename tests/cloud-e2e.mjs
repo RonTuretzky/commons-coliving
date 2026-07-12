@@ -226,6 +226,24 @@ await test('sharing: concurrent votes on the same proposal converge', async () =
   assert((await votes(Bo.page)) === 2, 'Bo lost a vote: ' + (await votes(Bo.page)));
 }, A.errs);
 
+await test('directory: a published house is browsable by a not-signed-in visitor', async () => {
+  // Ada's house has rooms open and is online → it must appear in the public directory
+  const dir = await ev(A.page, async () => (await fetch('/api/directory', { credentials: 'same-origin' })).json());
+  assert(dir.houses.some((h) => h.name === 'Cloud Nine'), 'house not in directory: ' + JSON.stringify(dir.houses.map((h) => h.name)));
+  // a brand-new context (never logged in) opens browse and sees it
+  const V = await device();
+  await V.page.goto(BASE + '/browse.html');
+  await V.page.waitForTimeout(2000);
+  const view = await ev(V.page, () => ({
+    loggedIn: window.Commons.account.active(),
+    onBrowse: location.pathname.includes('browse'),
+    sees: document.querySelector('main').innerText.includes('Cloud Nine'),
+  }));
+  assert(!view.loggedIn && view.onBrowse, 'visitor got bounced off browse: ' + JSON.stringify(view));
+  assert(view.sees, 'visitor cannot see the published house on browse');
+  await V.ctx.close();
+}, null);
+
 await test('authz: anonymous writes are rejected', async () => {
   const codes = await ev(A.page, async () => {
     const s = await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', body: JSON.stringify({ changes: { x: 1 } }) });

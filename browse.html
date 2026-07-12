@@ -51,11 +51,38 @@
 
   <script src="assets/js/store.js"></script>
   <script src="assets/js/shell.js"></script>
+  <script src="assets/js/sync.js" data-cloud-sync="1"></script>
   <script>
     Shell.render("browse");
 
     const U = Commons.util;
     const esc = U.esc;
+
+    /* ---------- the public directory (houses seeking members, from the server) ---------- */
+    const DIR = { houses: [], peopleById: {} };
+    async function loadDirectory() {
+      try {
+        const res = await fetch("/api/directory", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const mineId = Commons.houses.mine() && Commons.houses.mine().id;
+        DIR.houses = (data.houses || []).filter((h) => h.id !== mineId); // my own house comes from local state
+        DIR.peopleById = {};
+        (data.houses || []).forEach((h) => (h.housePeople || []).forEach((p) => { if (p && p.id) DIR.peopleById[p.id] = p; }));
+      } catch (e) { /* offline / no server — browse what's local */ }
+    }
+    // resolve a member id to a profile: my local people first, then the directory
+    function personOf(id) { return Commons.people.get(id) || DIR.peopleById[id] || null; }
+    const allHouses = () => {
+      const local = Commons.houses.all();
+      const seen = new Set(local.map((h) => h.id));
+      return local.concat(DIR.houses.filter((h) => !seen.has(h.id)));
+    };
+    const allPeople = () => {
+      const local = Commons.people.all();
+      const seen = new Set(local.map((p) => p.id));
+      return local.concat(Object.values(DIR.peopleById).filter((p) => !seen.has(p.id)));
+    };
 
     /* ---------- page-local state (never persisted) ---------- */
     let tab = "homes";
@@ -71,14 +98,18 @@
     ];
     const seekLine = (s) => (SEEK.find((x) => x.id === s) || SEEK[0]).line;
 
-    const houseBoroughs = [...new Set(Commons.houses.all().map((h) => h.borough))].sort();
-    const peopleBoroughs = [...new Set(Commons.people.all().map((p) => p.borough))].sort();
+    let houseBoroughs = [];
+    let peopleBoroughs = [];
+    function recomputeBoroughs() {
+      houseBoroughs = [...new Set(allHouses().map((h) => h.borough).filter(Boolean))].sort();
+      peopleBoroughs = [...new Set(allPeople().map((p) => p.borough).filter(Boolean))].sort();
+    }
 
     /* ---------- filtering + sorting ---------- */
     function homesFiltered() {
       const me = Commons.me();
       const f = F.homes;
-      let hs = Commons.houses.all();
+      let hs = allHouses();
       if (f.rooms) hs = hs.filter((h) => h.roomsOpen > 0);
       if (f.budget) hs = hs.filter((h) => h.rent <= me.budget * 1.05);
       if (f.mission) hs = hs.filter((h) => (h.mission || "").trim().length > 0);
@@ -95,7 +126,9 @@
       const f = F.people;
       // Your own profile lives in the gallery too — pinned first so you can see
       // yourself the way other seekers do. It still respects the active filters.
-      let ps = [me, ...Commons.people.all().filter((p) => p.id !== "me")];
+      // only pin "you" once you have an account — a not-signed-in visitor
+      // browses everyone else, not a blank self-card
+      let ps = (Commons.account.active() ? [me] : []).concat(allPeople().filter((p) => p.id !== "me"));
       if (f.seeking.size) ps = ps.filter((p) => f.seeking.has(p.seeking));
       if (f.boroughs.size) ps = ps.filter((p) => f.boroughs.has(p.borough));
       return ps
@@ -168,7 +201,7 @@
       else if (h.roomsOpen > 0) statusPill = `<span class="pill open">${h.roomsOpen} room${h.roomsOpen > 1 ? "s" : ""} open</span>`;
       else statusPill = `<span class="pill paper">Full</span>`;
 
-      const members = h.members.map((id) => Commons.people.get(id)).filter(Boolean);
+      const members = (h.members || []).map((id) => personOf(id)).filter(Boolean);
       const shown = members.slice(0, 5);
       const extra = members.length - shown.length;
       const stack = `<span class="avatar-stack">${shown.map((p) => Shell.avatarHtml(p, "sm")).join("")}${
@@ -343,7 +376,14 @@
       }
     });
 
-    render();
+    async function boot() {
+      await loadDirectory();
+      recomputeBoroughs();
+      render();
+    }
+    window.addEventListener("cloud:ready", boot);
+    window.addEventListener("sync:update", boot);
+    boot();
   </script>
 </body>
 </html>
