@@ -201,6 +201,14 @@
   <script src="assets/js/qr.min.js"></script>
   <script>
     Shell.render("create");
+    // a ?preset= link must survive the auth gate: stash it before the redirect,
+    // consume it from storage after sign-in brings the founder back here
+    (function () {
+      const preset = new URLSearchParams(location.search).get("preset");
+      if (preset && !Commons.account.active()) {
+        try { localStorage.setItem("dp-pending-preset", preset); } catch (e) {}
+      }
+    })();
     Shell.gate();
     (function () {
       const U = Commons.util;
@@ -591,8 +599,63 @@
         } else fallback();
       }
 
+      /* ---------- URL preset ---------- */
+      // One link that configures the whole wizard: ?preset=<base64url JSON>.
+      // A values statement mapped onto a template set travels as a URL — it only
+      // PREFILLS; every field stays editable and nothing exists until Launch.
+      function loadPreset() {
+        let raw = U.qp("preset");
+        if (!raw) { try { raw = localStorage.getItem("dp-pending-preset"); } catch (e) {} }
+        if (!raw) return;
+        try { localStorage.removeItem("dp-pending-preset"); } catch (e) {}
+        let p = null;
+        try { p = JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g, "+").replace(/_/g, "/"))))); }
+        catch (e) { Shell.toast("That preset link didn't parse — starting blank"); return; }
+        if (!p || typeof p !== "object") return;
+        const str = (v, n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
+        const num = (v, lo, hi) => { const x = Math.round(Number(v)); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : undefined; };
+        const set = (k, v) => { if (v !== undefined) draft[k] = v; };
+        set("name", str(p.name, 40));
+        set("blurb", str(p.blurb, 140));
+        if (typeof p.hasLocation === "boolean") draft.hasLocation = p.hasLocation;
+        if (BOROUGHS.includes(p.borough)) draft.borough = p.borough;
+        set("size", num(p.size, 2, 120));
+        set("rent", num(p.rent, 1, 20000));
+        if (Commons.econ.get(p.poolModel)) draft.poolModel = p.poolModel;
+        set("poolMonthly", num(p.poolMonthly, 0, 5000));
+        set("mission", str(p.mission, 240));
+        set("networked", num(p.networked, 0, 100));
+        if (Array.isArray(p.rules)) {
+          draft.rules = p.rules.filter((r) => typeof r === "string" && r.trim()).map((r) => r.trim().slice(0, 120)).slice(0, 8);
+        }
+        set("roomsOpen", num(p.roomsOpen, 0, 120));
+        // the wizard shows three starter money cards; a preset can carry any of
+        // the six templates — inject the missing one as a real, selected card
+        if (draft.poolModel && !document.querySelector(`.pool-card[data-model="${draft.poolModel}"]`)) {
+          const t = Commons.econ.get(draft.poolModel);
+          if (t) qs("#pool-cards").insertAdjacentHTML("beforeend", `
+            <div class="card flat pool-card stack" data-model="${esc(t.id)}" role="radio" aria-checked="false" tabindex="0">
+              <div class="row between"><strong class="display-bold">${esc(t.emoji)} ${esc(t.name)}</strong><span class="pick"></span></div>
+              <p class="small muted">${esc(t.tagline)}</p>
+              <span class="pill paper">from your preset</span>
+            </div>`);
+        }
+        // hydrate the static inputs (chips/sliders re-render from draft right after)
+        qs("#f-name").value = draft.name;
+        qs("#f-blurb").value = draft.blurb;
+        qs("#f-borough").value = draft.borough || "";
+        if (draft.rent) qs("#f-rent").value = draft.rent;
+        qs("#f-pool").value = draft.poolMonthly;
+        qs("#f-mission").value = draft.mission;
+        qs("#f-networked").value = draft.networked;
+        qs("#net-caption").textContent = netCaption(draft.networked);
+        qs("#hasloc-row").querySelectorAll(".choice").forEach((c) => c.classList.toggle("on", (c.dataset.v === "yes") === draft.hasLocation));
+        Shell.toast("Preset loaded — everything below is editable before launch", "green");
+      }
+
       /* ---------- boot ---------- */
       bindStep1(); bindStep2(); bindStep3(); bindStep4();
+      loadPreset();
       renderLocCopy(); renderSizeChips(); renderPoolCards(); renderRules(); renderRoomSlider();
       qs("#back-link").addEventListener("click", (e) => { e.preventDefault(); if (step > 1) go(step - 1); });
       document.querySelectorAll("[data-back]").forEach((b) =>

@@ -699,6 +699,33 @@ await test('found your own house: clean systems, gallery keeps the world', async
   assert(body.includes('E2E Test House') && body.includes('Cypress Yard'), 'gallery lost a house');
 });
 
+await test('create wizard: a ?preset= link prefills the whole wizard (values-set export)', async () => {
+  const preset = Buffer.from(JSON.stringify({
+    name: 'Preset Grange', blurb: 'Preset-driven commune', hasLocation: false, borough: 'Hudson Valley',
+    size: 20, rent: 950, poolModel: 'labor', poolMonthly: 200,
+    mission: 'Tax-funded commons', networked: 70,
+    rules: ['Council runs the agenda', 'Roles priced by desirability'], roomsOpen: 4,
+  }), 'utf8').toString('base64url');
+  await go('create.html?preset=' + preset);
+  const got = await ev(() => ({
+    name: document.getElementById('f-name').value,
+    borough: document.getElementById('f-borough').value,
+    hasLoc: document.querySelector('#hasloc-row .choice.on').dataset.v,
+    rent: document.getElementById('f-rent').value,
+    pool: document.getElementById('f-pool').value,
+    mission: document.getElementById('f-mission').value,
+    laborOn: !!document.querySelector('.pool-card[data-model="labor"].on'),
+    rules: document.getElementById('rules-list').textContent,
+  }));
+  assert(got.name === 'Preset Grange', 'name not prefilled: ' + got.name);
+  assert(got.borough === 'Hudson Valley', 'borough not prefilled: ' + got.borough);
+  assert(got.hasLoc === 'no', 'hasLocation=false not applied: ' + got.hasLoc);
+  assert(got.rent === '950' && got.pool === '200', 'money not prefilled: ' + got.rent + '/' + got.pool);
+  assert(got.mission === 'Tax-funded commons', 'mission not prefilled');
+  assert(got.laborOn, 'Points & Pool template not selected from preset');
+  assert(/Council runs the agenda/.test(got.rules), 'rules not prefilled: ' + got.rules.slice(0, 80));
+}, null);
+
 await test('setup wizard: launch → chores → meals → dashboard complete', async () => {
   await go('dashboard.html');
   assert((await ev(() => document.getElementById('page').textContent.includes('Finish setting up'))), 'no setup nudge on fresh house');
