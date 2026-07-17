@@ -210,6 +210,7 @@ await test('i18n: switcher offers 11 languages; picking Spanish translates the c
   await cp.waitForTimeout(300);
   const opts = await cp.evaluate(() => [...document.querySelectorAll('#lang-select option')].map((o) => o.value));
   assert(opts.length === 11 && opts.includes('he') && opts.includes('es'), 'switcher languages wrong: ' + opts.join(','));
+  assert(opts[6] === 'he', 'Hebrew should be the 7th switcher option, got #' + (opts.indexOf('he') + 1) + ': ' + opts.join(','));
   // pick Spanish via the switcher (reloads the page)
   await cp.selectOption('#lang-select', 'es');
   await cp.waitForTimeout(700);
