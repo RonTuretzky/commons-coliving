@@ -106,7 +106,7 @@
           if (!needChores && !needMeals) return "";
           return `<div class="card row between wrap" style="border-color:var(--pine);gap:12px">
             <span class="row" style="gap:10px"><span style="font-size:1.5rem">🧰</span><span>
-              <strong class="display-bold">Finish setting up ${U.esc(house.name)}</strong>
+              <strong class="display-bold">Finish setting up <span>${U.esc(house.name)}</span></strong>
               <span class="small muted" style="display:block">Chores ${needChores ? "✗" : "✓"} · Meal plan ${needMeals ? "✗" : "✓"} — two calculators and you're done.</span>
             </span></span>
             <span class="row wrap">

@@ -120,7 +120,82 @@
       `<option value="${l}"${l === LANG ? " selected" : ""}>${LANG_NAMES[l]}</option>`).join("");
     return `<select class="lang-select" id="lang-select" aria-label="${t("lang.label", "Language")}">${opts}</select>`;
   }
-  window.I18n = { t, dir: i18nDir, set: setLang, applyDom: applyI18nDom, applyHtmlDir, switcher: langSwitcher, names: LANG_NAMES, get lang() { return LANG; } };
+  /* ---- full-app phrase translation ----
+     The key catalog above covers nav/footer/landing/auth. Everything else in the
+     app is rendered from JS template literals; rather than retrofit t() into every
+     one, we sweep the rendered DOM and swap whole leaf phrases via a big
+     English->translation dictionary (assets/js/i18n-phrases.js, loaded lazily and
+     only for a non-English language). A MutationObserver re-translates content that
+     renders after page load. Idempotent: a translated leaf no longer matches an
+     English key. */
+  const SKIP_TAGS = /^(SCRIPT|STYLE|CODE|NOSCRIPT|SVG|PATH|INPUT|IMG|BR|HR|TEXTAREA)$/;
+  let _phrasesRequested = false, _observer = null;
+  function _tr(str) {
+    if (typeof str !== "string") return null;
+    const key = str.replace(/\s+/g, " ").trim();
+    if (!key) return null;
+    const row = window.__I18N_PHRASES && window.__I18N_PHRASES[key];
+    const v = row && row[LANG];
+    return (v && v !== key) ? { key, v } : null;
+  }
+  function translateDom(root) {
+    if (LANG === "en" || !window.__I18N_PHRASES) return;
+    const start = (root && root.nodeType === 1) ? root : document.body;
+    if (!start || !start.querySelectorAll) return;
+    // translate TEXT NODES (not elements) so prose with inline <a>/<strong> is
+    // covered piece-by-piece while its markup survives
+    const walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        const p = n.parentElement;
+        if (!p || SKIP_TAGS.test(p.tagName) || (p.closest && p.closest("code, svg, .mono"))) return NodeFilter.FILTER_REJECT;
+        return n.nodeValue && n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
+    for (const node of nodes) {
+      const hit = _tr(node.nodeValue);
+      if (hit) {                                                   // keep the node's leading/trailing whitespace
+        const lead = (node.nodeValue.match(/^\s*/) || [""])[0];
+        const trail = (node.nodeValue.match(/\s*$/) || [""])[0];
+        node.nodeValue = lead + hit.v + trail;
+      }
+    }
+    const els = start.nodeType === 1 ? [start, ...start.querySelectorAll("*")] : [...start.querySelectorAll("*")];
+    for (const el of els) {                                        // attributes
+      if (!el.hasAttribute) continue;
+      for (const a of ["placeholder", "title", "aria-label"]) {
+        if (el.hasAttribute(a)) { const hit = _tr(el.getAttribute(a)); if (hit) el.setAttribute(a, hit.v); }
+      }
+    }
+  }
+  function startI18nObserver() {
+    if (_observer || LANG === "en" || !window.MutationObserver) return;
+    _observer = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1) translateDom(n);                                  // element re-render
+          else if (n.nodeType === 3 && n.parentElement) translateDom(n.parentElement); // el.textContent = "…"
+        }
+        if (m.type === "characterData" && m.target.parentElement) translateDom(m.target.parentElement);
+      }
+    });
+    _observer.observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true });
+  }
+  function ensureFullTranslation() {
+    if (LANG === "en") return;
+    const go = () => { translateDom(document.body); startI18nObserver(); };
+    if (window.__I18N_PHRASES) return go();
+    if (_phrasesRequested) return;
+    _phrasesRequested = true;
+    const sc = document.createElement("script");
+    sc.src = "assets/js/i18n-phrases.js";
+    sc.onload = go;
+    sc.onerror = () => {};   // key catalog + RTL still work without it
+    (document.head || document.documentElement).appendChild(sc);
+  }
+
+  window.I18n = { t, dir: i18nDir, set: setLang, applyDom: applyI18nDom, applyHtmlDir, switcher: langSwitcher, translateDom, names: LANG_NAMES, get lang() { return LANG; } };
   applyHtmlDir(); // set <html lang/dir> as early as possible
 
   const LINKS = {
@@ -286,6 +361,7 @@
     if (burger) burger.addEventListener("click", () => document.getElementById("nav-links").classList.toggle("open"));
     const lang = document.getElementById("lang-select");
     if (lang) lang.addEventListener("change", (e) => setLang(e.target.value));
+    ensureFullTranslation(); // sweep-translate the rest of the page + watch for re-renders
     installPwa();
     installSync();
   }

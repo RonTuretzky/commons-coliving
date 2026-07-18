@@ -255,6 +255,39 @@ await test('i18n: Hebrew renders RTL with translated chrome, and persists across
   await clean.close();
 });
 
+await test('i18n: the DOM sweep translates inner-app pages (no untranslated leftovers in Hebrew)', async () => {
+  const clean = await browser.newContext();
+  await clean.addInitScript(() => { try { localStorage.setItem('dp-lang', 'he'); } catch (e) {} });
+  const cp = await clean.newPage();
+  // browse is a full inner page that renders from JS — a strong test of the sweep
+  await cp.goto(BASE + '/browse.html');
+  await cp.waitForTimeout(1800); // sweep + observer + phrases.js load + late renders
+  const r = await cp.evaluate(() => {
+    const P = window.__I18N_PHRASES || {};
+    const lang = document.documentElement.lang;
+    let misses = 0, translated = 0;
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        const p = n.parentElement;
+        if (!p || /^(SCRIPT|STYLE|CODE)$/.test(p.tagName) || p.closest('svg, code, .mono')) return NodeFilter.FILTER_REJECT;
+        return n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const key = n.nodeValue.replace(/\s+/g, ' ').trim();
+      const tr = P[key] && P[key][lang];
+      if (tr && tr !== key) misses++;          // has a differing translation but still shows English
+      if (/[֐-׿]/.test(key)) translated++;
+    }
+    return { phrasesLoaded: !!window.__I18N_PHRASES, misses, translated, dir: document.documentElement.getAttribute('dir') };
+  });
+  assert(r.phrasesLoaded, 'i18n-phrases.js did not load');
+  assert(r.dir === 'rtl', 'browse not RTL in Hebrew');
+  assert(r.misses === 0, 'browse has ' + r.misses + ' untranslated-but-translatable text nodes in Hebrew');
+  assert(r.translated > 10, 'browse shows too little Hebrew: ' + r.translated + ' translated text nodes');
+  await clean.close();
+});
+
 await test('browse: house cards carry five-lens dots', async () => {
   await go('browse.html');
   const titles = await ev(() => Array.from(document.querySelectorAll('main [title]')).map((el) => el.title).join('|'));
